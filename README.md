@@ -16,18 +16,25 @@ What's working:
     Video search
     Video playback
     Video info
-    Video quality selection
-    Channel subscribe/unsubscribe
+    View profiles for models, pornstars, and channels
     Channel info fetch (description, about, its videos)
+    Channel subscribe/unsubscribe
+    Profile Search
+    
 
 What's not working:
 
+    Channel names on video thumbnails
+    Channel name's profile picture on videos
+    Reccommended videos
+    Playlist search
     Channels search
-    View profiles for models, pornstars, and channels
     Fetching video comments with like/dislike, avatar, etc. (only non-nested ones)
     Subtitles
+    Video quality selection
     Per-channel video search
     Search filters
+    Account login
     Premium login
     ...all the rest
 
