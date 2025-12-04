@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/test/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin/tree/test",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/test/SpankbangScript.js",
-  "version": 8,
+  "version": 9,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/test/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "scriptSignature": "",
@@ -29,9 +29,15 @@
   ],
   "authentication": {
     "loginUrl": "https://spankbang.com/users/login",
-    "completionUrl": "https://spankbang.com",
-    "cookiesToFind": ["sb_session", "sb_token", "session_id", "user_id"],
-    "userAgent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+    "completionUrl": "https://spankbang.com/",
+    "loginButton": ".btn-login, #login-btn, button[type=submit]",
+    "cookiesToFind": ["sb_session"],
+    "userAgent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+    "domainHeadersToFind": {
+      "spankbang.com": ["sb_session"]
+    },
+    "headersToFind": ["Cookie"],
+    "allowedDomains": ["spankbang.com", "www.spankbang.com"]
   },
   "supportedClaimTypes": [3],
   "primaryClaimFieldType": 3,
@@ -75,6 +81,14 @@
       "Added Import Liked Videos feature",
       "Fixed login flow to properly return to app after authentication",
       "Display username after successful login"
+    ],
+    "9": [
+      "Fixed authentication flow - properly detects login completion and returns to app",
+      "Updated cookie detection to use correct SpankBang session cookie (sb_session)",
+      "Improved login state detection by checking authenticated pages for redirects",
+      "Added Watch History sync (getUserHistory/getWatchHistory)",
+      "Recommendations already working via getContentRecommendations",
+      "Better handling of authentication redirects and session expiration"
     ]
   }
 }
