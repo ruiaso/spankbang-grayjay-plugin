@@ -1043,52 +1043,52 @@ source.saveState = function() {
 
 source.isLoggedIn = function() {
     try {
-        const response = http.GET(BASE_URL, API_HEADERS, true);
+        const response = http.GET(BASE_URL + "/users/favorites", API_HEADERS, true);
+        
         if (!response.isOk) {
             log("isLoggedIn: Request failed with status " + response.code);
             return false;
         }
         
         const html = response.body;
+        const finalUrl = response.url || "";
         
-        if (html.includes('class="login-form"') || 
+        if (finalUrl.includes('/users/login') || 
             html.includes('action="/users/login"') ||
-            html.match(/<form[^>]*id="login/i)) {
-            log("isLoggedIn: Login form detected - not logged in");
+            html.includes('id="login_form"') ||
+            html.includes('class="login-form"') ||
+            (html.includes('name="email"') && html.includes('name="password"'))) {
+            log("isLoggedIn: Redirected to login page - not logged in");
             return false;
         }
         
         const hasLogoutLink = html.includes('/users/logout') || 
-                             html.includes('href="/logout"') ||
-                             /logout/i.test(html.match(/<a[^>]*class="[^"]*"[^>]*>[^<]*logout[^<]*<\/a>/i)?.[0] || '');
+                             html.includes('href="/logout"');
         
-        const hasUserSection = /id="user_dropdown"/i.test(html) ||
-                              /class="[^"]*user-menu[^"]*"/i.test(html) ||
-                              /class="[^"]*account-menu[^"]*"/i.test(html) ||
-                              /class="[^"]*my-account[^"]*"/i.test(html);
+        const hasUserContent = html.includes('/users/favorites') && 
+                              (html.includes('class="video-item"') || 
+                               html.includes('class="thumb"') ||
+                               html.includes('No favorites yet') ||
+                               html.includes('empty-message'));
         
-        const hasUserLinks = html.includes('/users/favorites') ||
-                            html.includes('/users/subscriptions') ||
-                            html.includes('/users/playlists') ||
-                            html.includes('/users/settings') ||
-                            html.includes('/users/profile');
+        const hasUserNav = html.includes('/users/history') ||
+                          html.includes('/users/playlists') ||
+                          html.includes('/users/subscriptions');
         
-        if (hasLogoutLink || (hasUserSection && hasUserLinks)) {
+        if (hasLogoutLink || hasUserContent || hasUserNav) {
             const usernamePatterns = [
                 /class="[^"]*(?:username|uname)[^"]*"[^>]*>([^<]+)</i,
                 /data-username="([^"]+)"/i,
-                /<span[^>]*class="[^"]*(?:user-name|name)[^"]*"[^>]*>([^<]+)<\/span>/i,
-                /id="user_dropdown"[\s\S]*?<span[^>]*>([^<]+)<\/span>/i,
-                /<a[^>]*href="\/profile\/([^"]+)"[^>]*class="[^"]*(?:profile|user)[^"]*"/i,
+                /<a[^>]*href="\/profile\/([^"]+)"[^>]*>/i,
                 /href="\/users\/([^"\/]+)\/settings"/i,
-                /<a[^>]*class="[^"]*avatar[^"]*"[^>]*href="\/profile\/([^"]+)"/i
+                /<span[^>]*class="[^"]*(?:name|user)[^"]*"[^>]*>([^<]+)<\/span>/i
             ];
             
             for (const pattern of usernamePatterns) {
                 const match = html.match(pattern);
                 if (match && match[1]) {
                     const username = match[1].trim();
-                    if (username.length > 0 && username.length < 50 && !username.includes('<')) {
+                    if (username.length > 0 && username.length < 50 && !username.includes('<') && !username.includes('/')) {
                         localConfig.userInfo = { username: username };
                         log("isLoggedIn: Found username: " + username);
                         break;
@@ -1400,6 +1400,113 @@ source.getLikedVideos = function(continuationToken) {
 source.getFavorites = function(continuationToken) {
     return source.getLikedVideos(continuationToken);
 };
+
+source.getUserHistory = function(continuationToken) {
+    try {
+        if (!source.isLoggedIn()) {
+            throw new ScriptException("Login required to view watch history");
+        }
+
+        const page = continuationToken ? parseInt(continuationToken) : 1;
+        let historyUrl = `${BASE_URL}/users/history`;
+        if (page > 1) {
+            historyUrl += `/${page}`;
+        }
+
+        const html = makeAuthenticatedRequest(historyUrl, 'watch history');
+        const videos = parseWatchHistory(html);
+        const platformVideos = videos.map(v => createPlatformVideo(v));
+
+        const hasMore = videos.length >= 20;
+        const nextToken = hasMore ? (page + 1).toString() : null;
+
+        return new SpankBangSearchPager(platformVideos, hasMore, {
+            query: "history",
+            continuationToken: nextToken
+        });
+
+    } catch (error) {
+        throw new ScriptException("Failed to get watch history: " + error.message);
+    }
+};
+
+source.getWatchHistory = function(continuationToken) {
+    return source.getUserHistory(continuationToken);
+};
+
+function parseWatchHistory(html) {
+    const videos = [];
+
+    const videoItemRegex = /<div[^>]*class="[^"]*video-item[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/gi;
+
+    let itemMatch;
+    while ((itemMatch = videoItemRegex.exec(html)) !== null) {
+        const block = itemMatch[0];
+
+        const linkMatch = block.match(/href="\/([a-zA-Z0-9]+)\/video\/([^"]+)"/);
+        if (!linkMatch) continue;
+
+        const videoId = linkMatch[1];
+        const videoSlug = linkMatch[2];
+
+        const thumbMatch = block.match(/(?:data-src|src)="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/);
+        const thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/1/0/w:300/default.jpg`;
+
+        const titleMatch = block.match(/title="([^"]+)"/);
+        let title = titleMatch ? cleanVideoTitle(titleMatch[1]) : "Unknown";
+
+        const durationMatch = block.match(/<span[^>]*class="[^"]*(?:l|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i);
+        const durationAltMatch = block.match(/>(\d+:\d+(?::\d+)?)</);
+        const finalDuration = durationMatch ? durationMatch[1].trim() : (durationAltMatch ? durationAltMatch[1] : "0:00");
+
+        const viewsMatch = block.match(/<span[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/span>/i);
+        const viewsAltMatch = block.match(/>([0-9,.]+[KMB]?)\s*<\/span>/i);
+        const viewsStr = viewsMatch ? viewsMatch[1].trim() : (viewsAltMatch ? viewsAltMatch[1] : "0");
+
+        const uploader = extractUploaderFromSearchResult(block);
+
+        videos.push({
+            id: videoId,
+            url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
+            title: title,
+            thumbnail: thumbnail,
+            duration: parseDuration(finalDuration),
+            views: parseViewCount(viewsStr),
+            uploadDate: 0,
+            uploader: uploader
+        });
+    }
+
+    if (videos.length === 0) {
+        const altRegex = /<a[^>]*href="\/([a-zA-Z0-9]+)\/video\/([^"]+)"[^>]*>[\s\S]*?<\/a>/gi;
+        let altMatch;
+        while ((altMatch = altRegex.exec(html)) !== null) {
+            const videoId = altMatch[1];
+            const videoSlug = altMatch[2];
+            const block = altMatch[0];
+
+            const titleMatch = block.match(/title="([^"]+)"/);
+            const title = titleMatch ? cleanVideoTitle(titleMatch[1]) : videoSlug.replace(/-/g, ' ');
+
+            const thumbMatch = block.match(/(?:data-src|src)="([^"]+\.(?:jpg|jpeg|png|webp))"/i);
+            let thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/1/0/w:300/default.jpg`;
+            if (thumbnail.startsWith('//')) thumbnail = `https:${thumbnail}`;
+
+            videos.push({
+                id: videoId,
+                url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
+                title: title,
+                thumbnail: thumbnail,
+                duration: 0,
+                views: 0,
+                uploadDate: 0,
+                uploader: { name: "", url: "", avatar: "" }
+            });
+        }
+    }
+
+    return videos;
+}
 
 source.getHome = function(continuationToken) {
     try {
