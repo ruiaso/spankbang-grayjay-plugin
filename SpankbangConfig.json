@@ -1,14 +1,14 @@
 {
   "name": "SpankBang",
-  "description": "SpankBang video platform plugin for Grayjay with login support, playlist search, recommendations, and improved creator profiles",
+  "description": "SpankBang video platform plugin for Grayjay with pornstar search, recommendations, and improved creator profiles",
   "platformUrl": "https://www.spankbang.com",
   "author": "GreyPluginDev",
   "authorUrl": "https://github.com/GreyPluginDev",
-  "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/test/SpankbangConfig.json",
-  "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin/tree/test",
-  "scriptUrl":"https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/test/SpankbangScript.js",
+  "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
+  "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
+  "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
   "version": 8,
-  "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/test/icon.png",
+  "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "scriptSignature": "",
   "scriptPublicKey": "",
@@ -16,9 +16,7 @@
   "allowAllHttpHeaderAccess": true,
   "allowEval": true,
   "allowUrls": [
-    "spankbang.com",
     ".spankbang.com",
-    ".spankbang.party",
     ".spankcdn.com",
     ".sb-cd.com",
     ".sb-cdn.com",
@@ -30,15 +28,13 @@
     "tbi.sb-cd.com"
   ],
   "authentication": {
-    "loginUrl": "https://spankbang.com/login",
-    "completionUrl": "https://spankbang.com/",
-    "headersToFind": ["set-cookie"],
-    "cookiesToFind": ["sb_session", "auth"],
+    "loginUrl": "https://spankbang.com/users/login",
+    "completionUrl": "https://spankbang.com",
+    "cookiesToFind": ["sb_session", "sb_token", "session_id", "user_id"],
     "userAgent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
   },
   "supportedClaimTypes": [3],
   "primaryClaimFieldType": 3,
-  "subscriptionRateLimit": 100,
   "changelog": {
     "3": [
       "Fixed getChannelCapabilities error",
@@ -73,14 +69,12 @@
       "Added video count display in creator descriptions"
     ],
     "8": [
-      "Added account login support (WebView-based authentication)",
-      "Added playlist search functionality",
-      "Added user subscriptions import (getUserSubscriptions)",
-      "Added user playlists import (getUserPlaylists)",
-      "Added liked videos support",
-      "Improved recommendations parsing from video pages",
-      "Added regional subdomain support (.party, language variants)",
-      "Enhanced authentication with CSRF token handling"
+      "Added authentication support with login/logout functionality",
+      "Added Import Subscriptions feature (getUserSubscriptions)",
+      "Added Import Playlists feature (getUserPlaylists)",
+      "Added Import Liked Videos feature",
+      "Fixed login flow to properly return to app after authentication",
+      "Display username after successful login"
     ]
   }
 }
