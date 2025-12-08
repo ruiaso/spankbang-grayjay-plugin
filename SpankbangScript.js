@@ -370,6 +370,52 @@ function parseViewCount(viewsStr) {
     return parseInt(viewsStr.replace(/[,.\s]/g, '')) || 0;
 }
 
+function parseRelativeDate(dateStr) {
+    if (!dateStr) return 0;
+    
+    const now = Math.floor(Date.now() / 1000);
+    const lowerDateStr = dateStr.toLowerCase().trim();
+    
+    const relativeMatch = lowerDateStr.match(/(\d+)\s*(second|minute|hour|day|week|month|year)s?\s*ago/i);
+    if (relativeMatch) {
+        const num = parseInt(relativeMatch[1]);
+        const unit = relativeMatch[2].toLowerCase();
+        
+        const multipliers = {
+            'second': 1,
+            'minute': 60,
+            'hour': 3600,
+            'day': 86400,
+            'week': 604800,
+            'month': 2592000,
+            'year': 31536000
+        };
+        
+        if (multipliers[unit]) {
+            return now - (num * multipliers[unit]);
+        }
+    }
+    
+    if (lowerDateStr.includes('just now') || lowerDateStr.includes('moments ago')) {
+        return now;
+    }
+    if (lowerDateStr.includes('yesterday')) {
+        return now - 86400;
+    }
+    if (lowerDateStr.includes('today')) {
+        return now;
+    }
+    
+    try {
+        const parsed = new Date(dateStr);
+        if (!isNaN(parsed.getTime())) {
+            return Math.floor(parsed.getTime() / 1000);
+        }
+    } catch (e) {}
+    
+    return 0;
+}
+
 function extractAvatarFromHtml(html) {
     const avatarPatterns = [
         /src="(https?:\/\/spankbang\.com\/pornstarimg\/[^"]+)"/i,
@@ -1290,6 +1336,23 @@ function parseSearchResults(html) {
         const viewsAltMatch = block.match(/>([0-9,.]+[KMB]?)\s*<\/span>/i);
         const viewsStr = viewsMatch ? viewsMatch[1].trim() : (viewsAltMatch ? viewsAltMatch[1] : "0");
 
+        let uploadDate = 0;
+        const datePatterns = [
+            /<span[^>]*class="[^"]*(?:age|time|date|when|ago)[^"]*"[^>]*>([^<]+)<\/span>/i,
+            /<time[^>]*>([^<]+)<\/time>/i,
+            /<span[^>]*class="[^"]*t[^"]*"[^>]*>([^<]+)<\/span>/i,
+            /(\d+\s*(?:second|minute|hour|day|week|month|year)s?\s*ago)/i,
+            /(yesterday|today|just now)/i
+        ];
+        
+        for (const datePattern of datePatterns) {
+            const dateMatch = block.match(datePattern);
+            if (dateMatch && dateMatch[1]) {
+                uploadDate = parseRelativeDate(dateMatch[1].trim());
+                if (uploadDate > 0) break;
+            }
+        }
+
         const uploader = extractUploaderFromSearchResult(block);
 
         videos.push({
@@ -1298,6 +1361,7 @@ function parseSearchResults(html) {
             thumbnail: thumbnail,
             duration: parseDuration(finalDuration),
             views: parseViewCount(viewsStr),
+            uploadDate: uploadDate,
             url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
             uploader: uploader
         });
@@ -1317,6 +1381,7 @@ function parseSearchResults(html) {
                 thumbnail: `https://tbi.sb-cd.com/t/${videoId}/1/0/w:300/default.jpg`,
                 duration: 0,
                 views: 0,
+                uploadDate: 0,
                 url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
                 uploader: { name: "", url: "", avatar: "" }
             });
@@ -2645,10 +2710,12 @@ source.getChannel = function(url) {
             }
         }
 
+        const channelThumbnail = banner || avatar;
+        
         return new PlatformChannel({
             id: new PlatformID(PLATFORM, result.type === 'pornstar' ? `pornstar:${result.id}` : result.id, plugin.config.id),
             name: name,
-            thumbnail: avatar,
+            thumbnail: channelThumbnail,
             banner: banner,
             subscribers: subscribers,
             description: description,
@@ -3031,4 +3098,4 @@ class SpankBangCommentPager extends CommentPager {
     }
 }
 
-log("SpankBang plugin loaded - v15");
+log("SpankBang plugin loaded - v16");
