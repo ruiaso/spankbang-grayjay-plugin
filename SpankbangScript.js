@@ -477,7 +477,7 @@ function extractUploaderFromVideoToolbar(html) {
                     uploader.avatar = match[2] || "";
                 }
                 
-                if (uploader.name && uploader.name.length > 0) {
+                if (isValidUploaderName(uploader.name)) {
                     if (!uploader.avatar) {
                         uploader.avatar = fetchUploaderAvatarIfNeeded(uploader, html);
                     }
@@ -497,10 +497,13 @@ function extractUploaderFromVideoToolbar(html) {
     for (const pattern of simpleChannelPatterns) {
         const match = html.match(pattern);
         if (match) {
-            uploader.name = match[3].replace(/<[^>]*>/g, '').trim();
-            uploader.url = `spankbang://channel/${match[1]}:${match[2]}`;
-            uploader.avatar = extractChannelAvatarNearLink(html, match[1], match[2]) || extractAvatarFromHtml(html);
-            return uploader;
+            const name = match[3].replace(/<[^>]*>/g, '').trim();
+            if (isValidUploaderName(name)) {
+                uploader.name = name;
+                uploader.url = `spankbang://channel/${match[1]}:${match[2]}`;
+                uploader.avatar = extractChannelAvatarNearLink(html, match[1], match[2]) || extractAvatarFromHtml(html);
+                return uploader;
+            }
         }
     }
 
@@ -514,10 +517,13 @@ function extractUploaderFromVideoToolbar(html) {
     for (const pattern of simplePornstarPatterns) {
         const match = html.match(pattern);
         if (match) {
-            uploader.name = match[3].replace(/<[^>]*>/g, '').trim();
-            uploader.url = `spankbang://profile/pornstar:${match[2]}`;
-            uploader.avatar = extractPornstarAvatarFromHtml(html, match[2]) || extractAvatarFromHtml(html);
-            return uploader;
+            const name = match[3].replace(/<[^>]*>/g, '').trim();
+            if (isValidUploaderName(name)) {
+                uploader.name = name;
+                uploader.url = `spankbang://profile/pornstar:${match[2]}`;
+                uploader.avatar = extractPornstarAvatarFromHtml(html, match[2]) || extractAvatarFromHtml(html);
+                return uploader;
+            }
         }
     }
 
@@ -530,10 +536,13 @@ function extractUploaderFromVideoToolbar(html) {
     for (const pattern of simpleProfilePatterns) {
         const match = html.match(pattern);
         if (match) {
-            uploader.name = match[2].replace(/<[^>]*>/g, '').trim();
-            uploader.url = `spankbang://profile/${match[1]}`;
-            uploader.avatar = extractAvatarFromHtml(html);
-            return uploader;
+            const name = match[2].replace(/<[^>]*>/g, '').trim();
+            if (isValidUploaderName(name)) {
+                uploader.name = name;
+                uploader.url = `spankbang://profile/${match[1]}`;
+                uploader.avatar = extractAvatarFromHtml(html);
+                return uploader;
+            }
         }
     }
 
@@ -584,6 +593,14 @@ function fetchUploaderAvatarIfNeeded(uploader, html) {
     return extractAvatarFromHtml(html);
 }
 
+function isValidUploaderName(name) {
+    if (!name || name.length === 0 || name.length > 100) return false;
+    const invalidNames = ['hd', 'sd', '4k', 'fhd', 'uhd', '1080p', '720p', '480p', '360p', '240p', 
+                          'new', 'hot', 'top', 'best', 'featured', 'trending', 'popular',
+                          'views', 'duration', 'date', 'added', 'recently', 'more'];
+    return !invalidNames.includes(name.toLowerCase());
+}
+
 function extractUploaderFromSearchResult(block) {
     const uploader = {
         name: "",
@@ -618,7 +635,7 @@ function extractUploaderFromSearchResult(block) {
             let avatar = match[3] || "";
             if (avatar.startsWith('//')) avatar = 'https:' + avatar;
             else if (avatar && !avatar.startsWith('http')) avatar = 'https://spankbang.com' + avatar;
-            if (name && name.length > 0 && name.length < 100) {
+            if (isValidUploaderName(name)) {
                 uploader.name = name;
                 uploader.url = `spankbang://channel/${match[1]}:${match[2]}`;
                 uploader.avatar = avatar;
@@ -639,7 +656,7 @@ function extractUploaderFromSearchResult(block) {
         const match = searchHtml.match(pattern) || block.match(pattern);
         if (match && match[3]) {
             const name = match[3].replace(/<[^>]*>/g, '').trim();
-            if (name && name.length > 0 && name.length < 100) {
+            if (isValidUploaderName(name)) {
                 uploader.name = name;
                 uploader.url = `spankbang://channel/${match[1]}:${match[2]}`;
                 uploader.avatar = extractChannelAvatarNearLink(block, match[1], match[2]) || extractAvatarFromHtml(block);
@@ -660,7 +677,7 @@ function extractUploaderFromSearchResult(block) {
             let avatar = match[3] || "";
             if (avatar.startsWith('//')) avatar = 'https:' + avatar;
             else if (avatar && !avatar.startsWith('http')) avatar = 'https://spankbang.com' + avatar;
-            if (name && name.length > 0 && name.length < 100) {
+            if (isValidUploaderName(name)) {
                 uploader.name = name;
                 uploader.url = `spankbang://profile/pornstar:${match[2]}`;
                 uploader.avatar = avatar || extractPornstarAvatarFromHtml(block, match[2]);
@@ -681,7 +698,7 @@ function extractUploaderFromSearchResult(block) {
         const match = searchHtml.match(pattern) || block.match(pattern);
         if (match && match[3]) {
             const name = match[3].replace(/<[^>]*>/g, '').trim();
-            if (name && name.length > 0 && name.length < 100) {
+            if (isValidUploaderName(name)) {
                 uploader.name = name;
                 uploader.url = `spankbang://profile/pornstar:${match[2]}`;
                 uploader.avatar = extractPornstarAvatarFromHtml(block, match[2]);
@@ -702,7 +719,7 @@ function extractUploaderFromSearchResult(block) {
         const match = searchHtml.match(pattern) || block.match(pattern);
         if (match && match[2]) {
             const name = match[2].replace(/<[^>]*>/g, '').trim();
-            if (name && name.length > 0 && name.length < 100) {
+            if (isValidUploaderName(name)) {
                 uploader.name = name;
                 uploader.url = `spankbang://profile/${match[1]}`;
                 uploader.avatar = extractAvatarFromHtml(block);
@@ -715,7 +732,7 @@ function extractUploaderFromSearchResult(block) {
     const svgMatch = block.match(svgPattern);
     if (svgMatch && svgMatch[1]) {
         const name = svgMatch[1].trim();
-        if (name && name.length > 0 && name.length < 100) {
+        if (isValidUploaderName(name)) {
             const pornstarHrefMatch = block.match(/href="\/([a-z0-9]+)\/pornstar\/([^"]+)"/i);
             if (pornstarHrefMatch) {
                 uploader.name = name;
@@ -731,10 +748,10 @@ function extractUploaderFromSearchResult(block) {
         }
     }
 
-    const userSpanMatch = block.match(/<span[^>]*class="[^"]*(?:user|uploader|author|name|n)[^"]*"[^>]*>([^<]+)<\/span>/i);
+    const userSpanMatch = block.match(/<span[^>]*class="[^"]*(?:user|uploader|author)[^"]*"[^>]*>([^<]+)<\/span>/i);
     if (userSpanMatch && userSpanMatch[1]) {
         const name = userSpanMatch[1].trim();
-        if (name && name.length > 0 && name.length < 100) {
+        if (isValidUploaderName(name)) {
             uploader.name = name;
             
             const nearbyHrefPornstar = block.match(/href="\/([a-z0-9]+)\/pornstar\/([^"]+)"/i);
@@ -2189,7 +2206,7 @@ source.searchSuggestions = function(query) {
 source.getSearchCapabilities = function() {
     return {
         types: [Type.Feed.Mixed],
-        sorts: ["Relevance", "New", "Trending", "Popular", "Featured"],
+        sorts: ["New", "Trending", "Popular", "Top Rated", "Most Viewed", "Length"],
         filters: [
             {
                 id: "quality",
@@ -2197,9 +2214,9 @@ source.getSearchCapabilities = function() {
                 isMultiSelect: false,
                 filters: [
                     { name: "All", value: "" },
-                    { name: "720p", value: "hd" },
-                    { name: "1080p", value: "fhd" },
-                    { name: "4K", value: "uhd" }
+                    { name: "HD (720p)", value: "hd" },
+                    { name: "FHD (1080p)", value: "fhd" },
+                    { name: "4K (UHD)", value: "uhd" }
                 ]
             },
             {
@@ -2208,14 +2225,15 @@ source.getSearchCapabilities = function() {
                 isMultiSelect: false,
                 filters: [
                     { name: "All", value: "" },
-                    { name: "10+ min", value: "10" },
-                    { name: "20+ min", value: "20" },
-                    { name: "40+ min", value: "40" }
+                    { name: "Short (0-10 min)", value: "0" },
+                    { name: "Medium (10-20 min)", value: "10" },
+                    { name: "Long (20-40 min)", value: "20" },
+                    { name: "Extra Long (40+ min)", value: "40" }
                 ]
             },
             {
                 id: "period",
-                name: "Date",
+                name: "Upload Date",
                 isMultiSelect: false,
                 filters: [
                     { name: "All time", value: "" },
@@ -2344,34 +2362,35 @@ source.search = function(query, type, order, filters, continuationToken) {
 
         log("Search order value: " + order + " (type: " + typeof order + ")");
         
-        const orderStr = String(order);
-        log("Search order normalized to string: '" + orderStr + "'");
-        
-        if (orderStr === "" || orderStr === "0" || orderStr === "null" || orderStr === "undefined" || order === null || order === undefined || order === "Relevance") {
-            log("Order: Relevance (default) - no order param");
-        } else if (orderStr === "1" || orderStr === "new" || order === "New" || order === Type.Order.Chronological) {
-            log("Order: New - adding o=new");
+        if (order === null || order === undefined || order === "" || order === -1) {
+            log("Order: Default (new) - adding o=new");
             params.push("o=new");
-        } else if (orderStr === "2" || orderStr === "trending" || order === "Trending" || order === Type.Order.Trending) {
-            log("Order: Trending - adding o=trending");
-            params.push("o=trending");
-        } else if (orderStr === "3" || orderStr === "popular" || order === "Popular") {
-            log("Order: Popular - adding o=popular");
-            params.push("o=popular");
-        } else if (orderStr === "4" || orderStr === "featured" || order === "Featured") {
-            log("Order: Featured - adding o=featured");
-            params.push("o=featured");
-        } else if (orderStr === "5" || orderStr === "views") {
-            log("Order: Views - adding o=views");
-            params.push("o=views");
-        } else if (orderStr === "6" || orderStr === "rating" || order === Type.Order.Rating) {
-            log("Order: Rating - adding o=top");
-            params.push("o=top");
-        } else if (orderStr === "7" || orderStr === "length") {
-            log("Order: Length - adding o=length");
-            params.push("o=length");
         } else {
-            log("Order: Unknown value '" + orderStr + "' - no order param added");
+            const orderStr = String(order);
+            log("Search order normalized to string: '" + orderStr + "'");
+            
+            if (orderStr === "0" || orderStr === "new" || order === "New" || order === Type.Order.Chronological) {
+                log("Order: New - adding o=new");
+                params.push("o=new");
+            } else if (orderStr === "1" || orderStr === "trending" || order === "Trending" || order === Type.Order.Trending) {
+                log("Order: Trending - adding o=trending");
+                params.push("o=trending");
+            } else if (orderStr === "2" || orderStr === "popular" || order === "Popular") {
+                log("Order: Popular - adding o=popular");
+                params.push("o=popular");
+            } else if (orderStr === "3" || orderStr === "top" || order === "Top Rated" || order === Type.Order.Rating) {
+                log("Order: Top Rated - adding o=top");
+                params.push("o=top");
+            } else if (orderStr === "4" || orderStr === "views" || order === "Most Viewed") {
+                log("Order: Most Viewed - adding o=views");
+                params.push("o=views");
+            } else if (orderStr === "5" || orderStr === "length" || order === "Length") {
+                log("Order: Length - adding o=length");
+                params.push("o=length");
+            } else {
+                log("Order: Unknown value '" + orderStr + "' - defaulting to new");
+                params.push("o=new");
+            }
         }
 
         if (params.length > 0) {
@@ -2841,7 +2860,7 @@ source.isPlaylistUrl = function(url) {
 source.getSearchPlaylistCapabilities = function() {
     return {
         types: [Type.Feed.Playlists],
-        sorts: ["Default", "Trending"],
+        sorts: ["New", "Trending", "Popular"],
         filters: []
     };
 };
@@ -2850,12 +2869,13 @@ function searchPlaylistsViaDuckDuckGo(query, page) {
     const ddgHeaders = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5"
+        "Accept-Language": "en-US,en;q=0.5",
+        "Cookie": ""
     };
     
-    const searchQuery = `site:spankbang.com playlist ${query}`;
+    const searchQuery = `site:spankbang.com/playlist/ ${query}`;
     const startOffset = (page - 1) * 30;
-    let ddgUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(searchQuery)}`;
+    let ddgUrl = `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(searchQuery)}`;
     if (startOffset > 0) {
         ddgUrl += `&s=${startOffset}`;
     }
@@ -2864,22 +2884,32 @@ function searchPlaylistsViaDuckDuckGo(query, page) {
     
     const response = makeRequestNoThrow(ddgUrl, ddgHeaders, 'duckduckgo playlist search');
     if (!response.isOk || !response.body) {
-        log("DuckDuckGo search failed");
-        return [];
+        log("DuckDuckGo Lite search failed, trying HTML version");
+        
+        const htmlUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(searchQuery)}`;
+        const htmlResponse = makeRequestNoThrow(htmlUrl, ddgHeaders, 'duckduckgo html search');
+        if (!htmlResponse.isOk || !htmlResponse.body) {
+            log("DuckDuckGo HTML search also failed");
+            return searchPlaylistsViaSpankBang(query, page);
+        }
+        return parsePlaylistsFromDDG(htmlResponse.body, query);
     }
     
+    return parsePlaylistsFromDDG(response.body, query);
+}
+
+function parsePlaylistsFromDDG(html, query) {
     const playlists = [];
     const seenIds = new Set();
     
-    const resultPattern = /<a[^>]*class="[^"]*result__url[^"]*"[^>]*href="([^"]+)"[^>]*>[\s\S]*?<\/a>[\s\S]*?<a[^>]*class="[^"]*result__a[^"]*"[^>]*>([^<]+)<\/a>/gi;
-    const simplePattern = /href="[^"]*(?:\/\/|uddg=)([^"&]+spankbang\.com\/[a-z0-9]+\/playlist\/[^"&]+)[^"]*"/gi;
-    const titlePattern = /<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="[^"]*spankbang\.com\/([a-z0-9]+)\/playlist\/([^"\/&]+)[^"]*"[^>]*>([^<]+)<\/a>/gi;
+    const urlPattern = /spankbang\.com\/([a-z0-9]+)\/playlist\/([^"'\/\s&<>]+)/gi;
     
     let match;
-    while ((match = titlePattern.exec(response.body)) !== null && playlists.length < 20) {
+    while ((match = urlPattern.exec(html)) !== null && playlists.length < 20) {
         const shortId = match[1];
-        const slug = match[2].replace(/\+/g, ' ').replace(/%20/g, ' ');
-        const title = match[3].replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').trim();
+        let slug = match[2].replace(/\+/g, '-').replace(/%20/g, '-').replace(/['"]/g, '');
+        
+        if (slug.length < 2) continue;
         
         const playlistId = `${shortId}:${slug}`;
         if (seenIds.has(playlistId)) continue;
@@ -2887,7 +2917,7 @@ function searchPlaylistsViaDuckDuckGo(query, page) {
         
         playlists.push({
             id: playlistId,
-            name: title || slug.replace(/[_+-]/g, ' '),
+            name: slug.replace(/[-_+]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
             thumbnail: "",
             author: "SpankBang",
             videoCount: 0,
@@ -2895,29 +2925,21 @@ function searchPlaylistsViaDuckDuckGo(query, page) {
         });
     }
     
-    if (playlists.length === 0) {
-        const urlPattern = /spankbang\.com\/([a-z0-9]+)\/playlist\/([^"\/\s&]+)/gi;
-        while ((match = urlPattern.exec(response.body)) !== null && playlists.length < 20) {
-            const shortId = match[1];
-            const slug = match[2].replace(/\+/g, ' ').replace(/%20/g, ' ');
-            
-            const playlistId = `${shortId}:${slug}`;
-            if (seenIds.has(playlistId)) continue;
-            seenIds.add(playlistId);
-            
-            playlists.push({
-                id: playlistId,
-                name: slug.replace(/[_+-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-                thumbnail: "",
-                author: "SpankBang",
-                videoCount: 0,
-                url: `spankbang://playlist/${playlistId}`
-            });
-        }
-    }
-    
     log("DuckDuckGo found " + playlists.length + " playlists for query: " + query);
     return playlists;
+}
+
+function searchPlaylistsViaSpankBang(query, page) {
+    const searchUrl = `${BASE_URL}/s/${encodeURIComponent(query.replace(/\s+/g, '+'))}/playlist/${page}/`;
+    log("SpankBang playlist search fallback URL: " + searchUrl);
+    
+    const response = makeRequestNoThrow(searchUrl, API_HEADERS, 'spankbang playlist search');
+    if (!response.isOk || !response.body) {
+        log("SpankBang playlist search failed");
+        return [];
+    }
+    
+    return parsePlaylistsPage(response.body);
 }
 
 function fetchPlaylistDetails(playlist) {
@@ -2967,14 +2989,18 @@ source.searchPlaylists = function(query, type, order, filters, continuationToken
         let allPlaylists = [];
         
         const orderStr = String(order);
-        const isTrending = orderStr === "1" || orderStr === "Trending" || order === Type.Order.Trending;
+        const isNew = orderStr === "0" || orderStr === "New" || order === "New";
+        const isTrending = orderStr === "1" || orderStr === "Trending" || order === "Trending" || order === Type.Order.Trending;
+        const isPopular = orderStr === "2" || orderStr === "Popular" || order === "Popular";
         
         if (!query || query.trim().length === 0) {
             let searchUrl;
             if (isTrending) {
                 searchUrl = `${BASE_URL}/playlists/trending/`;
+            } else if (isPopular) {
+                searchUrl = `${BASE_URL}/playlists/popular/`;
             } else {
-                searchUrl = `${BASE_URL}/playlists/`;
+                searchUrl = `${BASE_URL}/playlists/new/`;
             }
             if (page > 1) {
                 searchUrl += `${page}/`;
