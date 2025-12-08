@@ -2189,7 +2189,7 @@ source.searchSuggestions = function(query) {
 source.getSearchCapabilities = function() {
     return {
         types: [Type.Feed.Mixed],
-        sorts: ["Trending", "New", "Popular", "Featured"],
+        sorts: ["Relevance", "New", "Trending", "Popular", "Featured"],
         filters: [
             {
                 id: "quality",
@@ -2347,8 +2347,8 @@ source.search = function(query, type, order, filters, continuationToken) {
         const orderStr = String(order);
         log("Search order normalized to string: '" + orderStr + "'");
         
-        if (orderStr === "" || orderStr === "0" || orderStr === "null" || orderStr === "undefined" || order === null || order === undefined) {
-            log("Order: Relevance (default)");
+        if (orderStr === "" || orderStr === "0" || orderStr === "null" || orderStr === "undefined" || order === null || order === undefined || order === "Relevance") {
+            log("Order: Relevance (default) - no order param");
         } else if (orderStr === "1" || orderStr === "new" || order === "New" || order === Type.Order.Chronological) {
             log("Order: New - adding o=new");
             params.push("o=new");
@@ -2358,13 +2358,16 @@ source.search = function(query, type, order, filters, continuationToken) {
         } else if (orderStr === "3" || orderStr === "popular" || order === "Popular") {
             log("Order: Popular - adding o=popular");
             params.push("o=popular");
-        } else if (orderStr === "4" || orderStr === "views") {
+        } else if (orderStr === "4" || orderStr === "featured" || order === "Featured") {
+            log("Order: Featured - adding o=featured");
+            params.push("o=featured");
+        } else if (orderStr === "5" || orderStr === "views") {
             log("Order: Views - adding o=views");
             params.push("o=views");
-        } else if (orderStr === "5" || orderStr === "rating" || order === Type.Order.Rating) {
+        } else if (orderStr === "6" || orderStr === "rating" || order === Type.Order.Rating) {
             log("Order: Rating - adding o=top");
             params.push("o=top");
-        } else if (orderStr === "6" || orderStr === "length") {
+        } else if (orderStr === "7" || orderStr === "length") {
             log("Order: Length - adding o=length");
             params.push("o=length");
         } else {
@@ -2837,29 +2840,80 @@ source.isPlaylistUrl = function(url) {
 
 source.searchPlaylists = function(query, type, order, filters, continuationToken) {
     try {
-        const page = continuationToken ? parseInt(continuationToken) : 1;
-        let searchUrl;
+        let page = 1;
+        let urlFormat = null;
+        
+        if (continuationToken) {
+            const tokenData = continuationToken.split(':');
+            page = parseInt(tokenData[0]) || 1;
+            urlFormat = tokenData[1] || null;
+        }
+        
+        let allPlaylists = [];
+        let usedFormat = null;
 
         if (!query || query.trim().length === 0) {
-            searchUrl = `${BASE_URL}/playlists/`;
+            let searchUrl = `${BASE_URL}/playlists/`;
             if (page > 1) {
                 searchUrl += `${page}/`;
             }
+            log("Playlist browse URL: " + searchUrl);
+            const html = makeRequest(searchUrl, API_HEADERS, 'playlist browse');
+            allPlaylists = parsePlaylistsPage(html);
+            usedFormat = "browse";
         } else {
-            const searchQuery = encodeURIComponent(query.trim().replace(/\s+/g, '+'));
-            if (page > 1) {
-                searchUrl = `${BASE_URL}/s/${searchQuery}/${page}/?t=playlist`;
+            const searchQuery = query.trim().replace(/\s+/g, '+');
+            const encodedQuery = encodeURIComponent(searchQuery);
+            
+            const urlFormats = {
+                "tag": `${BASE_URL}/tag_playlists/${searchQuery}/${page > 1 ? page + '/' : ''}`,
+                "query": `${BASE_URL}/playlists/${page > 1 ? page + '/' : ''}?q=${encodedQuery}`,
+                "category": `${BASE_URL}/${searchQuery}/playlists/${page > 1 ? page + '/' : ''}`,
+                "fallback": `${BASE_URL}/s/${encodedQuery}+playlist/${page}/`
+            };
+            
+            if (urlFormat && urlFormats[urlFormat]) {
+                log("Using cached URL format: " + urlFormat + " for page " + page);
+                const url = urlFormats[urlFormat];
+                log("Playlist search URL: " + url);
+                const response = makeRequestNoThrow(url, API_HEADERS, 'playlist search');
+                if (response.isOk && response.body) {
+                    allPlaylists = parsePlaylistsPage(response.body);
+                    usedFormat = urlFormat;
+                    log("Cached format returned " + allPlaylists.length + " playlists");
+                }
             } else {
-                searchUrl = `${BASE_URL}/s/${searchQuery}/?t=playlist`;
+                for (const [formatName, url] of Object.entries(urlFormats)) {
+                    if (formatName === "fallback") continue;
+                    try {
+                        log("Trying playlist search URL (" + formatName + "): " + url);
+                        const response = makeRequestNoThrow(url, API_HEADERS, 'playlist search');
+                        if (response.isOk && response.body) {
+                            const playlists = parsePlaylistsPage(response.body);
+                            if (playlists.length > 0) {
+                                log("Found " + playlists.length + " playlists from: " + url);
+                                allPlaylists = playlists;
+                                usedFormat = formatName;
+                                break;
+                            }
+                        }
+                    } catch (e) {
+                        log("Playlist URL failed: " + url + " - " + e.message);
+                    }
+                }
+                
+                if (allPlaylists.length === 0) {
+                    log("No dedicated playlist search found, using fallback");
+                    const url = urlFormats["fallback"];
+                    log("Fallback video search URL: " + url);
+                    const html = makeRequest(url, API_HEADERS, 'playlist fallback search');
+                    allPlaylists = parsePlaylistsPage(html);
+                    usedFormat = "fallback";
+                }
             }
         }
-        
-        log("Playlist search URL: " + searchUrl);
 
-        const html = makeRequest(searchUrl, API_HEADERS, 'playlist search');
-        const playlists = parsePlaylistsPage(html);
-
-        const platformPlaylists = playlists.map(p => new PlatformPlaylist({
+        const platformPlaylists = allPlaylists.map(p => new PlatformPlaylist({
             id: new PlatformID(PLATFORM, p.id, plugin.config.id),
             name: p.name,
             thumbnail: p.thumbnail,
@@ -2873,9 +2927,10 @@ source.searchPlaylists = function(query, type, order, filters, continuationToken
             url: p.url
         }));
 
-        const hasMore = playlists.length >= 20;
-        const nextToken = hasMore ? (page + 1).toString() : null;
+        const hasMore = allPlaylists.length >= 20;
+        const nextToken = hasMore ? `${page + 1}:${usedFormat || ''}` : null;
 
+        log("searchPlaylists returning " + platformPlaylists.length + " playlists, nextToken: " + nextToken);
         return new SpankBangPlaylistPager(platformPlaylists, hasMore, {
             query: query,
             continuationToken: nextToken

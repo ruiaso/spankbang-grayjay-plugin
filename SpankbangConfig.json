@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 15,
+  "version": 16,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "scriptSignature": "",
@@ -32,24 +32,16 @@
     "userAgent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
     "loginUrl": "https://spankbang.com/users/login",
     "completionUrl": "https://spankbang.com/",
-    "completionUrls": [
-      "https://spankbang.com/",
-      "https://www.spankbang.com/",
-      "https://spankbang.com/users/profile",
-      "https://spankbang.com/users/account",
-      "https://spankbang.com/trending_videos/"
-    ],
+    "loginButton": ".sign.ft-button",
     "headersToFind": ["cookie", "set-cookie"],
     "domainHeadersToFind": {
       ".spankbang.com": ["cookie", "set-cookie"],
       "spankbang.com": ["cookie", "set-cookie"],
       "www.spankbang.com": ["cookie", "set-cookie"]
     },
-    "cookiesToFind": ["sb_id", "session", "ss", "PHPSESSID", "user_id", "remember_token", "auth_token", "logged_in"],
+    "cookiesToFind": ["sb_id", "session", "ss", "PHPSESSID", "user_id", "remember_token", "auth_token", "logged_in", "site_user_id"],
     "cookiesExclOthers": false,
-    "allowedDomains": ["spankbang.com", "www.spankbang.com"],
-    "loginButton": "Login",
-    "loginWarning": "After logging in successfully, you will be redirected. The plugin will automatically detect your login."
+    "allowedDomains": ["spankbang.com", "www.spankbang.com"]
   },
   "supportedClaimTypes": [3],
   "primaryClaimFieldType": 3,
@@ -149,6 +141,12 @@
       "Improved playlist search URL construction with proper pagination",
       "Enhanced validateSession with additional login detection patterns (logged_in=1, isLoggedIn, site_user_id)",
       "Better watch history logging"
+    ],
+    "16": [
+      "Fixed Default sort issue - added Relevance as first sort option with proper canonical order code mapping (1=New, 2=Trending, 3=Popular, 4=Featured)",
+      "Improved playlist search - now tries multiple URL formats (tag_playlists, playlists with query, category-based) with fallback",
+      "Simplified authentication config - added loginButton CSS selector for automatic login form submission",
+      "Added site_user_id to cookies to find for better session detection"
     ]
   }
 }

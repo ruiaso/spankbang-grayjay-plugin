@@ -141,6 +141,11 @@ Preferred communication style: Simple, everyday language.
 - `/assets/SBQR.png` - Installation QR code
 
 ### Recent Changes
+- **Dec 8, 2025**: Plugin v16 - Bug fixes
+  - Fixed Default vs Trending sort issue: added "Relevance" as first sort option so Default now returns relevance-based results
+  - Improved playlist search: now tries multiple URL formats (tag_playlists, playlists with query, category-based) with fallback
+  - Simplified authentication config: added loginButton CSS selector for automatic login form submission
+  - Added site_user_id to cookies to find for better session detection
 - **Dec 8, 2025**: Completed Replit Environment Setup
   - Verified Node.js v20 installation
   - Created .gitignore for Node.js projects
@@ -152,11 +157,11 @@ Preferred communication style: Simple, everyday language.
     - Run command: `node server.js`
     - No build step required (serves static files)
   - Verified all endpoints working:
-    - `/` - Plugin information page with QR code ✓
-    - `/SpankbangConfig.json` - Plugin configuration ✓
-    - `/SpankbangScript.js` - Plugin implementation ✓
-    - `/icon.png` - Plugin icon ✓
-    - `/assets/SBQR.png` - Installation QR code ✓
+    - `/` - Plugin information page with QR code
+    - `/SpankbangConfig.json` - Plugin configuration
+    - `/SpankbangScript.js` - Plugin implementation
+    - `/icon.png` - Plugin icon
+    - `/assets/SBQR.png` - Installation QR code
   - Server running successfully on port 5000
   - Project ready for development and deployment
 
