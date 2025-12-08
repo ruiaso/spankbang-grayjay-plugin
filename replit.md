@@ -141,6 +141,16 @@ Preferred communication style: Simple, everyday language.
 - `/assets/SBQR.png` - Installation QR code
 
 ### Recent Changes
+- **Dec 8, 2025**: Plugin v17 - DuckDuckGo Playlist Search
+  - **Playlist search via DuckDuckGo**: Since SpankBang doesn't support native playlist search, the plugin now uses DuckDuckGo with the query format `site:spankbang.com playlist [keyword]`
+  - **Simplified playlist sort options**: Only "Default" and "Trending" sorts available (removed Relevance)
+  - **Playlist browsing improvements**:
+    - Default browse uses `/playlists/` endpoint
+    - Trending browse uses `/playlists/trending/` endpoint
+  - **Added getSearchPlaylistCapabilities function** for playlist-specific search capabilities
+  - **DuckDuckGo domains added to allowUrls** for playlist search functionality
+  - **Playlist details enrichment**: Each DuckDuckGo result is enriched with title, video count, and thumbnail from SpankBang
+  
 - **Dec 8, 2025**: Plugin v16 - Bug fixes (Final)
   - **Sort order mapping**: Fixed canonical Grayjay sort code alignment
     - 0/empty = Relevance (default, no URL param)
