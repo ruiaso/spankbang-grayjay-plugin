@@ -141,49 +141,17 @@ Preferred communication style: Simple, everyday language.
 - `/assets/SBQR.png` - Installation QR code
 
 ### Recent Changes
-- **Dec 8, 2025**: Plugin v17 - DuckDuckGo Playlist Search
-  - **Playlist search via DuckDuckGo**: Since SpankBang doesn't support native playlist search, the plugin now uses DuckDuckGo with the query format `site:spankbang.com playlist [keyword]`
-  - **Simplified playlist sort options**: Only "Default" and "Trending" sorts available (removed Relevance)
-  - **Playlist browsing improvements**:
-    - Default browse uses `/playlists/` endpoint
-    - Trending browse uses `/playlists/trending/` endpoint
-  - **Added getSearchPlaylistCapabilities function** for playlist-specific search capabilities
-  - **DuckDuckGo domains added to allowUrls** for playlist search functionality
-  - **Playlist details enrichment**: Each DuckDuckGo result is enriched with title, video count, and thumbnail from SpankBang
-  
-- **Dec 8, 2025**: Plugin v16 - Bug fixes (Final)
-  - **Sort order mapping**: Fixed canonical Grayjay sort code alignment
-    - 0/empty = Relevance (default, no URL param)
-    - 1 = New (o=new)
-    - 2 = Trending (o=trending)
-    - 3 = Popular (o=popular)
-    - 4 = Featured (o=featured)
-    - Updated sorts array to ["Relevance", "New", "Trending", "Popular", "Featured"]
-  - **Playlist search with pagination**:
-    - Tries multiple URL formats: tag_playlists, playlists?q=, category-based, fallback video search
-    - Caches successful URL format in continuationToken (format: "page:urlFormat")
-    - Uses cached format for pagination to ensure correct page advancement
-  - **Authentication config**: 
-    - Added loginButton CSS selector (.sign.ft-button) for automatic login form submission
-    - Added site_user_id to cookiesToFind for better session detection
-- **Dec 8, 2025**: Completed Replit Environment Setup
-  - Verified Node.js v20 installation
-  - Created .gitignore for Node.js projects
-  - Configured "Grayjay Plugin Server" workflow
-    - Command: `npm start`
-    - Port: 5000 (webview)
-    - Host: 0.0.0.0 (required for Replit proxy)
+- **Dec 8, 2025**: Plugin v15 - Major feature updates
+  - Fixed Trending filter: correctly maps order "2" to `o=trending` URL parameter
+  - Enhanced playlist functionality: added parseRelatedPlaylists, improved searchPlaylists with pagination
+  - Improved authentication: added getUserPlaylists, getFavorites, enhanced validateSession with additional login detection
+  - Added related playlists display in video descriptions
+  - Added parseFavoritesPage fallback for favorites page parsing
+- **Dec 8, 2025**: Initial Replit setup
+  - Configured Node.js workflow for port 5000
+  - Added .gitignore for Node.js projects
   - Configured autoscale deployment
-    - Run command: `node server.js`
-    - No build step required (serves static files)
-  - Verified all endpoints working:
-    - `/` - Plugin information page with QR code
-    - `/SpankbangConfig.json` - Plugin configuration
-    - `/SpankbangScript.js` - Plugin implementation
-    - `/icon.png` - Plugin icon
-    - `/assets/SBQR.png` - Installation QR code
-  - Server running successfully on port 5000
-  - Project ready for development and deployment
+  - Verified all plugin endpoints are accessible
 
 ## External Dependencies
 

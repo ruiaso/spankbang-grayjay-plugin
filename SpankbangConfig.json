@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 18,
+  "version": 15,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "scriptSignature": "",
@@ -26,25 +26,30 @@
     ".cdn2.spankbang.com",
     ".cdn3.spankbang.com",
     ".cdn4.spankbang.com",
-    "tbi.sb-cd.com",
-    "html.duckduckgo.com",
-    "lite.duckduckgo.com",
-    "duckduckgo.com"
+    "tbi.sb-cd.com"
   ],
   "authentication": {
     "userAgent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
     "loginUrl": "https://spankbang.com/users/login",
     "completionUrl": "https://spankbang.com/",
-    "loginButton": ".sign.ft-button",
+    "completionUrls": [
+      "https://spankbang.com/",
+      "https://www.spankbang.com/",
+      "https://spankbang.com/users/profile",
+      "https://spankbang.com/users/account",
+      "https://spankbang.com/trending_videos/"
+    ],
     "headersToFind": ["cookie", "set-cookie"],
     "domainHeadersToFind": {
       ".spankbang.com": ["cookie", "set-cookie"],
       "spankbang.com": ["cookie", "set-cookie"],
       "www.spankbang.com": ["cookie", "set-cookie"]
     },
-    "cookiesToFind": ["sb_id", "session", "ss", "PHPSESSID", "user_id", "remember_token", "auth_token", "logged_in", "site_user_id"],
+    "cookiesToFind": ["sb_id", "session", "ss", "PHPSESSID", "user_id", "remember_token", "auth_token", "logged_in"],
     "cookiesExclOthers": false,
-    "allowedDomains": ["spankbang.com", "www.spankbang.com"]
+    "allowedDomains": ["spankbang.com", "www.spankbang.com"],
+    "loginButton": "Login",
+    "loginWarning": "After logging in successfully, you will be redirected. The plugin will automatically detect your login."
   },
   "supportedClaimTypes": [3],
   "primaryClaimFieldType": 3,
@@ -144,29 +149,6 @@
       "Improved playlist search URL construction with proper pagination",
       "Enhanced validateSession with additional login detection patterns (logged_in=1, isLoggedIn, site_user_id)",
       "Better watch history logging"
-    ],
-    "16": [
-      "Fixed Default sort issue - added Relevance as first sort option with proper canonical order code mapping (1=New, 2=Trending, 3=Popular, 4=Featured)",
-      "Improved playlist search - now tries multiple URL formats (tag_playlists, playlists with query, category-based) with fallback",
-      "Simplified authentication config - added loginButton CSS selector for automatic login form submission",
-      "Added site_user_id to cookies to find for better session detection"
-    ],
-    "17": [
-      "Added DuckDuckGo-powered playlist search - uses site:spankbang.com playlist [keyword] for reliable playlist discovery",
-      "Added getSearchPlaylistCapabilities with Default and Trending sort options only",
-      "Playlist browsing now supports Trending sort which uses /playlists/trending/ endpoint",
-      "Removed Relevance sort option from playlist search - now uses Default and Trending",
-      "Enhanced playlist pagination with proper next page support",
-      "Added DuckDuckGo domains to allowed URLs for playlist search"
-    ],
-    "18": [
-      "Removed Relevance from video search sorts - now uses New, Trending, Popular, Top Rated, Most Viewed, Length",
-      "Fixed sort order mapping to match SpankBang site: 0=New, 1=Trending, 2=Popular, 3=Top Rated, 4=Most Viewed, 5=Length",
-      "Updated playlist search sorts to New, Trending, Popular with proper endpoint mapping",
-      "Enhanced filter options: Duration now includes Short (0-10min), Medium, Long, Extra Long",
-      "Improved DuckDuckGo playlist search with Lite version fallback and SpankBang fallback",
-      "Added searchPlaylistsViaSpankBang fallback when DuckDuckGo fails",
-      "Default search sort is now New instead of Relevance"
     ]
   }
 }
