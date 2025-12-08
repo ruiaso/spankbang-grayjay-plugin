@@ -2838,78 +2838,155 @@ source.isPlaylistUrl = function(url) {
            REGEX_PATTERNS.urls.categoryInternal.test(url);
 };
 
+source.getSearchPlaylistCapabilities = function() {
+    return {
+        types: [Type.Feed.Playlists],
+        sorts: ["Default", "Trending"],
+        filters: []
+    };
+};
+
+function searchPlaylistsViaDuckDuckGo(query, page) {
+    const ddgHeaders = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5"
+    };
+    
+    const searchQuery = `site:spankbang.com playlist ${query}`;
+    const startOffset = (page - 1) * 30;
+    let ddgUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(searchQuery)}`;
+    if (startOffset > 0) {
+        ddgUrl += `&s=${startOffset}`;
+    }
+    
+    log("DuckDuckGo playlist search URL: " + ddgUrl);
+    
+    const response = makeRequestNoThrow(ddgUrl, ddgHeaders, 'duckduckgo playlist search');
+    if (!response.isOk || !response.body) {
+        log("DuckDuckGo search failed");
+        return [];
+    }
+    
+    const playlists = [];
+    const seenIds = new Set();
+    
+    const resultPattern = /<a[^>]*class="[^"]*result__url[^"]*"[^>]*href="([^"]+)"[^>]*>[\s\S]*?<\/a>[\s\S]*?<a[^>]*class="[^"]*result__a[^"]*"[^>]*>([^<]+)<\/a>/gi;
+    const simplePattern = /href="[^"]*(?:\/\/|uddg=)([^"&]+spankbang\.com\/[a-z0-9]+\/playlist\/[^"&]+)[^"]*"/gi;
+    const titlePattern = /<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="[^"]*spankbang\.com\/([a-z0-9]+)\/playlist\/([^"\/&]+)[^"]*"[^>]*>([^<]+)<\/a>/gi;
+    
+    let match;
+    while ((match = titlePattern.exec(response.body)) !== null && playlists.length < 20) {
+        const shortId = match[1];
+        const slug = match[2].replace(/\+/g, ' ').replace(/%20/g, ' ');
+        const title = match[3].replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').trim();
+        
+        const playlistId = `${shortId}:${slug}`;
+        if (seenIds.has(playlistId)) continue;
+        seenIds.add(playlistId);
+        
+        playlists.push({
+            id: playlistId,
+            name: title || slug.replace(/[_+-]/g, ' '),
+            thumbnail: "",
+            author: "SpankBang",
+            videoCount: 0,
+            url: `spankbang://playlist/${playlistId}`
+        });
+    }
+    
+    if (playlists.length === 0) {
+        const urlPattern = /spankbang\.com\/([a-z0-9]+)\/playlist\/([^"\/\s&]+)/gi;
+        while ((match = urlPattern.exec(response.body)) !== null && playlists.length < 20) {
+            const shortId = match[1];
+            const slug = match[2].replace(/\+/g, ' ').replace(/%20/g, ' ');
+            
+            const playlistId = `${shortId}:${slug}`;
+            if (seenIds.has(playlistId)) continue;
+            seenIds.add(playlistId);
+            
+            playlists.push({
+                id: playlistId,
+                name: slug.replace(/[_+-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+                thumbnail: "",
+                author: "SpankBang",
+                videoCount: 0,
+                url: `spankbang://playlist/${playlistId}`
+            });
+        }
+    }
+    
+    log("DuckDuckGo found " + playlists.length + " playlists for query: " + query);
+    return playlists;
+}
+
+function fetchPlaylistDetails(playlist) {
+    try {
+        const [shortId, slug] = playlist.id.split(':');
+        const playlistUrl = `${BASE_URL}/${shortId}/playlist/${slug}/`;
+        
+        const response = makeRequestNoThrow(playlistUrl, API_HEADERS, 'playlist details');
+        if (!response.isOk || !response.body) {
+            return playlist;
+        }
+        
+        const titleMatch = response.body.match(/<h1[^>]*>([^<]+)<\/h1>/i) || 
+                          response.body.match(/<title>([^<]+?)(?:\s*-\s*SpankBang)?<\/title>/i);
+        if (titleMatch && titleMatch[1]) {
+            playlist.name = titleMatch[1].trim();
+        }
+        
+        const countMatch = response.body.match(/(\d+)\s*videos?/i);
+        if (countMatch) {
+            playlist.videoCount = parseInt(countMatch[1]) || 0;
+        }
+        
+        const thumbMatch = response.body.match(/class="[^"]*(?:thumb|cover)[^"]*"[^>]*>[\s\S]*?(?:data-src|src)="([^"]+)"/i) ||
+                          response.body.match(/(?:data-src|src)="(https?:\/\/[^"]*(?:sb-cd|spankbang)[^"]*\.jpg)"/i);
+        if (thumbMatch && thumbMatch[1]) {
+            let thumb = thumbMatch[1];
+            if (thumb.startsWith('//')) thumb = 'https:' + thumb;
+            playlist.thumbnail = thumb;
+        }
+        
+        return playlist;
+    } catch (e) {
+        log("Failed to fetch playlist details: " + e.message);
+        return playlist;
+    }
+}
+
 source.searchPlaylists = function(query, type, order, filters, continuationToken) {
     try {
         let page = 1;
-        let urlFormat = null;
         
         if (continuationToken) {
-            const tokenData = continuationToken.split(':');
-            page = parseInt(tokenData[0]) || 1;
-            urlFormat = tokenData[1] || null;
+            page = parseInt(continuationToken) || 1;
         }
         
         let allPlaylists = [];
-        let usedFormat = null;
-
+        
+        const orderStr = String(order);
+        const isTrending = orderStr === "1" || orderStr === "Trending" || order === Type.Order.Trending;
+        
         if (!query || query.trim().length === 0) {
-            let searchUrl = `${BASE_URL}/playlists/`;
+            let searchUrl;
+            if (isTrending) {
+                searchUrl = `${BASE_URL}/playlists/trending/`;
+            } else {
+                searchUrl = `${BASE_URL}/playlists/`;
+            }
             if (page > 1) {
                 searchUrl += `${page}/`;
             }
             log("Playlist browse URL: " + searchUrl);
             const html = makeRequest(searchUrl, API_HEADERS, 'playlist browse');
             allPlaylists = parsePlaylistsPage(html);
-            usedFormat = "browse";
         } else {
-            const searchQuery = query.trim().replace(/\s+/g, '+');
-            const encodedQuery = encodeURIComponent(searchQuery);
+            allPlaylists = searchPlaylistsViaDuckDuckGo(query.trim(), page);
             
-            const urlFormats = {
-                "tag": `${BASE_URL}/tag_playlists/${searchQuery}/${page > 1 ? page + '/' : ''}`,
-                "query": `${BASE_URL}/playlists/${page > 1 ? page + '/' : ''}?q=${encodedQuery}`,
-                "category": `${BASE_URL}/${searchQuery}/playlists/${page > 1 ? page + '/' : ''}`,
-                "fallback": `${BASE_URL}/s/${encodedQuery}+playlist/${page}/`
-            };
-            
-            if (urlFormat && urlFormats[urlFormat]) {
-                log("Using cached URL format: " + urlFormat + " for page " + page);
-                const url = urlFormats[urlFormat];
-                log("Playlist search URL: " + url);
-                const response = makeRequestNoThrow(url, API_HEADERS, 'playlist search');
-                if (response.isOk && response.body) {
-                    allPlaylists = parsePlaylistsPage(response.body);
-                    usedFormat = urlFormat;
-                    log("Cached format returned " + allPlaylists.length + " playlists");
-                }
-            } else {
-                for (const [formatName, url] of Object.entries(urlFormats)) {
-                    if (formatName === "fallback") continue;
-                    try {
-                        log("Trying playlist search URL (" + formatName + "): " + url);
-                        const response = makeRequestNoThrow(url, API_HEADERS, 'playlist search');
-                        if (response.isOk && response.body) {
-                            const playlists = parsePlaylistsPage(response.body);
-                            if (playlists.length > 0) {
-                                log("Found " + playlists.length + " playlists from: " + url);
-                                allPlaylists = playlists;
-                                usedFormat = formatName;
-                                break;
-                            }
-                        }
-                    } catch (e) {
-                        log("Playlist URL failed: " + url + " - " + e.message);
-                    }
-                }
-                
-                if (allPlaylists.length === 0) {
-                    log("No dedicated playlist search found, using fallback");
-                    const url = urlFormats["fallback"];
-                    log("Fallback video search URL: " + url);
-                    const html = makeRequest(url, API_HEADERS, 'playlist fallback search');
-                    allPlaylists = parsePlaylistsPage(html);
-                    usedFormat = "fallback";
-                }
+            if (allPlaylists.length > 0) {
+                allPlaylists = allPlaylists.map(p => fetchPlaylistDetails(p));
             }
         }
 
@@ -2927,12 +3004,13 @@ source.searchPlaylists = function(query, type, order, filters, continuationToken
             url: p.url
         }));
 
-        const hasMore = allPlaylists.length >= 20;
-        const nextToken = hasMore ? `${page + 1}:${usedFormat || ''}` : null;
+        const hasMore = allPlaylists.length >= 10;
+        const nextToken = hasMore ? (page + 1).toString() : null;
 
-        log("searchPlaylists returning " + platformPlaylists.length + " playlists, nextToken: " + nextToken);
+        log("searchPlaylists returning " + platformPlaylists.length + " playlists, hasMore: " + hasMore);
         return new SpankBangPlaylistPager(platformPlaylists, hasMore, {
             query: query,
+            order: order,
             continuationToken: nextToken
         });
 
@@ -3072,7 +3150,13 @@ class SpankBangPlaylistPager extends PlaylistPager {
     }
 
     nextPage() {
-        return new SpankBangPlaylistPager([], false, this.context);
+        return source.searchPlaylists(
+            this.context.query,
+            null,
+            this.context.order,
+            null,
+            this.context.continuationToken
+        );
     }
 }
 
@@ -3086,4 +3170,4 @@ class SpankBangCommentPager extends CommentPager {
     }
 }
 
-log("SpankBang plugin loaded - v15");
+log("SpankBang plugin loaded - v17");

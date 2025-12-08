@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 16,
+  "version": 17,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "scriptSignature": "",
@@ -26,7 +26,9 @@
     ".cdn2.spankbang.com",
     ".cdn3.spankbang.com",
     ".cdn4.spankbang.com",
-    "tbi.sb-cd.com"
+    "tbi.sb-cd.com",
+    "html.duckduckgo.com",
+    "duckduckgo.com"
   ],
   "authentication": {
     "userAgent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
@@ -147,6 +149,14 @@
       "Improved playlist search - now tries multiple URL formats (tag_playlists, playlists with query, category-based) with fallback",
       "Simplified authentication config - added loginButton CSS selector for automatic login form submission",
       "Added site_user_id to cookies to find for better session detection"
+    ],
+    "17": [
+      "Added DuckDuckGo-powered playlist search - uses site:spankbang.com playlist [keyword] for reliable playlist discovery",
+      "Added getSearchPlaylistCapabilities with Default and Trending sort options only",
+      "Playlist browsing now supports Trending sort which uses /playlists/trending/ endpoint",
+      "Removed Relevance sort option from playlist search - now uses Default and Trending",
+      "Enhanced playlist pagination with proper next page support",
+      "Added DuckDuckGo domains to allowed URLs for playlist search"
     ]
   }
 }
