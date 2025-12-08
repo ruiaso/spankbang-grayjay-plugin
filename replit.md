@@ -141,11 +141,21 @@ Preferred communication style: Simple, everyday language.
 - `/assets/SBQR.png` - Installation QR code
 
 ### Recent Changes
-- **Dec 8, 2025**: Plugin v16 - Bug fixes
-  - Fixed Default vs Trending sort issue: added "Relevance" as first sort option so Default now returns relevance-based results
-  - Improved playlist search: now tries multiple URL formats (tag_playlists, playlists with query, category-based) with fallback
-  - Simplified authentication config: added loginButton CSS selector for automatic login form submission
-  - Added site_user_id to cookies to find for better session detection
+- **Dec 8, 2025**: Plugin v16 - Bug fixes (Final)
+  - **Sort order mapping**: Fixed canonical Grayjay sort code alignment
+    - 0/empty = Relevance (default, no URL param)
+    - 1 = New (o=new)
+    - 2 = Trending (o=trending)
+    - 3 = Popular (o=popular)
+    - 4 = Featured (o=featured)
+    - Updated sorts array to ["Relevance", "New", "Trending", "Popular", "Featured"]
+  - **Playlist search with pagination**:
+    - Tries multiple URL formats: tag_playlists, playlists?q=, category-based, fallback video search
+    - Caches successful URL format in continuationToken (format: "page:urlFormat")
+    - Uses cached format for pagination to ensure correct page advancement
+  - **Authentication config**: 
+    - Added loginButton CSS selector (.sign.ft-button) for automatic login form submission
+    - Added site_user_id to cookiesToFind for better session detection
 - **Dec 8, 2025**: Completed Replit Environment Setup
   - Verified Node.js v20 installation
   - Created .gitignore for Node.js projects
