@@ -1,0 +1,154 @@
+{
+  "name": "SpankBang",
+  "description": "SpankBang video platform plugin for Grayjay with pornstar search, recommendations, and improved creator profiles",
+  "platformUrl": "https://www.spankbang.com",
+  "author": "GreyPluginDev",
+  "authorUrl": "https://github.com/GreyPluginDev",
+  "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
+  "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
+  "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
+  "version": 15,
+  "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
+  "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "scriptSignature": "",
+  "scriptPublicKey": "",
+  "packages": ["Http", "DOMParser", "Utilities"],
+  "allowAllHttpHeaderAccess": true,
+  "allowEval": true,
+  "allowUrls": [
+    "spankbang.com",
+    ".spankbang.com",
+    ".spankcdn.com",
+    ".sb-cd.com",
+    ".sb-cdn.com",
+    ".cdn.spankbang.com",
+    ".cdn1.spankbang.com",
+    ".cdn2.spankbang.com",
+    ".cdn3.spankbang.com",
+    ".cdn4.spankbang.com",
+    "tbi.sb-cd.com"
+  ],
+  "authentication": {
+    "userAgent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+    "loginUrl": "https://spankbang.com/users/login",
+    "completionUrl": "https://spankbang.com/",
+    "completionUrls": [
+      "https://spankbang.com/",
+      "https://www.spankbang.com/",
+      "https://spankbang.com/users/profile",
+      "https://spankbang.com/users/account",
+      "https://spankbang.com/trending_videos/"
+    ],
+    "headersToFind": ["cookie", "set-cookie"],
+    "domainHeadersToFind": {
+      ".spankbang.com": ["cookie", "set-cookie"],
+      "spankbang.com": ["cookie", "set-cookie"],
+      "www.spankbang.com": ["cookie", "set-cookie"]
+    },
+    "cookiesToFind": ["sb_id", "session", "ss", "PHPSESSID", "user_id", "remember_token", "auth_token", "logged_in"],
+    "cookiesExclOthers": false,
+    "allowedDomains": ["spankbang.com", "www.spankbang.com"],
+    "loginButton": "Login",
+    "loginWarning": "After logging in successfully, you will be redirected. The plugin will automatically detect your login."
+  },
+  "supportedClaimTypes": [3],
+  "primaryClaimFieldType": 3,
+  "changelog": {
+    "3": [
+      "Fixed getChannelCapabilities error",
+      "Added DOMParser package",
+      "Fixed type constants"
+    ],
+    "4": [
+      "Fixed Type redeclaration SyntaxError",
+      "Fixed icon loading"
+    ],
+    "5": [
+      "Added support for channel URLs (/XX/channel/name/)",
+      "Fixed video uploader/poster attribution for channels and profiles",
+      "Improved subscription support for channels and profiles"
+    ],
+    "6": [
+      "Added pornstar search in Creators section (getCreators)",
+      "Fixed avatar extraction for //spankbang.com URLs",
+      "Fixed uploader name extraction from video_toolbar",
+      "Improved channel/profile avatar and name detection",
+      "Added pagination support for pornstar browsing"
+    ],
+    "7": [
+      "Fixed uploader names showing as Unknown in video thumbnails",
+      "Fixed pornstar avatar extraction - now uses numeric IDs from HTML instead of shortId construction",
+      "Implemented recommended videos feature (getContentRecommendations)",
+      "Improved uploader extraction from search results and video pages",
+      "Added ref.js, types.d.ts, and plugin.d.ts for IDE autocomplete",
+      "Added extractPornstarAvatarFromHtml function for proper avatar URL extraction",
+      "Improved comments parsing with better pattern matching",
+      "Better channel/profile/pornstar avatar detection using DOM patterns",
+      "Added video count display in creator descriptions"
+    ],
+    "8": [
+      "Fixed getContentRecommendations - now properly attached to video details",
+      "Improved parseRelatedVideos with better HTML pattern matching",
+      "Enhanced uploader/channel name extraction in search results",
+      "Added authentication support for login functionality",
+      "Added getUserSubscriptions for syncing watch history",
+      "Improved profile picture/avatar extraction patterns",
+      "Added Utilities package for session handling"
+    ],
+    "9": [
+      "Fixed source.getChannel 404 errors when viewing pornstars from Creators tab",
+      "Added pornstar shortId resolver with caching to fix profile navigation",
+      "Improved authentication with proper cookie capture and session validation",
+      "Enhanced banner extraction with additional pattern matching",
+      "Added domain-specific cookie handling for better login persistence",
+      "Improved state persistence including pornstar shortId cache"
+    ],
+    "10": [
+      "Improved pornstar shortId resolution with better URL normalization and multiple fallback patterns",
+      "Fixed authentication detection - better completionUrl pattern matching",
+      "Added getLoggedInUser function to display username in plugin settings after login",
+      "Added fetchUserInfo to retrieve user details from account page",
+      "Enhanced validateSession to extract username and userId from profile page",
+      "Improved cookie loading with multiple bridge methods",
+      "State now persists username and userId across sessions"
+    ],
+    "11": [
+      "Added comments fetching for Platform tab - tries API first, then fallbacks to page parsing",
+      "Improved uploader/channel profile picture extraction in video details",
+      "Enhanced avatar detection with multiple patterns including data-src attributes",
+      "Added extractChannelAvatarNearLink function for better avatar finding",
+      "Improved authentication flow with broader completionUrl and additional cookies",
+      "Added login warning message to guide users on returning to Grayjay after login",
+      "Better comment parsing with profile links, timestamps, and likes extraction"
+    ],
+    "12": [
+      "Improved authentication flow with fully-qualified completion URLs for better login detection",
+      "Added uploader avatars to home and search video listings",
+      "Enhanced avatar extraction in search results with data-src support and multiple patterns",
+      "Added featured pornstar links in video description for multi-performer videos",
+      "Improved extractUploaderFromSearchResult with better channel and pornstar avatar patterns"
+    ],
+    "13": [
+      "Fixed 'No source for channel' bug - uploader URLs now only generated when valid profile/channel links exist",
+      "Added SVG-based and span fallback name extraction with strict href matching",
+      "Added pornstar profile picture as banner when no banner image is available",
+      "Fixed search filters to use SpankBang's actual URL parameters (q=hd/fhd/uhd, d=10/20/40, p=d/w/m/y, o=new/featured)",
+      "Added Category/Tag filter with 20+ popular categories (Amateur, Asian, MILF, Teen, etc.)",
+      "Fixed playlist search URL format to use correct SpankBang endpoints",
+      "Improved getPlaylist to handle shortId:slug playlist ID format"
+    ],
+    "14": [
+      "Fixed sort options - Popular now correctly uses o=popular instead of o=all",
+      "Expanded category filters from 20 to 60+ categories including Babe, Bondage, Casting, Cosplay, Deepthroat, Facial, Gangbang, Japanese, Korean, Massage, Petite, Redhead, Squirt, Stepmom, Stepsister, Trans, VR, Webcam, and more"
+    ],
+    "15": [
+      "Fixed Trending filter - now correctly uses o=trending parameter in search",
+      "Added related playlists parsing from video pages with display in video description",
+      "Added getUserPlaylists function to sync user's saved playlists when logged in",
+      "Added getFavorites function to sync user's favorite videos when logged in",
+      "Improved playlist search URL construction with proper pagination",
+      "Enhanced validateSession with additional login detection patterns (logged_in=1, isLoggedIn, site_user_id)",
+      "Better watch history logging"
+    ]
+  }
+}
