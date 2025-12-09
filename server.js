@@ -55,6 +55,10 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`Grayjay Plugin Server running at http://${HOST}:${PORT}/`);
-  console.log(`Plugin config: http://${HOST}:${PORT}/SpankbangConfig.json`);
-  console.log(`Plugin script: http://${HOST}:${PORT}/SpankbangScript.js`);
+  console.log(`\nSpankBang Plugin:`);
+  console.log(`  Config: http://${HOST}:${PORT}/SpankbangConfig.json`);
+  console.log(`  Script: http://${HOST}:${PORT}/SpankbangScript.js`);
+  console.log(`\nxHamster Plugin:`);
+  console.log(`  Config: http://${HOST}:${PORT}/XhamsterConfig.json`);
+  console.log(`  Script: http://${HOST}:${PORT}/XhamsterScript.js`);
 });
