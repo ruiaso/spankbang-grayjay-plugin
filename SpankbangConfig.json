@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 25,
+  "version": 27,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "scriptSignature": "",
@@ -30,12 +30,12 @@
   ],
   "authentication": {
     "userAgent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-    "loginUrl": "https://4f6303ea-2e44-42a1-ac53-d6c0a4274cf6-00-286v3shpux5aj.worf.replit.dev/login",
-    "completionUrl": "https://4f6303ea-2e44-42a1-ac53-d6c0a4274cf6-00-286v3shpux5aj.worf.replit.dev/login-complete",
+    "loginUrl": "https://www.spankbang.com/users/logout?next=/users/login",
+    "completionUrl": null,
     "cookiesToFind": ["sb_session"],
     "cookiesExclOthers": false,
-    "allowedDomains": ["spankbang.com", "www.spankbang.com", "4f6303ea-2e44-42a1-ac53-d6c0a4274cf6-00-286v3shpux5aj.worf.replit.dev"],
-    "loginWarning": "Follow the steps on screen to log in to SpankBang."
+    "allowedDomains": ["spankbang.com", "www.spankbang.com"],
+    "loginWarning": "Log in with your SpankBang account. The window will close automatically once login is complete."
   },
   "supportedClaimTypes": [3],
   "primaryClaimFieldType": 3,
@@ -192,6 +192,18 @@
       "Step 1: Tap 'Open SpankBang Login' button to log in",
       "Step 2: After logging in, tap 'Done - I'm Logged In' button",
       "No more typing URLs - just tap the buttons!"
+    ],
+    "26": [
+      "Fixed login - now opens SpankBang login directly in Grayjay's webview",
+      "Previous approach opened login in separate window which isolated cookies",
+      "Grayjay can now capture sb_session cookie when you log in",
+      "Login completes automatically when redirected to /users/home"
+    ],
+    "27": [
+      "Fixed login detection - SpankBang uses AJAX login that stays on same page",
+      "Set completionUrl to null for cookie-only detection",
+      "Login now starts at logout page to clear stale sessions first",
+      "Grayjay closes automatically when sb_session cookie is detected"
     ]
   }
 }
