@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 24,
+  "version": 25,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "scriptSignature": "",
@@ -30,12 +30,12 @@
   ],
   "authentication": {
     "userAgent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-    "loginUrl": "https://www.spankbang.com/users/login",
+    "loginUrl": "https://4f6303ea-2e44-42a1-ac53-d6c0a4274cf6-00-286v3shpux5aj.worf.replit.dev/login",
     "completionUrl": "https://4f6303ea-2e44-42a1-ac53-d6c0a4274cf6-00-286v3shpux5aj.worf.replit.dev/login-complete",
     "cookiesToFind": ["sb_session"],
     "cookiesExclOthers": false,
     "allowedDomains": ["spankbang.com", "www.spankbang.com", "4f6303ea-2e44-42a1-ac53-d6c0a4274cf6-00-286v3shpux5aj.worf.replit.dev"],
-    "loginWarning": "Log in to SpankBang. After logging in, type this URL in the address bar: https://4f6303ea-2e44-42a1-ac53-d6c0a4274cf6-00-286v3shpux5aj.worf.replit.dev/login-complete"
+    "loginWarning": "Follow the steps on screen to log in to SpankBang."
   },
   "supportedClaimTypes": [3],
   "primaryClaimFieldType": 3,
@@ -186,6 +186,12 @@
       "Added manual login completion page - navigate to /login-complete URL after logging in",
       "This gives you control over when to complete the login process",
       "Works whether you're already logged in or just logged in fresh"
+    ],
+    "25": [
+      "Added custom login page with step-by-step instructions and buttons",
+      "Step 1: Tap 'Open SpankBang Login' button to log in",
+      "Step 2: After logging in, tap 'Done - I'm Logged In' button",
+      "No more typing URLs - just tap the buttons!"
     ]
   }
 }
