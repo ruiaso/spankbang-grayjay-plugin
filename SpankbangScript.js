@@ -1763,13 +1763,13 @@ function hasValidAuthCookie(cookies) {
     
     if (typeof cookies === 'string') {
         if (cookies.length === 0) return false;
-        return cookies.includes('auth=') || cookies.includes('sb_session=');
+        return cookies.includes('sb_session=');
     }
     
     if (Array.isArray(cookies)) {
         for (const cookie of cookies) {
             if (cookie && typeof cookie === 'object') {
-                if (cookie.name === 'auth' || cookie.name === 'sb_session') {
+                if (cookie.name === 'sb_session') {
                     if (cookie.value && cookie.value.length > 0) {
                         return true;
                     }
@@ -1780,8 +1780,7 @@ function hasValidAuthCookie(cookies) {
     }
     
     if (typeof cookies === 'object' && cookies !== null) {
-        return cookies.auth || cookies.sb_session || 
-               cookies['auth'] || cookies['sb_session'];
+        return cookies.sb_session || cookies['sb_session'];
     }
     
     return false;
@@ -1855,7 +1854,7 @@ function loadAuthCookies() {
             }
         }
         
-        log("No valid auth cookies found (looking for 'auth' or 'sb_session')");
+        log("No valid auth cookies found (looking for 'sb_session')");
     } catch (e) {
         log("Failed to load auth cookies: " + e);
     }
