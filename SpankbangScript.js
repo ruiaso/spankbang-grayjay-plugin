@@ -2076,14 +2076,51 @@ source.login = function(code) {
     }
 };
 
+function clearSpankBangCookies() {
+    try {
+        if (typeof bridge !== 'undefined' && bridge.clearCookies) {
+            bridge.clearCookies("spankbang.com");
+            bridge.clearCookies("www.spankbang.com");
+            log("Cleared cookies via bridge");
+            return true;
+        }
+        if (typeof http !== 'undefined' && http.clearCookies) {
+            http.clearCookies("spankbang.com");
+            http.clearCookies("www.spankbang.com");
+            log("Cleared cookies via http");
+            return true;
+        }
+        log("No cookie clearing API available");
+        return false;
+    } catch (e) {
+        log("clearSpankBangCookies error: " + e);
+        return false;
+    }
+}
+
 source.logout = function() {
     try {
         state.sessionCookie = "";
         state.isAuthenticated = false;
         state.authCookies = "";
-        log("Logged out - cleared all auth state");
+        clearSpankBangCookies();
+        log("Logged out - cleared all auth state and cookies");
     } catch (e) {
         log("Logout error: " + e);
+    }
+};
+
+source.prepareLogin = function() {
+    try {
+        log("prepareLogin called - clearing stale cookies before login");
+        state.sessionCookie = "";
+        state.isAuthenticated = false;
+        state.authCookies = "";
+        clearSpankBangCookies();
+        return true;
+    } catch (e) {
+        log("prepareLogin error: " + e);
+        return false;
     }
 };
 
