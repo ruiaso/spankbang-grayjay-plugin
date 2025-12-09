@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 18,
+  "version": 19,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "scriptSignature": "",
@@ -31,14 +31,10 @@
   "authentication": {
     "userAgent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
     "loginUrl": "https://spankbang.com/users/login",
-    "completionUrl": "https://spankbang.com/users/account",
-    "domainHeadersToFind": {
-      "spankbang.com": ["cookie", "set-cookie"],
-      ".spankbang.com": ["cookie", "set-cookie"]
-    },
-    "cookiesToFind": ["auth", "sb_session"],
+    "completionUrl": null,
+    "cookiesToFind": ["sb_session"],
     "cookiesExclOthers": false,
-    "loginWarning": "After logging in successfully, you will be redirected to your account page. Grayjay will automatically detect your login - please wait for the redirect to complete before closing."
+    "loginWarning": "Log in to SpankBang. Once you successfully log in, Grayjay will automatically detect your session and close this window."
   },
   "supportedClaimTypes": [3],
   "primaryClaimFieldType": 3,
@@ -157,6 +153,12 @@
       "Added robust cookie handling for both string and object array formats",
       "Added cookiesToString helper to normalize cookie formats",
       "Improved login warning message to guide users to wait for redirect"
+    ],
+    "19": [
+      "Fixed login detection - set completionUrl to null for cookie-only detection",
+      "Removed non-existent 'auth' cookie - only using 'sb_session' which is the actual SpankBang session cookie",
+      "Removed domainHeadersToFind (used for headers, not cookies)",
+      "Grayjay now completes login when sb_session cookie is detected, regardless of redirect URL"
     ]
   }
 }
