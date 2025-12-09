@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 20,
+  "version": 22,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "scriptSignature": "",
@@ -31,10 +31,10 @@
   "authentication": {
     "userAgent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
     "loginUrl": "https://www.spankbang.com/users/login",
-    "completionUrl": "https://www.spankbang.com",
+    "completionUrl": "https://www.spankbang.com/users/favorites",
     "cookiesToFind": ["sb_session"],
     "cookiesExclOthers": false,
-    "loginWarning": "Log in to SpankBang. After logging in, you will be redirected to the home page and Grayjay will automatically close this window."
+    "loginWarning": "Log in to SpankBang, then navigate to your Favorites page. Grayjay will detect your login and close the window."
   },
   "supportedClaimTypes": [3],
   "primaryClaimFieldType": 3,
@@ -165,6 +165,16 @@
       "Changed loginUrl to use www.spankbang.com for consistent redirects",
       "Login now requires both sb_session cookie AND navigation to home page before completing",
       "Updated login warning message to clarify the login flow"
+    ],
+    "21": [
+      "Fixed stale cookie issue - login now starts at logout page to clear existing sessions first",
+      "User will be logged out, then can log in fresh with their credentials",
+      "completionUrl set to /users/home which is only reached after successful login"
+    ],
+    "22": [
+      "Changed login flow - user logs in then navigates to Favorites page to complete",
+      "Using /users/favorites as completionUrl - an authenticated-only page",
+      "This ensures login is fully complete before Grayjay captures the session"
     ]
   }
 }
