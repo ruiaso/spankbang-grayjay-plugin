@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 28,
+  "version": 29,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "scriptSignature": "",
@@ -30,12 +30,13 @@
   ],
   "authentication": {
     "userAgent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-    "loginUrl": "https://www.spankbang.com/users/logout?next=/users/login",
-    "completionUrl": "https://www.spankbang.com/users/favorites",
+    "loginUrl": "https://www.spankbang.com/users/login",
+    "completionUrl": null,
     "cookiesToFind": ["sb_session"],
     "cookiesExclOthers": false,
     "allowedDomains": ["spankbang.com", "www.spankbang.com"],
-    "loginWarning": "Log in with your SpankBang account. After logging in, tap the menu and go to your Favorites page to complete the process."
+    "headersToFind": ["Set-Cookie"],
+    "loginWarning": "Log in with your SpankBang account. The window will close automatically after login."
   },
   "supportedClaimTypes": [3],
   "primaryClaimFieldType": 3,
@@ -210,6 +211,12 @@
       "Now requires navigation to /users/favorites after logging in",
       "This ensures login is actually complete before Grayjay closes",
       "Login warning guides user to navigate to Favorites page after login"
+    ],
+    "29": [
+      "Fixed automatic login detection - clears stale cookies before auth",
+      "Added clearAuthCookies function and enhanced logout to clear browser cookies",
+      "Set completionUrl to null with headersToFind for Set-Cookie detection",
+      "Login now waits for fresh sb_session cookie and closes automatically"
     ]
   }
 }
