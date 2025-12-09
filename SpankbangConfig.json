@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 19,
+  "version": 21,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "scriptSignature": "",
@@ -30,11 +30,11 @@
   ],
   "authentication": {
     "userAgent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-    "loginUrl": "https://spankbang.com/users/login",
-    "completionUrl": null,
+    "loginUrl": "https://www.spankbang.com/users/logout",
+    "completionUrl": "https://www.spankbang.com/users/home",
     "cookiesToFind": ["sb_session"],
     "cookiesExclOthers": false,
-    "loginWarning": "Log in to SpankBang. Once you successfully log in, Grayjay will automatically detect your session and close this window."
+    "loginWarning": "You will be logged out first, then log in with your credentials. After successful login, Grayjay will close this window."
   },
   "supportedClaimTypes": [3],
   "primaryClaimFieldType": 3,
@@ -159,6 +159,17 @@
       "Removed non-existent 'auth' cookie - only using 'sb_session' which is the actual SpankBang session cookie",
       "Removed domainHeadersToFind (used for headers, not cookies)",
       "Grayjay now completes login when sb_session cookie is detected, regardless of redirect URL"
+    ],
+    "20": [
+      "Fixed login webview not opening - added completionUrl to prevent immediate detection of stale cookies",
+      "Changed loginUrl to use www.spankbang.com for consistent redirects",
+      "Login now requires both sb_session cookie AND navigation to home page before completing",
+      "Updated login warning message to clarify the login flow"
+    ],
+    "21": [
+      "Fixed stale cookie issue - login now starts at logout page to clear existing sessions first",
+      "User will be logged out, then can log in fresh with their credentials",
+      "completionUrl set to /users/home which is only reached after successful login"
     ]
   }
 }
