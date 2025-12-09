@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 16,
+  "version": 17,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "scriptSignature": "",
@@ -31,31 +31,13 @@
   "authentication": {
     "userAgent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
     "loginUrl": "https://spankbang.com/users/login",
-    "completionUrl": "https://spankbang.com/",
-    "completionUrls": [
-      "https://spankbang.com/",
-      "https://www.spankbang.com/",
-      "https://spankbang.com/users/home",
-      "https://www.spankbang.com/users/home",
-      "https://spankbang.com/users/profile",
-      "https://www.spankbang.com/users/profile",
-      "https://spankbang.com/users/account",
-      "https://www.spankbang.com/users/account",
-      "https://spankbang.com/users/",
-      "https://www.spankbang.com/users/",
-      "https://spankbang.com/trending_videos/"
-    ],
-    "headersToFind": ["cookie", "set-cookie"],
+    "completionUrl": "https://spankbang.com/users/*",
     "domainHeadersToFind": {
-      ".spankbang.com": ["cookie", "set-cookie"],
-      "spankbang.com": ["cookie", "set-cookie"],
-      "www.spankbang.com": ["cookie", "set-cookie"]
+      ".spankbang.com": ["cookie", "set-cookie"]
     },
-    "cookiesToFind": ["sb_id", "session", "ss", "PHPSESSID", "user_id", "remember_token", "auth_token", "logged_in"],
+    "cookiesToFind": ["ss"],
     "cookiesExclOthers": false,
-    "allowedDomains": ["spankbang.com", "www.spankbang.com"],
-    "loginButton": "Login",
-    "loginWarning": "After logging in successfully, you will be redirected. The plugin will automatically detect your login."
+    "loginWarning": "After logging in, wait for the page to load completely. Grayjay will detect your login automatically."
   },
   "supportedClaimTypes": [3],
   "primaryClaimFieldType": 3,
@@ -160,6 +142,12 @@
       "Fixed login detection - added /users/home to completionUrls which is where SpankBang redirects after login",
       "Added www.spankbang.com variants to completionUrls for better redirect detection",
       "Login should now be properly detected by Grayjay after successful SpankBang authentication"
+    ],
+    "17": [
+      "Rewrote authentication config to fix Grayjay login detection",
+      "Using wildcard completionUrl pattern https://spankbang.com/users/* to match any user page",
+      "Simplified to use 'ss' session cookie which is the primary auth cookie",
+      "Removed unsupported completionUrls (plural) field - Grayjay only supports completionUrl (singular)"
     ]
   }
 }
