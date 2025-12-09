@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 15,
+  "version": 16,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "scriptSignature": "",
@@ -35,8 +35,14 @@
     "completionUrls": [
       "https://spankbang.com/",
       "https://www.spankbang.com/",
+      "https://spankbang.com/users/home",
+      "https://www.spankbang.com/users/home",
       "https://spankbang.com/users/profile",
+      "https://www.spankbang.com/users/profile",
       "https://spankbang.com/users/account",
+      "https://www.spankbang.com/users/account",
+      "https://spankbang.com/users/",
+      "https://www.spankbang.com/users/",
       "https://spankbang.com/trending_videos/"
     ],
     "headersToFind": ["cookie", "set-cookie"],
@@ -149,6 +155,11 @@
       "Improved playlist search URL construction with proper pagination",
       "Enhanced validateSession with additional login detection patterns (logged_in=1, isLoggedIn, site_user_id)",
       "Better watch history logging"
+    ],
+    "16": [
+      "Fixed login detection - added /users/home to completionUrls which is where SpankBang redirects after login",
+      "Added www.spankbang.com variants to completionUrls for better redirect detection",
+      "Login should now be properly detected by Grayjay after successful SpankBang authentication"
     ]
   }
 }
