@@ -1758,13 +1758,66 @@ function fetchCommentsFromApi(videoId) {
     return comments;
 }
 
+function hasValidAuthCookie(cookies) {
+    if (!cookies) return false;
+    
+    if (typeof cookies === 'string') {
+        if (cookies.length === 0) return false;
+        return cookies.includes('auth=') || cookies.includes('sb_session=');
+    }
+    
+    if (Array.isArray(cookies)) {
+        for (const cookie of cookies) {
+            if (cookie && typeof cookie === 'object') {
+                if (cookie.name === 'auth' || cookie.name === 'sb_session') {
+                    if (cookie.value && cookie.value.length > 0) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+    
+    if (typeof cookies === 'object' && cookies !== null) {
+        return cookies.auth || cookies.sb_session || 
+               cookies['auth'] || cookies['sb_session'];
+    }
+    
+    return false;
+}
+
+function cookiesToString(cookies) {
+    if (!cookies) return "";
+    
+    if (typeof cookies === 'string') {
+        return cookies;
+    }
+    
+    if (Array.isArray(cookies)) {
+        return cookies
+            .filter(c => c && c.name && c.value)
+            .map(c => `${c.name}=${c.value}`)
+            .join('; ');
+    }
+    
+    if (typeof cookies === 'object') {
+        return Object.entries(cookies)
+            .filter(([k, v]) => v)
+            .map(([k, v]) => `${k}=${v}`)
+            .join('; ');
+    }
+    
+    return "";
+}
+
 function loadAuthCookies() {
     try {
         if (typeof http.getCookies === 'function') {
             const cookies = http.getCookies(BASE_URL);
-            if (cookies && cookies.length > 0) {
-                state.authCookies = cookies;
-                log("Loaded auth cookies from http.getCookies: " + cookies.substring(0, 50) + "...");
+            if (hasValidAuthCookie(cookies)) {
+                state.authCookies = cookiesToString(cookies);
+                log("Loaded auth cookies from http.getCookies");
                 return true;
             }
         }
@@ -1772,7 +1825,7 @@ function loadAuthCookies() {
         if (typeof bridge !== 'undefined') {
             if (typeof bridge.getCookieString === 'function') {
                 const cookieStr = bridge.getCookieString(BASE_URL);
-                if (cookieStr && cookieStr.length > 0) {
+                if (hasValidAuthCookie(cookieStr)) {
                     state.authCookies = cookieStr;
                     log("Loaded auth cookies from bridge.getCookieString");
                     return true;
@@ -1781,15 +1834,28 @@ function loadAuthCookies() {
             
             if (typeof bridge.getAuthCookies === 'function') {
                 const authCookies = bridge.getAuthCookies();
-                if (authCookies && authCookies.length > 0) {
-                    state.authCookies = authCookies;
+                if (hasValidAuthCookie(authCookies)) {
+                    state.authCookies = cookiesToString(authCookies);
                     log("Loaded auth cookies from bridge.getAuthCookies");
                     return true;
                 }
             }
+            
+            if (typeof bridge.getCookies === 'function') {
+                try {
+                    const cookies = bridge.getCookies("spankbang.com");
+                    if (hasValidAuthCookie(cookies)) {
+                        state.authCookies = cookiesToString(cookies);
+                        log("Loaded auth cookies from bridge.getCookies");
+                        return true;
+                    }
+                } catch (e) {
+                    log("bridge.getCookies failed: " + e);
+                }
+            }
         }
         
-        log("No auth cookies found from any source");
+        log("No valid auth cookies found (looking for 'auth' or 'sb_session')");
     } catch (e) {
         log("Failed to load auth cookies: " + e);
     }
@@ -1959,22 +2025,32 @@ source.getLoggedInUser = function() {
 source.isLoggedIn = function() {
     try {
         if (typeof bridge !== 'undefined' && bridge.isLoggedIn && bridge.isLoggedIn()) {
-            if (!state.authCookies || state.authCookies.length === 0) {
+            log("bridge.isLoggedIn() returned true");
+            if (!state.authCookies || state.authCookies.length === 0 || !hasValidAuthCookie(state.authCookies)) {
                 loadAuthCookies();
             }
             
-            if (validateSession()) {
-                state.isAuthenticated = true;
-                return true;
+            if (hasValidAuthCookie(state.authCookies)) {
+                if (validateSession()) {
+                    state.isAuthenticated = true;
+                    log("isLoggedIn: Session validated successfully");
+                    return true;
+                }
             }
         }
         
-        if (!state.isAuthenticated || !state.authCookies) {
+        if (!state.authCookies || !hasValidAuthCookie(state.authCookies)) {
+            loadAuthCookies();
+        }
+        
+        if (!state.authCookies || !hasValidAuthCookie(state.authCookies)) {
+            log("isLoggedIn: No valid auth cookies found");
             return false;
         }
         
         const isValid = validateSession();
         state.isAuthenticated = isValid;
+        log("isLoggedIn: Session validation result = " + isValid);
         return isValid;
     } catch (e) {
         log("isLoggedIn check failed: " + e);
@@ -3098,4 +3174,4 @@ class SpankBangCommentPager extends CommentPager {
     }
 }
 
-log("SpankBang plugin loaded - v16");
+log("SpankBang plugin loaded - v18");
