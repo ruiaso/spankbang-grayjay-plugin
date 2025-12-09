@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 17,
+  "version": 18,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "scriptSignature": "",
@@ -31,13 +31,14 @@
   "authentication": {
     "userAgent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
     "loginUrl": "https://spankbang.com/users/login",
-    "completionUrl": "https://spankbang.com/users/*",
+    "completionUrl": "https://spankbang.com/users/account",
     "domainHeadersToFind": {
+      "spankbang.com": ["cookie", "set-cookie"],
       ".spankbang.com": ["cookie", "set-cookie"]
     },
-    "cookiesToFind": ["ss"],
+    "cookiesToFind": ["auth", "sb_session"],
     "cookiesExclOthers": false,
-    "loginWarning": "After logging in, wait for the page to load completely. Grayjay will detect your login automatically."
+    "loginWarning": "After logging in successfully, you will be redirected to your account page. Grayjay will automatically detect your login - please wait for the redirect to complete before closing."
   },
   "supportedClaimTypes": [3],
   "primaryClaimFieldType": 3,
@@ -148,6 +149,14 @@
       "Using wildcard completionUrl pattern https://spankbang.com/users/* to match any user page",
       "Simplified to use 'ss' session cookie which is the primary auth cookie",
       "Removed unsupported completionUrls (plural) field - Grayjay only supports completionUrl (singular)"
+    ],
+    "18": [
+      "Fixed authentication - using correct 'auth' and 'sb_session' cookies (not 'ss')",
+      "Updated completionUrl to specific /users/account endpoint for reliable login detection",
+      "Fixed domainHeadersToFind with proper Grayjay schema format",
+      "Added robust cookie handling for both string and object array formats",
+      "Added cookiesToString helper to normalize cookie formats",
+      "Improved login warning message to guide users to wait for redirect"
     ]
   }
 }
