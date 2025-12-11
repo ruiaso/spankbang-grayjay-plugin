@@ -2570,42 +2570,6 @@ function parseHistoryPage(html) {
     return videos;
 }
 
-function fetchVideoBasicInfo(videoId) {
-    try {
-        const videoUrl = `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/`;
-        const response = makeRequestNoThrow(videoUrl, API_HEADERS, 'video basic info');
-        if (!response.isOk || !response.body) {
-            return null;
-        }
-        
-        const html = response.body;
-        
-        const thumbMatch = html.match(/itemprop="thumbnailUrl"\s*content="([^"]+)"/i) ||
-                          html.match(/property="og:image"\s*content="([^"]+)"/i) ||
-                          html.match(/name="twitter:image"\s*content="([^"]+)"/i);
-        let thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
-        
-        const durationMatch = html.match(/itemprop="duration"\s*content="PT(\d+)M(\d+)?S?"/i);
-        let duration = 0;
-        if (durationMatch) {
-            duration = (parseInt(durationMatch[1]) || 0) * 60 + (parseInt(durationMatch[2]) || 0);
-        }
-        
-        const titleMatch = html.match(/<h1[^>]*title="([^"]+)"/i) ||
-                          html.match(/property="og:title"\s*content="([^"]+)"/i);
-        const title = titleMatch ? cleanVideoTitle(titleMatch[1]) : "";
-        
-        return {
-            thumbnail: thumbnail,
-            duration: duration,
-            title: title
-        };
-    } catch (e) {
-        log("fetchVideoBasicInfo error for " + videoId + ": " + e.message);
-        return null;
-    }
-}
-
 source.syncRemoteWatchHistory = function(continuationToken) {
     try {
         if (!source.isLoggedIn()) {
