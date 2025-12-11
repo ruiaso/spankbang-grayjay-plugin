@@ -2131,8 +2131,8 @@ source.getUserSubscriptions = function() {
             return [];
         }
 
-        const subscriptionsUrl = `${BASE_URL}/users/subscriptions`;
-        const html = makeRequest(subscriptionsUrl, API_HEADERS, 'user subscriptions');
+        const subscriptionsUrl = `${BASE_URL}/users/social`;
+        const html = makeRequest(subscriptionsUrl, null, 'user subscriptions');
         
         const subscriptions = [];
         
@@ -2214,7 +2214,7 @@ source.getWatchHistory = function() {
         }
 
         const historyUrl = `${BASE_URL}/users/history`;
-        const html = makeRequest(historyUrl, API_HEADERS, 'watch history');
+        const html = makeRequest(historyUrl, null, 'watch history');
         
         const videos = parseSearchResults(html);
         log("getWatchHistory found " + videos.length + " videos");
@@ -2234,7 +2234,7 @@ source.getUserPlaylists = function() {
         }
 
         const playlistsUrl = `${BASE_URL}/users/playlists`;
-        const html = makeRequest(playlistsUrl, API_HEADERS, 'user playlists');
+        const html = makeRequest(playlistsUrl, null, 'user playlists');
         
         const playlists = parsePlaylistsPage(html);
         
@@ -2268,8 +2268,8 @@ source.getFavorites = function() {
             return [];
         }
 
-        const favoritesUrl = `${BASE_URL}/users/favorites`;
-        const html = makeRequest(favoritesUrl, API_HEADERS, 'user favorites');
+        const likedUrl = `${BASE_URL}/users/liked`;
+        const html = makeRequest(likedUrl, null, 'user liked videos');
         
         let videos = parseSearchResults(html);
         
@@ -2322,6 +2322,45 @@ function parseFavoritesPage(html) {
     
     return videos;
 }
+
+source.getUserPlaylistsSubs = function() {
+    try {
+        if (!source.isLoggedIn()) {
+            log("getUserPlaylistsSubs: Not logged in");
+            return [];
+        }
+
+        const playlistsSubsUrl = `${BASE_URL}/users/playlists_subs`;
+        const html = makeRequest(playlistsSubsUrl, null, 'subscribed playlists');
+        
+        const playlists = parsePlaylistsPage(html);
+        
+        const platformPlaylists = playlists.map(p => new PlatformPlaylist({
+            id: new PlatformID(PLATFORM, p.id, plugin.config.id),
+            name: p.name,
+            thumbnail: p.thumbnail,
+            author: new PlatformAuthorLink(
+                new PlatformID(PLATFORM, p.author || "Unknown", plugin.config.id),
+                p.author || "Unknown",
+                "",
+                ""
+            ),
+            videoCount: p.videoCount || 0,
+            url: p.url
+        }));
+        
+        log("getUserPlaylistsSubs found " + platformPlaylists.length + " subscribed playlists");
+        return platformPlaylists;
+
+    } catch (error) {
+        log("getUserPlaylistsSubs error: " + error.message);
+        return [];
+    }
+};
+
+source.getLikedVideos = function() {
+    return source.getFavorites();
+};
 
 source.getHome = function(continuationToken) {
     try {
@@ -3197,17 +3236,3 @@ class SpankBangPlaylistPager extends PlaylistPager {
 
     nextPage() {
         return new SpankBangPlaylistPager([], false, this.context);
-    }
-}
-
-class SpankBangCommentPager extends CommentPager {
-    constructor(results, hasMore, context) {
-        super(results, hasMore, context);
-    }
-
-    nextPage() {
-        return new SpankBangCommentPager([], false, this.context);
-    }
-}
-
-log("SpankBang plugin loaded - v18");
