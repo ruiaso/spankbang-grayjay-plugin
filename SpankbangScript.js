@@ -3236,3 +3236,17 @@ class SpankBangPlaylistPager extends PlaylistPager {
 
     nextPage() {
         return new SpankBangPlaylistPager([], false, this.context);
+    }
+}
+
+class SpankBangCommentPager extends CommentPager {
+    constructor(results, hasMore, context) {
+        super(results, hasMore, context);
+    }
+
+    nextPage() {
+        return new SpankBangCommentPager([], false, this.context);
+    }
+}
+
+log("SpankBang plugin loaded - v18");
