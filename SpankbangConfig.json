@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 30,
+  "version": 31,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "scriptSignature": "gEwYJhkOjafyKw8xlHQO76p5jJ2KDIorQSKZaAyjTZtVd/nJ0arJX+cnWkff4s4fzK8sZ7s+vlKnynO4SE4PtIqeR8AvFk//LzmEfy6AXmVeFSxPVALoArM553PhWReTL6kevcMV0AhOTS0y+9hELQKwR6GxBS+btm00ku8RWMNCDWHLkI7OMJiwtoUc+8pcjMAifKNaaSvUG7X+0jSBE7EVeRQcVQNSHkx+2CWCz+gHl9a60uqkuCxKS63KPfEew6hk6pOHOqphkoco2GxcOUv4bVul+JWM46Wa/5qxMFRSn4CwJFysm3BHnmdgVzUT0D1UEEgv8hY5UDEuL79yRw==",
@@ -231,6 +231,15 @@
       "Added getUserPlaylistsSubs function to sync subscribed playlists from /users/playlists_subs",
       "Added getLikedVideos alias for getFavorites",
       "Improved authentication config with simplified cookie detection"
+    ],
+    "31": [
+      "Fixed subscription import - now correctly fetches from /users/subscriptions endpoint",
+      "Fixed playlist import - improved parsing with multiple fallback patterns",
+      "Added syncRemoteWatchHistory function for syncing watch history from /users/history",
+      "Added getSubscriptions and getPlaylists aliases for Grayjay compatibility",
+      "Added parseHistoryPage and parseUserPlaylistsPage helper functions",
+      "Added SpankBangHistoryPager for paginated history sync",
+      "Improved error handling and logging for all import functions"
     ]
   }
 }
