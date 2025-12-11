@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 32,
+  "version": 33,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -246,6 +246,15 @@
       "Added debug logging for all import functions showing HTML length and snippets when no results found",
       "Fixed regex patterns to handle both single and double quote attributes",
       "Added validation to skip internal URLs like /users/, /search/, /playlists/"
+    ],
+    "33": [
+      "Fixed history sync - thumbnails and durations now properly extracted with multiple fallback patterns",
+      "Improved subscription import - tries multiple endpoints (/users/subscriptions, /users/social, /users/following)",
+      "Improved playlist import - tries multiple endpoints (/users/playlists, /users/my_playlists, /users/saved_playlists)",
+      "Enhanced thumbnail extraction with SpankBang CDN patterns (tbi.sb-cd.com)",
+      "Enhanced duration extraction with multiple regex patterns for different HTML structures",
+      "Increased context window for metadata extraction (500 to 800 chars)",
+      "Added views extraction in history parsing"
     ]
   }
 }
