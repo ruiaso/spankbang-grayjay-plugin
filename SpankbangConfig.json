@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 33,
+  "version": 34,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -40,6 +40,16 @@
     "cookiesExclOthers": false,
     "loginWarning": "Log in with your SpankBang account. After login, the window will close automatically when redirected to the homepage."
   },
+  "settings": [
+    {
+      "variable": "syncRemoteHistory",
+      "name": "Sync Remote History",
+      "description": "Synchronize account history from SpankBang on startup",
+      "type": "Boolean",
+      "default": true
+    }
+  ],
+  "subscriptionRateLimit": 150,
   "supportedClaimTypes": [
     3
   ],
@@ -255,6 +265,12 @@
       "Enhanced duration extraction with multiple regex patterns for different HTML structures",
       "Increased context window for metadata extraction (500 to 800 chars)",
       "Added views extraction in history parsing"
+    ],
+    "34": [
+      "Added Sync Remote History setting - enables the 'Sync Remote History' toggle in Grayjay plugin settings",
+      "Added getCapabilities function with hasSyncRemoteWatchHistory support",
+      "Added settings section to config with syncRemoteHistory option",
+      "Added subscriptionRateLimit to config for better API handling"
     ]
   }
 }

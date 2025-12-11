@@ -1076,7 +1076,7 @@ function parseRelatedVideos(html) {
                 /style="[^"]*background[^"]*url\(['"]?(https?:\/\/[^'")\s]+)['"]?\)/
             ];
 
-            let thumbnail = `https://tbi.sb-cd.com/t/${videoId}/1/0/w:300/default.jpg`;
+            let thumbnail = `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
             for (const thumbPattern of thumbPatterns) {
                 const thumbMatch = block.match(thumbPattern);
                 if (thumbMatch && thumbMatch[1]) {
@@ -1146,7 +1146,7 @@ function parseRelatedVideos(html) {
             relatedVideos.push({
                 id: videoId,
                 title: cleanVideoTitle(match[3]),
-                thumbnail: `https://tbi.sb-cd.com/t/${videoId}/1/0/w:300/default.jpg`,
+                thumbnail: `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`,
                 duration: 0,
                 views: 0,
                 url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
@@ -1322,7 +1322,7 @@ function parseSearchResults(html) {
         const videoSlug = linkMatch[2];
 
         const thumbMatch = block.match(/(?:data-src|src)="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/);
-        const thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/1/0/w:300/default.jpg`;
+        const thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
 
         const titleMatch = block.match(/title="([^"]+)"/);
         let title = titleMatch ? titleMatch[1] : "Unknown";
@@ -1378,7 +1378,7 @@ function parseSearchResults(html) {
             videos.push({
                 id: videoId,
                 title: title,
-                thumbnail: `https://tbi.sb-cd.com/t/${videoId}/1/0/w:300/default.jpg`,
+                thumbnail: `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`,
                 duration: 0,
                 views: 0,
                 uploadDate: 0,
@@ -1955,8 +1955,30 @@ function fetchUserInfo() {
     return false;
 }
 
+var pluginSettings = {
+    syncRemoteHistory: true
+};
+
+source.getCapabilities = function() {
+    return {
+        hasSyncRemoteWatchHistory: pluginSettings.syncRemoteHistory
+    };
+};
+
 source.enable = function(conf, settings, savedStateStr) {
     config = conf ?? {};
+    
+    if (settings) {
+        if (typeof settings.syncRemoteHistory !== 'undefined') {
+            if (typeof settings.syncRemoteHistory === 'boolean') {
+                pluginSettings.syncRemoteHistory = settings.syncRemoteHistory;
+            } else if (typeof settings.syncRemoteHistory === 'string') {
+                pluginSettings.syncRemoteHistory = settings.syncRemoteHistory.toLowerCase() === 'true';
+            } else {
+                pluginSettings.syncRemoteHistory = !!settings.syncRemoteHistory;
+            }
+        }
+    }
     
     if (!localConfig.pornstarShortIds) {
         localConfig.pornstarShortIds = {};
@@ -2401,14 +2423,18 @@ function parseHistoryPage(html) {
                 }
             }
             if (!thumbnail) {
-                thumbnail = `https://tbi.sb-cd.com/t/${videoId}/1/0/w:300/default.jpg`;
+                thumbnail = `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
+            }
+            if (thumbnail.startsWith('//')) {
+                thumbnail = 'https:' + thumbnail;
             }
             
             const durationPatterns = [
                 /<span[^>]*class="[^"]*(?:l|length|duration|time)[^"]*"[^>]*>([^<]+)<\/span>/i,
                 /<div[^>]*class="[^"]*(?:l|length|duration|time)[^"]*"[^>]*>([^<]+)<\/div>/i,
                 />(\d{1,2}:\d{2}(?::\d{2})?)</,
-                /duration[^>]*>([^<]+)</i
+                /duration[^>]*>([^<]+)</i,
+                /<span[^>]*>(\d{1,2}:\d{2}(?::\d{2})?)<\/span>/i
             ];
             let duration = 0;
             for (const durationPattern of durationPatterns) {
@@ -2473,12 +2499,16 @@ function parseHistoryPage(html) {
                     }
                 }
                 if (!thumbnail) {
-                    thumbnail = `https://tbi.sb-cd.com/t/${videoId}/1/0/w:300/default.jpg`;
+                    thumbnail = `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
+                }
+                if (thumbnail.startsWith('//')) {
+                    thumbnail = 'https:' + thumbnail;
                 }
                 
                 const durationPatterns = [
                     /<span[^>]*class="[^"]*(?:l|length|duration|time)[^"]*"[^>]*>([^<]+)<\/span>/i,
-                    />(\d{1,2}:\d{2}(?::\d{2})?)</
+                    />(\d{1,2}:\d{2}(?::\d{2})?)</,
+                    /<span[^>]*>(\d{1,2}:\d{2}(?::\d{2})?)<\/span>/i
                 ];
                 let duration = 0;
                 for (const durationPattern of durationPatterns) {
@@ -2785,7 +2815,7 @@ function parseFavoritesPage(html) {
             videos.push({
                 id: videoId,
                 title: title,
-                thumbnail: `https://tbi.sb-cd.com/t/${videoId}/1/0/w:300/default.jpg`,
+                thumbnail: `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`,
                 duration: 0,
                 views: 0,
                 url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
@@ -3734,4 +3764,4 @@ class SpankBangHistoryPager extends ContentPager {
     }
 }
 
-log("SpankBang plugin loaded - v31");
+log("SpankBang plugin loaded - v34");

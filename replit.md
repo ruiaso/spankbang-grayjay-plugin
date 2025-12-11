@@ -141,6 +141,14 @@ Preferred communication style: Simple, everyday language.
 - `/assets/SBQR.png` - Installation QR code
 
 ### Recent Changes
+- **Dec 11, 2025**: Plugin v34 - Sync Remote History & Thumbnail fixes
+  - Added `settings` section to config with `syncRemoteHistory` option
+  - Added `getCapabilities` function with `hasSyncRemoteWatchHistory` support
+  - This enables the "Sync Remote History" toggle in Grayjay plugin settings
+  - Fixed thumbnail fallback URL format (changed from w:300 to def/1 pattern)
+  - Added protocol normalization for `//` prefixed URLs
+  - Added more duration extraction patterns for better parsing
+  - Added `subscriptionRateLimit` to config for API handling
 - **Dec 11, 2025**: Plugin v33 - Import features fixed
   - Fixed history sync: improved block parsing to use inner HTML content for proper metadata extraction
   - Fixed duration parsing: strips HTML tags before extracting timestamps to avoid 0:00 durations
