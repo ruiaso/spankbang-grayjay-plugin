@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 40,
+  "version": 41,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -33,11 +33,18 @@
   "authentication": {
     "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0",
     "loginUrl": "https://www.spankbang.com/users/login",
-    "completionUrl": "https://www.spankbang.com/",
+    "completionUrl": "https://spankbang.com",
+    "headersToFind": ["set-cookie"],
     "cookiesToFind": [
-      "sb_session"
+      "sb_session",
+      "session",
+      "ss"
     ],
     "cookiesExclOthers": false,
+    "urlsToFindCookies": [
+      "https://spankbang.com",
+      "https://www.spankbang.com"
+    ],
     "loginWarning": "Log in with your SpankBang account. After login, the window will close automatically when redirected to the homepage."
   },
   "settings": [
@@ -55,6 +62,10 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "41": [
+      "Fixed login authentication - added more cookie types to detect",
+      "Updated completionUrl and cookie detection for reliable login"
+    ],
     "40": [
       "Added USER_URLS constants for playlists, history, subscriptions",
       "Improved history page parsing for better thumbnail and duration extraction",

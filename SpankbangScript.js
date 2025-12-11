@@ -1781,15 +1781,22 @@ function fetchCommentsFromApi(videoId) {
 function hasValidAuthCookie(cookies) {
     if (!cookies) return false;
     
+    const AUTH_COOKIE_NAMES = ['sb_session', 'session', 'ss', 'sb_id'];
+    
     if (typeof cookies === 'string') {
         if (cookies.length === 0) return false;
-        return cookies.includes('sb_session=');
+        for (const cookieName of AUTH_COOKIE_NAMES) {
+            if (cookies.includes(cookieName + '=')) {
+                return true;
+            }
+        }
+        return false;
     }
     
     if (Array.isArray(cookies)) {
         for (const cookie of cookies) {
             if (cookie && typeof cookie === 'object') {
-                if (cookie.name === 'sb_session') {
+                if (AUTH_COOKIE_NAMES.includes(cookie.name)) {
                     if (cookie.value && cookie.value.length > 0) {
                         return true;
                     }
@@ -1800,7 +1807,10 @@ function hasValidAuthCookie(cookies) {
     }
     
     if (typeof cookies === 'object' && cookies !== null) {
-        return cookies.sb_session || cookies['sb_session'];
+        return cookies.sb_session || cookies['sb_session'] || 
+               cookies.session || cookies['session'] ||
+               cookies.ss || cookies['ss'] ||
+               cookies.sb_id || cookies['sb_id'];
     }
     
     return false;
@@ -1874,7 +1884,7 @@ function loadAuthCookies() {
             }
         }
         
-        log("No valid auth cookies found (looking for 'sb_session')");
+        log("No valid auth cookies found (looking for sb_session, session, ss, sb_id)");
     } catch (e) {
         log("Failed to load auth cookies: " + e);
     }
