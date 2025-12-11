@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "./SpankbangScript.js",
-  "version": 36,
+  "version": 37,
   "iconUrl": "./icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -27,9 +27,11 @@
   ],
   "authentication": {
     "loginUrl": "https://spankbang.com/users/login",
+    "completionUrl": "https://spankbang.com/",
     "cookiesToFind": [
       "sb_session"
     ],
+    "cookiesExclOthers": false,
     "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0"
   },
   "subscriptionRateLimit": 150,
@@ -43,8 +45,8 @@
     }
   ],
   "changelog": {
-    "36": [
-      "Fixed config format for Grayjay compatibility"
+    "37": [
+      "Restored authentication completionUrl and cookiesExclOthers fields"
     ]
   }
 }
