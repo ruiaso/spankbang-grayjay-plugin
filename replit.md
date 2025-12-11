@@ -141,6 +141,12 @@ Preferred communication style: Simple, everyday language.
 - `/assets/SBQR.png` - Installation QR code
 
 ### Recent Changes
+- **Dec 11, 2025**: Plugin v33 - Import features fixed
+  - Fixed history sync: improved block parsing to use inner HTML content for proper metadata extraction
+  - Fixed duration parsing: strips HTML tags before extracting timestamps to avoid 0:00 durations
+  - Fixed thumbnail extraction: multiple fallback patterns with proper URL prefix handling
+  - Fixed subscription import: removed problematic patterns, fallback link scanning now runs unconditionally
+  - Fixed playlist import: multiple endpoint fallbacks, HTML tag stripping for clean names
 - **Dec 8, 2025**: Plugin v15 - Major feature updates
   - Fixed Trending filter: correctly maps order "2" to `o=trending` URL parameter
   - Enhanced playlist functionality: added parseRelatedPlaylists, improved searchPlaylists with pagination
