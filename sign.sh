@@ -5,6 +5,74 @@
 # 1. SpankBang session verification (optional - for authenticated features)
 # 2. Cryptographic signing of the plugin for Grayjay
 
+<<<<<<< HEAD
+# Grayjay Plugin Signing Script
+# Signs the plugin JavaScript file and updates the config with signature
+
+JS_FILE_PATH=${1:-"SpankbangScript.js"}
+CONFIG_FILE_PATH=${2:-"SpankbangConfig.json"}
+
+echo "Grayjay Plugin Signing Script"
+echo "=============================="
+echo "Script: $JS_FILE_PATH"
+echo "Config: $CONFIG_FILE_PATH"
+echo ""
+
+if [ -z "$SIGNING_PRIVATE_KEY" ]; then
+    echo "Error: SIGNING_PRIVATE_KEY environment variable not set."
+    echo ""
+    echo "Generate a key pair with:"
+    echo "  openssl genrsa -out private.pem 2048"
+    echo "  export SIGNING_PRIVATE_KEY=\$(base64 -w0 private.pem)"
+    echo ""
+    echo "Then run this script again."
+    exit 1
+fi
+
+if [ ! -f "$JS_FILE_PATH" ]; then
+    echo "Error: JavaScript file not found: $JS_FILE_PATH"
+    exit 1
+fi
+
+if [ ! -f "$CONFIG_FILE_PATH" ]; then
+    echo "Error: Config file not found: $CONFIG_FILE_PATH"
+    exit 1
+fi
+
+if ! command -v jq > /dev/null 2>&1; then
+    echo "Error: jq is required. Install with: nix-env -iA nixpkgs.jq"
+    exit 1
+fi
+
+echo "$SIGNING_PRIVATE_KEY" | base64 -d > tmp_private_key.pem 2>/dev/null
+
+if ! openssl rsa -check -noout -in tmp_private_key.pem > /dev/null 2>&1; then
+    echo "Error: Invalid private key."
+    rm -f tmp_private_key.pem
+    exit 1
+fi
+
+echo "Private key validated."
+
+SIGNATURE=$(cat "$JS_FILE_PATH" | openssl dgst -sha512 -sign tmp_private_key.pem | base64 -w 0)
+
+PUBLIC_KEY=$(openssl rsa -pubout -outform DER -in tmp_private_key.pem 2>/dev/null | \
+             openssl pkey -pubin -inform DER -outform PEM 2>/dev/null | \
+             tail -n +2 | head -n -1 | tr -d '\n')
+
+rm -f tmp_private_key.pem
+
+jq --arg sig "$SIGNATURE" --arg pubkey "$PUBLIC_KEY" \
+   '.scriptSignature = $sig | .scriptPublicKey = $pubkey' \
+   "$CONFIG_FILE_PATH" > temp_config.json && mv temp_config.json "$CONFIG_FILE_PATH"
+
+echo "Signature generated and config updated."
+echo ""
+echo "Signature: ${SIGNATURE:0:50}..."
+echo "Public Key: ${PUBLIC_KEY:0:50}..."
+echo ""
+echo "Done!"
+=======
 # Parameters
 JS_FILE_PATH=${1:-"SpankbangScript.js"}
 CONFIG_FILE_PATH=${2:-"SpankbangConfig.json"}
@@ -241,3 +309,4 @@ generate_signature
 
 echo ""
 echo -e "${GREEN}Done!${NC}"
+>>>>>>> 17a3fd69ec8bc191c766422fc44c4a0e64261f69
