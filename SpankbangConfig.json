@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 31,
+  "version": 32,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -238,6 +238,14 @@
       "Added parseHistoryPage and parseUserPlaylistsPage helper functions",
       "Added SpankBangHistoryPager for paginated history sync",
       "Improved error handling and logging for all import functions"
+    ],
+    "32": [
+      "Improved subscription parsing - now uses direct link scanning without relying on specific CSS classes",
+      "Improved playlist parsing - simplified regex patterns that search entire HTML for playlist links",
+      "Improved history parsing - direct video link extraction with context-based metadata parsing",
+      "Added debug logging for all import functions showing HTML length and snippets when no results found",
+      "Fixed regex patterns to handle both single and double quote attributes",
+      "Added validation to skip internal URLs like /users/, /search/, /playlists/"
     ]
   }
 }
