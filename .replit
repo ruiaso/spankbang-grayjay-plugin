@@ -1,4 +1,4 @@
-modules = ["nodejs-20", "web"]
+modules = ["nodejs-20", "web", "bash"]
 [agent]
 expertMode = true
 
@@ -32,18 +32,6 @@ outputType = "webview"
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 33587
-externalPort = 3002
-
-[[ports]]
-localPort = 33783
-externalPort = 3000
-
-[[ports]]
-localPort = 35803
-externalPort = 3001
 
 [deployment]
 deploymentTarget = "autoscale"
