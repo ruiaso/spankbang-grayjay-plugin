@@ -6,40 +6,33 @@
   "authorUrl": "https://github.com/GreyPluginDev",
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
-  "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 35,
-  "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
+  "scriptUrl": "./SpankbangScript.js",
+  "version": 36,
+  "iconUrl": "./icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
     "Http",
     "DOMParser",
     "Utilities"
   ],
-  "allowAllHttpHeaderAccess": true,
   "allowEval": true,
   "allowUrls": [
     "spankbang.com",
-    ".spankbang.com",
-    ".spankcdn.com",
-    ".sb-cd.com",
-    ".sb-cdn.com",
-    ".cdn.spankbang.com",
-    ".cdn1.spankbang.com",
-    ".cdn2.spankbang.com",
-    ".cdn3.spankbang.com",
-    ".cdn4.spankbang.com",
+    "www.spankbang.com",
+    "m.spankbang.com",
+    "spankcdn.com",
+    "sb-cd.com",
+    "sb-cdn.com",
     "tbi.sb-cd.com"
   ],
   "authentication": {
-    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0",
     "loginUrl": "https://spankbang.com/users/login",
-    "completionUrl": "https://spankbang.com/",
     "cookiesToFind": [
       "sb_session"
     ],
-    "cookiesExclOthers": false,
-    "loginWarning": "Log in with your SpankBang account. After login, the window will close automatically when redirected to the homepage."
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0"
   },
+  "subscriptionRateLimit": 150,
   "settings": [
     {
       "variable": "syncRemoteHistory",
@@ -49,228 +42,9 @@
       "default": "true"
     }
   ],
-  "subscriptionRateLimit": 150,
-  "supportedClaimTypes": [
-    3
-  ],
-  "primaryClaimFieldType": 3,
   "changelog": {
-    "3": [
-      "Fixed getChannelCapabilities error",
-      "Added DOMParser package",
-      "Fixed type constants"
-    ],
-    "4": [
-      "Fixed Type redeclaration SyntaxError",
-      "Fixed icon loading"
-    ],
-    "5": [
-      "Added support for channel URLs (/XX/channel/name/)",
-      "Fixed video uploader/poster attribution for channels and profiles",
-      "Improved subscription support for channels and profiles"
-    ],
-    "6": [
-      "Added pornstar search in Creators section (getCreators)",
-      "Fixed avatar extraction for //spankbang.com URLs",
-      "Fixed uploader name extraction from video_toolbar",
-      "Improved channel/profile avatar and name detection",
-      "Added pagination support for pornstar browsing"
-    ],
-    "7": [
-      "Fixed uploader names showing as Unknown in video thumbnails",
-      "Fixed pornstar avatar extraction - now uses numeric IDs from HTML instead of shortId construction",
-      "Implemented recommended videos feature (getContentRecommendations)",
-      "Improved uploader extraction from search results and video pages",
-      "Added ref.js, types.d.ts, and plugin.d.ts for IDE autocomplete",
-      "Added extractPornstarAvatarFromHtml function for proper avatar URL extraction",
-      "Improved comments parsing with better pattern matching",
-      "Better channel/profile/pornstar avatar detection using DOM patterns",
-      "Added video count display in creator descriptions"
-    ],
-    "8": [
-      "Fixed getContentRecommendations - now properly attached to video details",
-      "Improved parseRelatedVideos with better HTML pattern matching",
-      "Enhanced uploader/channel name extraction in search results",
-      "Added authentication support for login functionality",
-      "Added getUserSubscriptions for syncing watch history",
-      "Improved profile picture/avatar extraction patterns",
-      "Added Utilities package for session handling"
-    ],
-    "9": [
-      "Fixed source.getChannel 404 errors when viewing pornstars from Creators tab",
-      "Added pornstar shortId resolver with caching to fix profile navigation",
-      "Improved authentication with proper cookie capture and session validation",
-      "Enhanced banner extraction with additional pattern matching",
-      "Added domain-specific cookie handling for better login persistence",
-      "Improved state persistence including pornstar shortId cache"
-    ],
-    "10": [
-      "Improved pornstar shortId resolution with better URL normalization and multiple fallback patterns",
-      "Fixed authentication detection - better completionUrl pattern matching",
-      "Added getLoggedInUser function to display username in plugin settings after login",
-      "Added fetchUserInfo to retrieve user details from account page",
-      "Enhanced validateSession to extract username and userId from profile page",
-      "Improved cookie loading with multiple bridge methods",
-      "State now persists username and userId across sessions"
-    ],
-    "11": [
-      "Added comments fetching for Platform tab - tries API first, then fallbacks to page parsing",
-      "Improved uploader/channel profile picture extraction in video details",
-      "Enhanced avatar detection with multiple patterns including data-src attributes",
-      "Added extractChannelAvatarNearLink function for better avatar finding",
-      "Improved authentication flow with broader completionUrl and additional cookies",
-      "Added login warning message to guide users on returning to Grayjay after login",
-      "Better comment parsing with profile links, timestamps, and likes extraction"
-    ],
-    "12": [
-      "Improved authentication flow with fully-qualified completion URLs for better login detection",
-      "Added uploader avatars to home and search video listings",
-      "Enhanced avatar extraction in search results with data-src support and multiple patterns",
-      "Added featured pornstar links in video description for multi-performer videos",
-      "Improved extractUploaderFromSearchResult with better channel and pornstar avatar patterns"
-    ],
-    "13": [
-      "Fixed 'No source for channel' bug - uploader URLs now only generated when valid profile/channel links exist",
-      "Added SVG-based and span fallback name extraction with strict href matching",
-      "Added pornstar profile picture as banner when no banner image is available",
-      "Fixed search filters to use SpankBang's actual URL parameters (q=hd/fhd/uhd, d=10/20/40, p=d/w/m/y, o=new/featured)",
-      "Added Category/Tag filter with 20+ popular categories (Amateur, Asian, MILF, Teen, etc.)",
-      "Fixed playlist search URL format to use correct SpankBang endpoints",
-      "Improved getPlaylist to handle shortId:slug playlist ID format"
-    ],
-    "14": [
-      "Fixed sort options - Popular now correctly uses o=popular instead of o=all",
-      "Expanded category filters from 20 to 60+ categories including Babe, Bondage, Casting, Cosplay, Deepthroat, Facial, Gangbang, Japanese, Korean, Massage, Petite, Redhead, Squirt, Stepmom, Stepsister, Trans, VR, Webcam, and more"
-    ],
-    "15": [
-      "Fixed Trending filter - now correctly uses o=trending parameter in search",
-      "Added related playlists parsing from video pages with display in video description",
-      "Added getUserPlaylists function to sync user's saved playlists when logged in",
-      "Added getFavorites function to sync user's favorite videos when logged in",
-      "Improved playlist search URL construction with proper pagination",
-      "Enhanced validateSession with additional login detection patterns (logged_in=1, isLoggedIn, site_user_id)",
-      "Better watch history logging"
-    ],
-    "16": [
-      "Fixed login detection - added /users/home to completionUrls which is where SpankBang redirects after login",
-      "Added www.spankbang.com variants to completionUrls for better redirect detection",
-      "Login should now be properly detected by Grayjay after successful SpankBang authentication"
-    ],
-    "17": [
-      "Rewrote authentication config to fix Grayjay login detection",
-      "Using wildcard completionUrl pattern https://spankbang.com/users/* to match any user page",
-      "Simplified to use 'ss' session cookie which is the primary auth cookie",
-      "Removed unsupported completionUrls (plural) field - Grayjay only supports completionUrl (singular)"
-    ],
-    "18": [
-      "Fixed authentication - using correct 'auth' and 'sb_session' cookies (not 'ss')",
-      "Updated completionUrl to specific /users/account endpoint for reliable login detection",
-      "Fixed domainHeadersToFind with proper Grayjay schema format",
-      "Added robust cookie handling for both string and object array formats",
-      "Added cookiesToString helper to normalize cookie formats",
-      "Improved login warning message to guide users to wait for redirect"
-    ],
-    "19": [
-      "Fixed login detection - set completionUrl to null for cookie-only detection",
-      "Removed non-existent 'auth' cookie - only using 'sb_session' which is the actual SpankBang session cookie",
-      "Removed domainHeadersToFind (used for headers, not cookies)",
-      "Grayjay now completes login when sb_session cookie is detected, regardless of redirect URL"
-    ],
-    "20": [
-      "Fixed login webview not opening - added completionUrl to prevent immediate detection of stale cookies",
-      "Changed loginUrl to use www.spankbang.com for consistent redirects",
-      "Login now requires both sb_session cookie AND navigation to home page before completing",
-      "Updated login warning message to clarify the login flow"
-    ],
-    "21": [
-      "Fixed stale cookie issue - login now starts at logout page to clear existing sessions first",
-      "User will be logged out, then can log in fresh with their credentials",
-      "completionUrl set to /users/home which is only reached after successful login"
-    ],
-    "22": [
-      "Changed login flow - user logs in then navigates to Favorites page to complete",
-      "Using /users/favorites as completionUrl - an authenticated-only page",
-      "This ensures login is fully complete before Grayjay captures the session"
-    ],
-    "23": [
-      "Fixed automatic redirect after login - completionUrl now matches SpankBang homepage",
-      "Added 'ss' cookie to cookiesToFind for better session detection",
-      "After login, SpankBang redirects to homepage which triggers Grayjay to close automatically"
-    ],
-    "24": [
-      "Added manual login completion page - navigate to /login-complete URL after logging in",
-      "This gives you control over when to complete the login process",
-      "Works whether you're already logged in or just logged in fresh"
-    ],
-    "25": [
-      "Added custom login page with step-by-step instructions and buttons",
-      "Step 1: Tap 'Open SpankBang Login' button to log in",
-      "Step 2: After logging in, tap 'Done - I'm Logged In' button",
-      "No more typing URLs - just tap the buttons!"
-    ],
-    "26": [
-      "Fixed login - now opens SpankBang login directly in Grayjay's webview",
-      "Previous approach opened login in separate window which isolated cookies",
-      "Grayjay can now capture sb_session cookie when you log in",
-      "Login completes automatically when redirected to /users/home"
-    ],
-    "27": [
-      "Fixed login detection - SpankBang uses AJAX login that stays on same page",
-      "Set completionUrl to null for cookie-only detection",
-      "Login now starts at logout page to clear stale sessions first",
-      "Grayjay closes automatically when sb_session cookie is detected"
-    ],
-    "28": [
-      "Fixed stale cookie issue - completionUrl null caused immediate false login",
-      "Now requires navigation to /users/favorites after logging in",
-      "This ensures login is actually complete before Grayjay closes",
-      "Login warning guides user to navigate to Favorites page after login"
-    ],
-    "29": [
-      "Fixed automatic login detection - clears stale cookies before auth",
-      "Added clearAuthCookies function and enhanced logout to clear browser cookies",
-      "Set completionUrl to null with headersToFind for Set-Cookie detection",
-      "Login now waits for fresh sb_session cookie and closes automatically"
-    ],
-    "30": [
-      "Fixed authentication - completionUrl now properly set to homepage for reliable login detection",
-      "Fixed getUserSubscriptions - now uses correct /users/social endpoint",
-      "Fixed getFavorites - now uses correct /users/liked endpoint",
-      "Added getUserPlaylistsSubs function to sync subscribed playlists from /users/playlists_subs",
-      "Added getLikedVideos alias for getFavorites",
-      "Improved authentication config with simplified cookie detection"
-    ],
-    "31": [
-      "Fixed subscription import - now correctly fetches from /users/subscriptions endpoint",
-      "Fixed playlist import - improved parsing with multiple fallback patterns",
-      "Added syncRemoteWatchHistory function for syncing watch history from /users/history",
-      "Added getSubscriptions and getPlaylists aliases for Grayjay compatibility",
-      "Added parseHistoryPage and parseUserPlaylistsPage helper functions",
-      "Added SpankBangHistoryPager for paginated history sync",
-      "Improved error handling and logging for all import functions"
-    ],
-    "32": [
-      "Improved subscription parsing - now uses direct link scanning without relying on specific CSS classes",
-      "Improved playlist parsing - simplified regex patterns that search entire HTML for playlist links",
-      "Improved history parsing - direct video link extraction with context-based metadata parsing",
-      "Added debug logging for all import functions showing HTML length and snippets when no results found",
-      "Fixed regex patterns to handle both single and double quote attributes",
-      "Added validation to skip internal URLs like /users/, /search/, /playlists/"
-    ],
-    "33": [
-      "Fixed history sync - thumbnails and durations now properly extracted with multiple fallback patterns",
-      "Improved subscription import - tries multiple endpoints (/users/subscriptions, /users/social, /users/following)",
-      "Improved playlist import - tries multiple endpoints (/users/playlists, /users/my_playlists, /users/saved_playlists)",
-      "Enhanced thumbnail extraction with SpankBang CDN patterns (tbi.sb-cd.com)",
-      "Enhanced duration extraction with multiple regex patterns for different HTML structures",
-      "Increased context window for metadata extraction (500 to 800 chars)",
-      "Added views extraction in history parsing"
-    ],
-    "34": [
-      "Added Sync Remote History setting - enables the 'Sync Remote History' toggle in Grayjay plugin settings",
-      "Added getCapabilities function with hasSyncRemoteWatchHistory support",
-      "Added settings section to config with syncRemoteHistory option",
-      "Added subscriptionRateLimit to config for better API handling"
+    "36": [
+      "Fixed config format for Grayjay compatibility"
     ]
   }
 }
