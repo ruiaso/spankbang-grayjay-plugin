@@ -141,6 +141,13 @@ Preferred communication style: Simple, everyday language.
 - `/assets/SBQR.png` - Installation QR code
 
 ### Recent Changes
+- **Dec 11, 2025**: Plugin v40 - History sync improvements
+  - Added USER_URLS constants for playlists, history, and subscriptions endpoints
+  - Improved parseHistoryPage function with better patterns for thumbnails and durations
+  - Added sb-cd.com CDN pattern for thumbnail extraction
+  - Added CSS background-url pattern for thumbnails
+  - Improved duration validation to filter false positives
+  - Uses default thumbnail URL fallback when extraction fails
 - **Dec 11, 2025**: Plugin v34 - Sync Remote History & Thumbnail fixes
   - Added `settings` section to config with `syncRemoteHistory` option
   - Added `getCapabilities` function with `hasSyncRemoteWatchHistory` support
