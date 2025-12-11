@@ -7,12 +7,16 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 29,
+  "version": 30,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "scriptSignature": "",
-  "scriptPublicKey": "",
-  "packages": ["Http", "DOMParser", "Utilities"],
+  "scriptSignature": "gEwYJhkOjafyKw8xlHQO76p5jJ2KDIorQSKZaAyjTZtVd/nJ0arJX+cnWkff4s4fzK8sZ7s+vlKnynO4SE4PtIqeR8AvFk//LzmEfy6AXmVeFSxPVALoArM553PhWReTL6kevcMV0AhOTS0y+9hELQKwR6GxBS+btm00ku8RWMNCDWHLkI7OMJiwtoUc+8pcjMAifKNaaSvUG7X+0jSBE7EVeRQcVQNSHkx+2CWCz+gHl9a60uqkuCxKS63KPfEew6hk6pOHOqphkoco2GxcOUv4bVul+JWM46Wa/5qxMFRSn4CwJFysm3BHnmdgVzUT0D1UEEgv8hY5UDEuL79yRw==",
+  "scriptPublicKey": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvY+WkNP288odZ8tHMn5nn97HJtdbUK/3PVCgV6vNqqzY34uK/IASmQr2p2AKY31KnZgWEkrlNgM5sRzX04SGp7sCD737bypg5U5P2q9ti5ViZDvgWcCDwtw8OnS5ooRRN4D7n7OC8Vzjw9H1e60zbZC7u+GXSeS1WCIydfgakrxwde++7Z0m6mspO8hBZhiOds7tC0d3RkYxEcaM0l6HUIxWtGFPJX+3BSf9FX8oFjFJycvyW8y9tq/Sr5/GVGA69Q7v9+HuoD/5hmL0xuUvOWSsozFuO5DV7mc9VLnOwbXPdLTephZUOcwpcaM2NcdNAx1tXIGhr4YFVZv/9BdF+wIDAQAB",
+  "packages": [
+    "Http",
+    "DOMParser",
+    "Utilities"
+  ],
   "allowAllHttpHeaderAccess": true,
   "allowEval": true,
   "allowUrls": [
@@ -29,16 +33,18 @@
     "tbi.sb-cd.com"
   ],
   "authentication": {
-    "userAgent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-    "loginUrl": "https://www.spankbang.com/users/login",
-    "completionUrl": null,
-    "cookiesToFind": ["sb_session"],
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0",
+    "loginUrl": "https://spankbang.com/users/login",
+    "completionUrl": "https://spankbang.com/",
+    "cookiesToFind": [
+      "sb_session"
+    ],
     "cookiesExclOthers": false,
-    "allowedDomains": ["spankbang.com", "www.spankbang.com"],
-    "headersToFind": ["Set-Cookie"],
-    "loginWarning": "Log in with your SpankBang account. The window will close automatically after login."
+    "loginWarning": "Log in with your SpankBang account. After login, the window will close automatically when redirected to the homepage."
   },
-  "supportedClaimTypes": [3],
+  "supportedClaimTypes": [
+    3
+  ],
   "primaryClaimFieldType": 3,
   "changelog": {
     "3": [
@@ -217,6 +223,14 @@
       "Added clearAuthCookies function and enhanced logout to clear browser cookies",
       "Set completionUrl to null with headersToFind for Set-Cookie detection",
       "Login now waits for fresh sb_session cookie and closes automatically"
+    ],
+    "30": [
+      "Fixed authentication - completionUrl now properly set to homepage for reliable login detection",
+      "Fixed getUserSubscriptions - now uses correct /users/social endpoint",
+      "Fixed getFavorites - now uses correct /users/liked endpoint",
+      "Added getUserPlaylistsSubs function to sync subscribed playlists from /users/playlists_subs",
+      "Added getLikedVideos alias for getFavorites",
+      "Improved authentication config with simplified cookie detection"
     ]
   }
 }
