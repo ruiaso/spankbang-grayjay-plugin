@@ -1781,15 +1781,22 @@ function fetchCommentsFromApi(videoId) {
 function hasValidAuthCookie(cookies) {
     if (!cookies) return false;
     
+    const validCookieNames = ['sb_session', 'session_token', 'remember_token', 'user_id', 'logged_in'];
+    
     if (typeof cookies === 'string') {
         if (cookies.length === 0) return false;
-        return cookies.includes('sb_session=');
+        for (const name of validCookieNames) {
+            if (cookies.includes(name + '=')) {
+                return true;
+            }
+        }
+        return false;
     }
     
     if (Array.isArray(cookies)) {
         for (const cookie of cookies) {
             if (cookie && typeof cookie === 'object') {
-                if (cookie.name === 'sb_session') {
+                if (validCookieNames.includes(cookie.name)) {
                     if (cookie.value && cookie.value.length > 0) {
                         return true;
                     }
@@ -1800,7 +1807,12 @@ function hasValidAuthCookie(cookies) {
     }
     
     if (typeof cookies === 'object' && cookies !== null) {
-        return cookies.sb_session || cookies['sb_session'];
+        for (const name of validCookieNames) {
+            if (cookies[name]) {
+                return true;
+            }
+        }
+        return false;
     }
     
     return false;
@@ -1874,7 +1886,7 @@ function loadAuthCookies() {
             }
         }
         
-        log("No valid auth cookies found (looking for 'sb_session')");
+        log("No valid auth cookies found (looking for sb_session, session_token, remember_token, user_id, logged_in)");
     } catch (e) {
         log("Failed to load auth cookies: " + e);
     }
