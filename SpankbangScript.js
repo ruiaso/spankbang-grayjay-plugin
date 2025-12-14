@@ -75,10 +75,10 @@ const API_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
     "Accept-Encoding": "gzip, deflate, br",
-    "Referer": "https://spankbang.com/",
+    "Connection": "keep-alive",
     "Sec-Fetch-Dest": "document",
     "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "same-origin",
+    "Sec-Fetch-Site": "none",
     "Sec-Fetch-User": "?1",
     "Sec-Ch-Ua": "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\"",
     "Sec-Ch-Ua-Mobile": "?0",
@@ -86,6 +86,21 @@ const API_HEADERS = {
     "Upgrade-Insecure-Requests": "1",
     "Cache-Control": "max-age=0"
 };
+
+var sessionInitialized = false;
+
+function initializeSession() {
+    if (sessionInitialized) return;
+    try {
+        const response = http.GET(BASE_URL, API_HEADERS, false);
+        if (response.isOk) {
+            sessionInitialized = true;
+            log("Session initialized successfully");
+        }
+    } catch (e) {
+        log("Session initialization failed: " + e.message);
+    }
+}
 
 const REGEX_PATTERNS = {
     urls: {
@@ -139,6 +154,7 @@ function getAuthHeaders() {
 
 function makeRequest(url, headers = null, context = 'request') {
     try {
+        initializeSession();
         const requestHeaders = headers || getAuthHeaders();
         const response = http.GET(url, requestHeaders, false);
         if (!response.isOk) {
@@ -152,6 +168,7 @@ function makeRequest(url, headers = null, context = 'request') {
 
 function makeRequestNoThrow(url, headers = null, context = 'request') {
     try {
+        initializeSession();
         const requestHeaders = headers || getAuthHeaders();
         const response = http.GET(url, requestHeaders, false);
         return { isOk: response.isOk, code: response.code, body: response.body };
