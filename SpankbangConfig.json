@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 40,
+  "version": 41,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -31,14 +31,18 @@
     "tbi.sb-cd.com"
   ],
   "authentication": {
-    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     "loginUrl": "https://www.spankbang.com/users/login",
-    "completionUrl": "https://www.spankbang.com/",
+    "completionUrl": "https://www.spankbang.com",
+    "headersToFind": ["set-cookie"],
     "cookiesToFind": [
-      "sb_session"
+      "sb_session",
+      "session_token",
+      "remember_token"
     ],
     "cookiesExclOthers": false,
-    "loginWarning": "Log in with your SpankBang account. After login, the window will close automatically when redirected to the homepage."
+    "allowedDomains": ["spankbang.com", "www.spankbang.com"],
+    "loginWarning": "Log in with your SpankBang account. After login completes, the window should close automatically."
   },
   "settings": [
     {
@@ -55,6 +59,11 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "41": [
+      "Fixed authentication flow - updated completionUrl and added more cookies to find",
+      "Improved hasValidAuthCookie to accept multiple auth cookie types",
+      "Updated User-Agent in auth config to match modern Chrome browser"
+    ],
     "40": [
       "Added USER_URLS constants for playlists, history, subscriptions",
       "Improved history page parsing for better thumbnail and duration extraction",
