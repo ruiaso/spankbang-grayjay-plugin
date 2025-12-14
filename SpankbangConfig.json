@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 41,
+  "version": 42,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -33,16 +33,8 @@
   "authentication": {
     "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     "loginUrl": "https://www.spankbang.com/users/login",
-    "completionUrl": "https://www.spankbang.com",
-    "headersToFind": ["set-cookie"],
-    "cookiesToFind": [
-      "sb_session",
-      "session_token",
-      "remember_token"
-    ],
-    "cookiesExclOthers": false,
-    "allowedDomains": ["spankbang.com", "www.spankbang.com"],
-    "loginWarning": "Log in with your SpankBang account. After login completes, the window should close automatically."
+    "cookiesToFind": ["sb_session"],
+    "cookiesExclOthers": false
   },
   "settings": [
     {
