@@ -459,162 +459,126 @@ function parseVideoPage(html) {
         rating: null
     };
 
-    // Try to extract from JSON first
-    const initials = extractWindowInitials(html);
-    if (initials && initials.videoModel) {
-        const vm = initials.videoModel;
-        if (vm.title) videoData.title = cleanVideoTitle(vm.title);
-        if (vm.thumbURL) videoData.thumbnail = vm.thumbURL.replace(/\\/g, '');
-        if (vm.duration) videoData.duration = vm.duration;
-        if (vm.views !== undefined) videoData.views = vm.views;
-        if (vm.created) videoData.uploadDate = Math.floor(vm.created);
-        
-        if (vm.channels && vm.channels.length > 0) {
-            const channel = vm.channels[0];
-            videoData.uploader.name = channel.name || "";
-            videoData.uploader.url = `xhamster://channel/${channel.id}`;
-            if (channel.thumb) videoData.uploader.avatar = channel.thumb;
-        } else if (vm.users && vm.users.length > 0) {
-            const user = vm.users[0];
-            videoData.uploader.name = user.name || "";
-            videoData.uploader.url = `xhamster://profile/${user.id}`;
-            if (user.thumb) videoData.uploader.avatar = user.thumb;
+    const titlePatterns = [
+        /<h1[^>]*class="[^"]*title[^"]*"[^>]*>([^<]+)<\/h1>/i,
+        /<meta\s+property="og:title"\s+content="([^"]+)"/i,
+        /<title>([^<]+)<\/title>/i,
+        /"name"\s*:\s*"([^"]+)"/
+    ];
+
+    for (const pattern of titlePatterns) {
+        const match = html.match(pattern);
+        if (match && match[1]) {
+            videoData.title = cleanVideoTitle(match[1].trim());
+            break;
         }
     }
 
-    // Fallback to HTML patterns if JSON didn't provide data
-    if (!videoData.title || videoData.title === "Unknown") {
-        const titlePatterns = [
-            /<h1[^>]*class="[^"]*title[^"]*"[^>]*>([^<]+)<\/h1>/i,
-            /<meta\s+property="og:title"\s+content="([^"]+)"/i,
-            /<title>([^<]+)<\/title>/i,
-            /"name"\s*:\s*"([^"]+)"/
-        ];
+    const thumbPatterns = [
+        /<meta\s+property="og:image"\s+content="([^"]+)"/i,
+        /"thumbnailUrl"\s*:\s*"([^"]+)"/,
+        /"thumbnail"\s*:\s*"([^"]+)"/
+    ];
 
-        for (const pattern of titlePatterns) {
-            const match = html.match(pattern);
-            if (match && match[1]) {
-                videoData.title = cleanVideoTitle(match[1].trim());
-                break;
+    for (const pattern of thumbPatterns) {
+        const match = html.match(pattern);
+        if (match && match[1]) {
+            videoData.thumbnail = match[1].replace(/\\/g, '');
+            break;
+        }
+    }
+
+    const durationPatterns = [
+        /"duration"\s*:\s*"?PT?(\d+)M?(\d*)S?"?/i,
+        /itemprop="duration"\s*content="PT(\d+)M(\d+)?S?"/i,
+        /"duration"\s*:\s*(\d+)/
+    ];
+
+    for (const pattern of durationPatterns) {
+        const match = html.match(pattern);
+        if (match) {
+            if (match[2] !== undefined) {
+                videoData.duration = (parseInt(match[1]) || 0) * 60 + (parseInt(match[2]) || 0);
+            } else {
+                videoData.duration = parseInt(match[1]) || 0;
             }
+            break;
         }
     }
 
-    if (!videoData.thumbnail) {
-        const thumbPatterns = [
-            /<meta\s+property="og:image"\s+content="([^"]+)"/i,
-            /"thumbnailUrl"\s*:\s*"([^"]+)"/,
-            /"thumbnail"\s*:\s*"([^"]+)"/
-        ];
+    const viewsPatterns = [
+        /"interactionCount"\s*:\s*"?(\d+)"?/,
+        /(\d[\d,]*)\s*(?:views?|plays?)/i
+    ];
 
-        for (const pattern of thumbPatterns) {
-            const match = html.match(pattern);
-            if (match && match[1]) {
-                videoData.thumbnail = match[1].replace(/\\/g, '');
-                break;
-            }
+    for (const pattern of viewsPatterns) {
+        const match = html.match(pattern);
+        if (match && match[1]) {
+            videoData.views = parseViewCount(match[1]);
+            break;
         }
     }
 
-    if (!videoData.duration) {
-        const durationPatterns = [
-            /"duration"\s*:\s*"?PT?(\d+)M?(\d*)S?"?/i,
-            /itemprop="duration"\s*content="PT(\d+)M(\d+)?S?"/i,
-            /"duration"\s*:\s*(\d+)/
-        ];
+    const datePatterns = [
+        /"uploadDate"\s*:\s*"([^"]+)"/,
+        /itemprop="uploadDate"\s*content="([^"]+)"/i,
+        /"datePublished"\s*:\s*"([^"]+)"/
+    ];
 
-        for (const pattern of durationPatterns) {
-            const match = html.match(pattern);
-            if (match) {
-                if (match[2] !== undefined) {
-                    videoData.duration = (parseInt(match[1]) || 0) * 60 + (parseInt(match[2]) || 0);
-                } else {
-                    videoData.duration = parseInt(match[1]) || 0;
-                }
-                break;
-            }
+    for (const pattern of datePatterns) {
+        const match = html.match(pattern);
+        if (match && match[1]) {
+            videoData.uploadDate = parseRelativeDate(match[1]);
+            break;
         }
     }
 
-    if (!videoData.views) {
-        const viewsPatterns = [
-            /"interactionCount"\s*:\s*"?(\d+)"?/,
-            /(\d[\d,]*)\s*(?:views?|plays?)/i
-        ];
+    const uploaderPatterns = [
+        /<a[^>]*class="[^"]*video-uploader__name[^"]*"[^>]*href="\/channels\/([^"\/]+)"[^>]*>([^<]+)<\/a>/i,
+        /<a[^>]*class="[^"]*video-uploader__name[^"]*"[^>]*href="\/users\/([^"\/]+)"[^>]*>([^<]+)<\/a>/i,
+        /<a[^>]*class="[^"]*video-uploader__name[^"]*"[^>]*href="\/pornstars\/([^"\/]+)"[^>]*>([^<]+)<\/a>/i,
+        /<a[^>]*href="\/channels\/([^"\/]+)"[^>]*>[\s\S]*?(?:<img[^>]*(?:data-src|src)="([^"]+)")?[\s\S]*?([^<]+)<\/a>/i,
+        /<a[^>]*href="\/users\/([^"\/]+)"[^>]*class="[^"]*user[^"]*"[^>]*>[\s\S]*?(?:<img[^>]*src="([^"]+)")?[\s\S]*?([^<]+)<\/a>/i,
+        /<a[^>]*href="\/pornstars\/([^"\/]+)"[^>]*>[\s\S]*?(?:<img[^>]*src="([^"]+)")?[\s\S]*?<span[^>]*>([^<]+)<\/span>/i,
+        /<a[^>]*class="[^"]*uploader[^"]*"[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a>/i,
+        /"author"\s*:\s*\{[^}]*"name"\s*:\s*"([^"]+)"[^}]*"url"\s*:\s*"([^"]+)"/
+    ];
 
-        for (const pattern of viewsPatterns) {
-            const match = html.match(pattern);
-            if (match && match[1]) {
-                videoData.views = parseViewCount(match[1]);
-                break;
-            }
-        }
-    }
-
-    if (!videoData.uploadDate) {
-        const datePatterns = [
-            /"uploadDate"\s*:\s*"([^"]+)"/,
-            /itemprop="uploadDate"\s*content="([^"]+)"/i,
-            /"datePublished"\s*:\s*"([^"]+)"/
-        ];
-
-        for (const pattern of datePatterns) {
-            const match = html.match(pattern);
-            if (match && match[1]) {
-                videoData.uploadDate = parseRelativeDate(match[1]);
-                break;
-            }
-        }
-    }
-
-    // Only parse uploader from HTML if JSON didn't provide it
-    if (!videoData.uploader.name) {
-        const uploaderPatterns = [
-            /<a[^>]*class="[^"]*video-uploader__name[^"]*"[^>]*href="\/channels\/([^"\/]+)"[^>]*>([^<]+)<\/a>/i,
-            /<a[^>]*class="[^"]*video-uploader__name[^"]*"[^>]*href="\/users\/([^"\/]+)"[^>]*>([^<]+)<\/a>/i,
-            /<a[^>]*class="[^"]*video-uploader__name[^"]*"[^>]*href="\/pornstars\/([^"\/]+)"[^>]*>([^<]+)<\/a>/i,
-            /<a[^>]*href="\/channels\/([^"\/]+)"[^>]*>[\s\S]*?(?:<img[^>]*(?:data-src|src)="([^"]+)")?[\s\S]*?([^<]+)<\/a>/i,
-            /<a[^>]*href="\/users\/([^"\/]+)"[^>]*class="[^"]*user[^"]*"[^>]*>[\s\S]*?(?:<img[^>]*src="([^"]+)")?[\s\S]*?([^<]+)<\/a>/i,
-            /<a[^>]*href="\/pornstars\/([^"\/]+)"[^>]*>[\s\S]*?(?:<img[^>]*src="([^"]+)")?[\s\S]*?<span[^>]*>([^<]+)<\/span>/i,
-            /<a[^>]*class="[^"]*uploader[^"]*"[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a>/i,
-            /"author"\s*:\s*\{[^}]*"name"\s*:\s*"([^"]+)"[^}]*"url"\s*:\s*"([^"]+)"/
-        ];
-
-        for (const pattern of uploaderPatterns) {
-            const match = html.match(pattern);
-            if (match) {
-                if (pattern.source.includes('author')) {
-                    videoData.uploader.name = match[1] || "";
-                    videoData.uploader.url = match[2] || "";
-                } else if (pattern.source.includes('video-uploader__name')) {
-                    if (match[0].includes('/channels/')) {
-                        videoData.uploader.name = (match[2] || "").trim();
-                        videoData.uploader.url = `xhamster://channel/${match[1]}`;
-                    } else if (match[0].includes('/users/')) {
-                        videoData.uploader.name = (match[2] || "").trim();
-                        videoData.uploader.url = `xhamster://profile/${match[1]}`;
-                    } else if (match[0].includes('/pornstars/')) {
-                        videoData.uploader.name = (match[2] || "").trim();
-                        videoData.uploader.url = `xhamster://profile/pornstar:${match[1]}`;
-                    }
-                } else if (match[0].includes('/channels/')) {
-                    videoData.uploader.name = (match[3] || match[1] || "").trim();
-                    videoData.uploader.url = `xhamster://channel/${match[1]}`;
-                    videoData.uploader.avatar = match[2] || "";
-                } else if (match[0].includes('/users/')) {
-                    videoData.uploader.name = (match[3] || match[1] || "").trim();
-                    videoData.uploader.url = `xhamster://profile/${match[1]}`;
-                    videoData.uploader.avatar = match[2] || "";
-                } else if (match[0].includes('/pornstars/')) {
-                    videoData.uploader.name = (match[3] || match[1] || "").trim();
-                    videoData.uploader.url = `xhamster://profile/pornstar:${match[1]}`;
-                    videoData.uploader.avatar = match[2] || "";
-                } else {
+    for (const pattern of uploaderPatterns) {
+        const match = html.match(pattern);
+        if (match) {
+            if (pattern.source.includes('author')) {
+                videoData.uploader.name = match[1] || "";
+                videoData.uploader.url = match[2] || "";
+            } else if (pattern.source.includes('video-uploader__name')) {
+                // Handle new xHamster markup with 2 capture groups
+                if (match[0].includes('/channels/')) {
                     videoData.uploader.name = (match[2] || "").trim();
-                    videoData.uploader.url = match[1] || "";
+                    videoData.uploader.url = `xhamster://channel/${match[1]}`;
+                } else if (match[0].includes('/users/')) {
+                    videoData.uploader.name = (match[2] || "").trim();
+                    videoData.uploader.url = `xhamster://profile/${match[1]}`;
+                } else if (match[0].includes('/pornstars/')) {
+                    videoData.uploader.name = (match[2] || "").trim();
+                    videoData.uploader.url = `xhamster://profile/pornstar:${match[1]}`;
                 }
-                if (videoData.uploader.name) break;
+            } else if (match[0].includes('/channels/')) {
+                videoData.uploader.name = (match[3] || match[1] || "").trim();
+                videoData.uploader.url = `xhamster://channel/${match[1]}`;
+                videoData.uploader.avatar = match[2] || "";
+            } else if (match[0].includes('/users/')) {
+                videoData.uploader.name = (match[3] || match[1] || "").trim();
+                videoData.uploader.url = `xhamster://profile/${match[1]}`;
+                videoData.uploader.avatar = match[2] || "";
+            } else if (match[0].includes('/pornstars/')) {
+                videoData.uploader.name = (match[3] || match[1] || "").trim();
+                videoData.uploader.url = `xhamster://profile/pornstar:${match[1]}`;
+                videoData.uploader.avatar = match[2] || "";
+            } else {
+                videoData.uploader.name = (match[2] || "").trim();
+                videoData.uploader.url = match[1] || "";
             }
+            if (videoData.uploader.name) break;
         }
     }
 
@@ -817,112 +781,72 @@ function parseRelatedVideos(html) {
     const relatedVideos = [];
     const seenIds = new Set();
 
-    // First, try to extract from JSON (new xHamster structure)
-    const initials = extractWindowInitials(html);
-    if (initials && initials.pagesCategoryComponent && initials.pagesCategoryComponent.relatedVideoListProps) {
-        const videoThumbProps = initials.pagesCategoryComponent.relatedVideoListProps.videoThumbProps;
-        if (Array.isArray(videoThumbProps)) {
-            for (const video of videoThumbProps) {
-                if (relatedVideos.length >= 50) break;
-                
-                const videoId = video.id ? video.id.toString() : null;
-                if (!videoId || seenIds.has(videoId)) continue;
-                seenIds.add(videoId);
+    // Find all video links and get them with surrounding context
+    const allVideoLinks = [];
+    const videoPattern = /href="([^"]*\/videos\/[^"]+)"/gi;
+    let match;
+    while ((match = videoPattern.exec(html)) !== null) {
+        allVideoLinks.push({
+            url: match[1],
+            pos: match.index
+        });
+    }
 
-                let uploaderName = "";
-                let uploaderUrl = "";
-                if (video.landing) {
-                    if (video.landing.type === 'channel') {
-                        uploaderName = video.landing.name || "";
-                        uploaderUrl = `xhamster://channel/${video.landing.id}`;
-                    } else if (video.landing.type === 'profile') {
-                        uploaderName = video.landing.name || "";
-                        uploaderUrl = `xhamster://profile/${video.landing.id}`;
-                    }
+    // If no links found, return empty
+    if (allVideoLinks.length === 0) {
+        return relatedVideos;
+    }
+
+    // Try to find related section, or just use the last 30 videos on page
+    let startIdx = 0;
+    
+    // Look for related/recommended section markers
+    const relatedMarkers = ['related', 'recommended', 'you might like', 'similar', 'more like'];
+    for (const marker of relatedMarkers) {
+        const idx = html.toLowerCase().indexOf(marker);
+        if (idx > 0) {
+            // Find first video link after this marker
+            for (let i = 0; i < allVideoLinks.length; i++) {
+                if (allVideoLinks[i].pos > idx) {
+                    startIdx = i;
+                    break;
                 }
-
-                relatedVideos.push({
-                    id: videoId,
-                    title: cleanVideoTitle(video.title || "Unknown"),
-                    thumbnail: video.thumbURL || video.imageURL || "",
-                    duration: video.duration || 0,
-                    views: video.views || 0,
-                    url: video.pageURL ? (video.pageURL.startsWith('http') ? video.pageURL : BASE_URL + video.pageURL) : "",
-                    uploader: { name: uploaderName, url: uploaderUrl, avatar: "" }
-                });
             }
+            if (startIdx > 0) break;
         }
     }
 
-    // Fallback to HTML parsing if JSON extraction failed
-    if (relatedVideos.length === 0) {
-        // Find all video links and get them with surrounding context
-        const allVideoLinks = [];
-        const videoPattern = /href="([^"]*\/videos\/[^"]+)"/gi;
-        let match;
-        while ((match = videoPattern.exec(html)) !== null) {
-            allVideoLinks.push({
-                url: match[1],
-                pos: match.index
-            });
+    // If no section found, use links from halfway through page onward
+    if (startIdx === 0 && allVideoLinks.length > 2) {
+        startIdx = Math.max(1, Math.floor(allVideoLinks.length / 2));
+    }
+
+    // Extract videos starting from found position
+    for (let i = startIdx; i < allVideoLinks.length && relatedVideos.length < 50; i++) {
+        const videoUrl = allVideoLinks[i].url.startsWith('http') ? allVideoLinks[i].url : BASE_URL + allVideoLinks[i].url;
+        const idMatch = videoUrl.match(/-(\d+)$/) || videoUrl.match(/\/videos\/([^\/-]+)/);
+        const videoId = idMatch ? idMatch[1] : generateVideoId();
+
+        if (seenIds.has(videoId) || !videoId) continue;
+        seenIds.add(videoId);
+
+        // Try to find title near this link
+        const linkContext = html.substring(Math.max(0, allVideoLinks[i].pos - 200), Math.min(html.length, allVideoLinks[i].pos + 300));
+        let title = "Unknown";
+        const titleMatch = linkContext.match(/(?:title|alt)="([^"]+)"/);
+        if (titleMatch && titleMatch[1]) {
+            title = cleanVideoTitle(titleMatch[1]);
         }
 
-        // If no links found, return empty
-        if (allVideoLinks.length === 0) {
-            return relatedVideos;
-        }
-
-        // Try to find related section, or just use the last 30 videos on page
-        let startIdx = 0;
-        
-        // Look for related/recommended section markers
-        const relatedMarkers = ['related', 'recommended', 'you might like', 'similar', 'more like'];
-        for (const marker of relatedMarkers) {
-            const idx = html.toLowerCase().indexOf(marker);
-            if (idx > 0) {
-                // Find first video link after this marker
-                for (let i = 0; i < allVideoLinks.length; i++) {
-                    if (allVideoLinks[i].pos > idx) {
-                        startIdx = i;
-                        break;
-                    }
-                }
-                if (startIdx > 0) break;
-            }
-        }
-
-        // If no section found, use links from halfway through page onward
-        if (startIdx === 0 && allVideoLinks.length > 2) {
-            startIdx = Math.max(1, Math.floor(allVideoLinks.length / 2));
-        }
-
-        // Extract videos starting from found position
-        for (let i = startIdx; i < allVideoLinks.length && relatedVideos.length < 50; i++) {
-            const videoUrl = allVideoLinks[i].url.startsWith('http') ? allVideoLinks[i].url : BASE_URL + allVideoLinks[i].url;
-            const idMatch = videoUrl.match(/-(\d+)$/) || videoUrl.match(/\/videos\/([^\/-]+)/);
-            const videoId = idMatch ? idMatch[1] : generateVideoId();
-
-            if (seenIds.has(videoId) || !videoId) continue;
-            seenIds.add(videoId);
-
-            // Try to find title near this link
-            const linkContext = html.substring(Math.max(0, allVideoLinks[i].pos - 200), Math.min(html.length, allVideoLinks[i].pos + 300));
-            let title = "Unknown";
-            const titleMatch = linkContext.match(/(?:title|alt)="([^"]+)"/);
-            if (titleMatch && titleMatch[1]) {
-                title = cleanVideoTitle(titleMatch[1]);
-            }
-
-            relatedVideos.push({
-                id: videoId,
-                title: title,
-                thumbnail: "",
-                duration: 0,
-                views: 0,
-                url: videoUrl,
-                uploader: { name: "", url: "", avatar: "" }
-            });
-        }
+        relatedVideos.push({
+            id: videoId,
+            title: title,
+            thumbnail: "",
+            duration: 0,
+            views: 0,
+            url: videoUrl,
+            uploader: { name: "", url: "", avatar: "" }
+        });
     }
 
     return relatedVideos;
