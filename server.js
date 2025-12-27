@@ -113,10 +113,10 @@ const loginPage = `
 </head>
 <body>
   <div class="container">
-    <h1>🍪 SpankBang Authentication Setup</h1>
+    <h1> SpankBang Authentication Setup</h1>
     
     <div class="info-box">
-      <strong>⚠️ Why Manual Cookies?</strong><br>
+      <strong> Why Manual Cookies?</strong><br>
       SpankBang uses JavaScript-based authentication that Grayjay plugins cannot automate. 
       You need to manually extract your browser cookies after logging in.
     </div>
@@ -172,7 +172,7 @@ const loginPage = `
     </div>
 
     <div class="info-box">
-      <strong>🔒 Privacy Note:</strong><br>
+      <strong> Privacy Note:</strong><br>
       Your cookies are stored only on your device and are used solely to authenticate your requests to SpankBang. 
       Cookies typically expire after 30 days - you'll need to repeat this process when they expire.
     </div>
