@@ -2914,7 +2914,7 @@ source.getUserPlaylistsSubs = function() {
         const platformPlaylists = playlists.map(p => new PlatformPlaylist({
             id: new PlatformID(PLATFORM, p.id, plugin.config.id),
             name: p.name,
-            thumbnail: createThumbnails(p.thumbnail),
+            thumbnail: p.thumbnail || "",
             author: new PlatformAuthorLink(
                 new PlatformID(PLATFORM, p.author || "Unknown", plugin.config.id),
                 p.author || "Unknown",
@@ -3656,7 +3656,7 @@ source.searchPlaylists = function(query, type, order, filters, continuationToken
         const platformPlaylists = playlists.map(p => new PlatformPlaylist({
             id: new PlatformID(PLATFORM, p.id, plugin.config.id),
             name: p.name,
-            thumbnail: createThumbnails(p.thumbnail),
+            thumbnail: p.thumbnail || "",
             author: new PlatformAuthorLink(
                 new PlatformID(PLATFORM, p.author || "Unknown", plugin.config.id),
                 p.author || "Unknown",
@@ -3721,11 +3721,14 @@ source.getPlaylist = function(url) {
         
         const videos = parseSearchResults(html);
         const platformVideos = videos.map(v => createPlatformVideo(v));
+        
+        // Get thumbnail URL from first video if available
+        const thumbnailUrl = videos.length > 0 && videos[0].thumbnail ? videos[0].thumbnail : "";
 
         return new PlatformPlaylistDetails({
             id: new PlatformID(PLATFORM, playlistId, plugin.config.id),
             name: playlistName,
-            thumbnail: platformVideos.length > 0 ? platformVideos[0].thumbnails : new Thumbnails([]),
+            thumbnail: thumbnailUrl,
             author: new PlatformAuthorLink(
                 new PlatformID(PLATFORM, "spankbang", plugin.config.id),
                 "SpankBang",
