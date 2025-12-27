@@ -96,7 +96,12 @@ const REGEX_PATTERNS = {
         relativeChannel: /^\/([a-z0-9]+)\/channel\/([^\/\?]+)/,
         relativeS: /^\/s\/([^\/\?]+)/,
         relativePornstar: /^\/([a-z0-9]+)\/pornstar\/([^\/\?]+)/,
-        relativePornstarSimple: /^\/pornstar\/([^\/\?]+)/
+        relativePornstarSimple: /^\/pornstar\/([^\/\?]+)/,
+        // User playlists page URL patterns
+        userPlaylistsPage: /^https?:\/\/(?:www\.)?spankbang\.com\/users\/playlists\/?$/,
+        userPlaylistsSubsPage: /^https?:\/\/(?:www\.)?spankbang\.com\/users\/playlists_subs\/?$/,
+        // Profile playlists (other user's playlists)
+        profilePlaylistsPage: /^https?:\/\/(?:www\.)?spankbang\.com\/profile\/([^\/\?]+)\/playlists\/?/
     },
     extraction: {
         videoId: /\/([a-zA-Z0-9]+)\/(?:video|embed|play)/,
@@ -1737,6 +1742,380 @@ function parsePlaylistsPage(html) {
     
     log(`parsePlaylistsPage: Found total ${playlists.length} playlists`);
     return playlists;
+}
+
+// Enhanced user playlists page parser for https://spankbang.com/users/playlists
+function parseUserPlaylistsPageEnhanced(html) {
+    const playlists = [];
+    const seenIds = new Set();
+    
+    log("parseUserPlaylistsPageEnhanced: Starting to parse HTML (length: " + html.length + ")");
+    
+    // SpankBang's user playlists page typically has <a class="playlist-item"> elements
+    // Pattern 1: <a class="playlist-item" href="/xxx/playlist/yyy/">
+    const playlistItemPattern = /<a[^>]*class="[^"]*playlist-item[^"]*"[^>]*href="\/([a-z0-9]+)\/playlist\/([^"\/]+)\/?\"[^>]*>([\s\S]*?)<\/a>/gi;
+    
+    let match;
+    while ((match = playlistItemPattern.exec(html)) !== null) {
+        const shortId = match[1];
+        const slug = match[2].replace(/["']/g, '');
+        const playlistId = `${shortId}:${slug}`;
+        const innerHtml = match[3] || "";
+        
+        if (seenIds.has(playlistId) || shortId === 'users' || shortId === 'search') continue;
+        seenIds.add(playlistId);
+        
+        // Extract name from title attribute or inner content
+        const nameMatch = match[0].match(/title="([^"]+)"/i) ||
+                          innerHtml.match(/<p[^>]*class="[^"]*inf[^"]*"[^>]*>([^<]+)<\/p>/i) ||
+                          innerHtml.match(/<span[^>]*class="[^"]*(?:title|name)[^"]*"[^>]*>([^<]+)<\/span>/i) ||
+                          innerHtml.match(/<div[^>]*class="[^"]*(?:title|name)[^"]*"[^>]*>([^<]+)<\/div>/i);
+        const name = nameMatch ? nameMatch[1].trim() : slug.replace(/[+_-]/g, ' ');
+        
+        // Extract thumbnail
+        const thumbMatch = innerHtml.match(/(?:data-src|src)="([^"]+)"/i) ||
+                          match[0].match(/(?:data-src|src)="([^"]+)"/i);
+        let thumbnail = thumbMatch ? thumbMatch[1] : "";
+        if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
+        else if (thumbnail && !thumbnail.startsWith('http')) thumbnail = CONFIG.EXTERNAL_URL_BASE + thumbnail;
+        
+        // Extract video count - look for <span class="len">X videos</span> pattern
+        const countPatterns = [
+            /<span[^>]*class="[^"]*len[^"]*"[^>]*>\s*(\d+)\s*videos?\s*<\/span>/i,
+            /<span[^>]*class="[^"]*len[^"]*"[^>]*>\s*(\d+)\s*<\/span>/i,
+            /(\d+)\s*videos?/i,
+            /<span[^>]*>\s*(\d+)\s*<\/span>/i
+        ];
+        
+        let videoCount = 0;
+        for (const pattern of countPatterns) {
+            const countMatch = innerHtml.match(pattern);
+            if (countMatch && countMatch[1]) {
+                const parsed = parseInt(countMatch[1]);
+                if (!isNaN(parsed) && parsed > 0) {
+                    videoCount = parsed;
+                    break;
+                }
+            }
+        }
+        
+        log(`Found user playlist: ${name} (ID: ${playlistId}) with ${videoCount} videos`);
+        playlists.push({
+            id: playlistId,
+            name: name,
+            thumbnail: thumbnail,
+            author: "",
+            videoCount: videoCount,
+            url: `spankbang://playlist/${playlistId}`
+        });
+    }
+    
+    // Pattern 2: Generic div-based patterns if the above didn't work
+    if (playlists.length === 0) {
+        log("parseUserPlaylistsPageEnhanced: Pattern 1 found 0, trying generic patterns...");
+        
+        const genericPatterns = [
+            /<div[^>]*class="[^"]*(?:playlist|item|card|thumb)[^"]*"[^>]*>([\s\S]*?)<\/div>\s*(?:<\/div>|\s*<\/section)/gi,
+            /<article[^>]*>([\s\S]*?)<\/article>/gi
+        ];
+        
+        for (const pattern of genericPatterns) {
+            while ((match = pattern.exec(html)) !== null) {
+                const block = match[1] || match[0];
+                if (!block || block.trim().length < 10) continue;
+                
+                const hrefMatch = block.match(/href="\/([a-z0-9]+)\/playlist\/([^"\/]+)\/?"/i);
+                if (!hrefMatch) continue;
+                
+                const shortId = hrefMatch[1];
+                const slug = hrefMatch[2].replace(/["']/g, '');
+                const playlistId = `${shortId}:${slug}`;
+                
+                if (seenIds.has(playlistId) || shortId === 'users' || shortId === 'search') continue;
+                seenIds.add(playlistId);
+                
+                const nameMatch = block.match(/title="([^"]+)"/i) ||
+                                  block.match(/<p[^>]*class="[^"]*inf[^"]*"[^>]*>([^<]+)<\/p>/i) ||
+                                  block.match(/<span[^>]*>([^<]{3,50})<\/span>/i);
+                const name = nameMatch ? nameMatch[1].trim() : slug.replace(/[+_-]/g, ' ');
+                
+                const thumbMatch = block.match(/(?:data-src|src)="([^"]+)"/i);
+                let thumbnail = thumbMatch ? thumbMatch[1] : "";
+                if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
+                else if (thumbnail && !thumbnail.startsWith('http')) thumbnail = CONFIG.EXTERNAL_URL_BASE + thumbnail;
+                
+                const countMatch = block.match(/(\d+)\s*videos?/i) || block.match(/<span[^>]*class="[^"]*len[^"]*"[^>]*>\s*(\d+)/i);
+                const videoCount = countMatch ? parseInt(countMatch[1] || countMatch[2]) : 0;
+                
+                log(`Found user playlist (generic): ${name} (ID: ${playlistId}) with ${videoCount} videos`);
+                playlists.push({
+                    id: playlistId,
+                    name: name,
+                    thumbnail: thumbnail,
+                    author: "",
+                    videoCount: videoCount,
+                    url: `spankbang://playlist/${playlistId}`
+                });
+            }
+            if (playlists.length > 0) break;
+        }
+    }
+    
+    log(`parseUserPlaylistsPageEnhanced: Found total ${playlists.length} playlists`);
+    return playlists;
+}
+
+// Direct link extraction for playlists when other parsers fail
+function extractPlaylistLinksFromHtml(html) {
+    const playlists = [];
+    const seenIds = new Set();
+    
+    log("extractPlaylistLinksFromHtml: Extracting raw playlist links...");
+    
+    // Find all playlist links
+    const linkPattern = /href="\/([a-z0-9]+)\/playlist\/([^"\/]+)\/?"/gi;
+    let match;
+    
+    while ((match = linkPattern.exec(html)) !== null) {
+        const shortId = match[1];
+        const slug = match[2].replace(/["']/g, '');
+        const playlistId = `${shortId}:${slug}`;
+        
+        if (seenIds.has(playlistId) || shortId === 'users' || shortId === 'search') continue;
+        seenIds.add(playlistId);
+        
+        // Try to find title nearby (within 500 characters before/after)
+        const matchIndex = match.index;
+        const contextStart = Math.max(0, matchIndex - 300);
+        const contextEnd = Math.min(html.length, matchIndex + 500);
+        const context = html.substring(contextStart, contextEnd);
+        
+        const titleMatch = context.match(/title="([^"]+)"/i);
+        const name = titleMatch ? titleMatch[1].trim() : slug.replace(/[+_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        
+        // Try to find video count nearby
+        const countMatch = context.match(/(\d+)\s*videos?/i) || context.match(/<span[^>]*class="[^"]*len[^"]*"[^>]*>\s*(\d+)/i);
+        const videoCount = countMatch ? parseInt(countMatch[1] || countMatch[2]) : 0;
+        
+        // Try to find thumbnail nearby
+        const thumbMatch = context.match(/(?:data-src|src)="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i);
+        let thumbnail = thumbMatch ? thumbMatch[1] : "";
+        
+        log(`Found playlist link: ${name} (ID: ${playlistId}) with ${videoCount} videos`);
+        playlists.push({
+            id: playlistId,
+            name: name,
+            thumbnail: thumbnail,
+            author: "",
+            videoCount: videoCount,
+            url: `spankbang://playlist/${playlistId}`
+        });
+    }
+    
+    log(`extractPlaylistLinksFromHtml: Found ${playlists.length} playlists`);
+    return playlists;
+}
+
+// Fetch playlist info (name, thumbnail, video count) from a playlist URL
+function fetchPlaylistInfo(playlistUrl, playlistId, slug) {
+    const result = {
+        name: slug.replace(/[+_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+        thumbnail: "",
+        videoCount: 0,
+        author: ""
+    };
+    
+    try {
+        log("fetchPlaylistInfo: Fetching " + playlistUrl);
+        const response = makeRequestNoThrow(playlistUrl, API_HEADERS, 'playlist info');
+        
+        if (!response.isOk || !response.body || response.body.length < 100) {
+            log("fetchPlaylistInfo: Failed to fetch playlist page");
+            return result;
+        }
+        
+        const html = response.body;
+        
+        // Extract title
+        const titleMatch = html.match(/<h1[^>]*>([^<]+)<\/h1>/i) ||
+                          html.match(/<title>([^<]+?)(?:\s*-\s*SpankBang)?<\/title>/i);
+        if (titleMatch && titleMatch[1]) {
+            result.name = titleMatch[1].trim();
+        }
+        
+        // Count videos by finding video links
+        const videoLinks = html.match(/href="\/[a-zA-Z0-9]+\/video\//gi);
+        if (videoLinks) {
+            result.videoCount = videoLinks.length;
+        }
+        
+        // Get first thumbnail
+        const thumbMatch = html.match(/(?:data-src|src)="(https?:\/\/[^"]+(?:tbi\.sb-cd\.com|\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i);
+        if (thumbMatch) {
+            result.thumbnail = thumbMatch[1];
+        }
+        
+        // Try to get author/creator
+        const authorMatch = html.match(/class="[^"]*(?:uploader|creator|author)[^"]*"[^>]*>[\s\S]*?<a[^>]*>([^<]+)<\/a>/i) ||
+                           html.match(/<a[^>]*href="\/profile\/([^"]+)"[^>]*>([^<]+)<\/a>/i);
+        if (authorMatch) {
+            result.author = (authorMatch[2] || authorMatch[1] || "").trim();
+        }
+        
+        log(`fetchPlaylistInfo: Found - name: ${result.name}, videos: ${result.videoCount}, thumbnail: ${result.thumbnail ? 'yes' : 'no'}`);
+    } catch (error) {
+        log("fetchPlaylistInfo error: " + error.message);
+    }
+    
+    return result;
+}
+
+// Parse videos specifically from playlist pages
+function parsePlaylistVideos(html) {
+    const videos = [];
+    const seenIds = new Set();
+    
+    log("parsePlaylistVideos: Starting to parse...");
+    
+    // Pattern 1: Look for video items in playlist context
+    // SpankBang playlists often have <a class="thumb"> elements for videos
+    const thumbLinkPattern = /<a[^>]*class="[^"]*thumb[^"]*"[^>]*href="\/([a-zA-Z0-9]+)\/video\/([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+    
+    let match;
+    while ((match = thumbLinkPattern.exec(html)) !== null) {
+        const videoId = match[1];
+        const videoSlug = match[2];
+        const innerHtml = match[3] || "";
+        const fullMatch = match[0];
+        
+        if (seenIds.has(videoId)) continue;
+        seenIds.add(videoId);
+        
+        // Extract title
+        const titleMatch = fullMatch.match(/title="([^"]+)"/i) || 
+                          innerHtml.match(/<span[^>]*class="[^"]*(?:title|name|n)[^"]*"[^>]*>([^<]+)<\/span>/i);
+        let title = titleMatch ? titleMatch[1].trim() : videoSlug.replace(/[_-]/g, ' ');
+        title = cleanVideoTitle(title);
+        
+        // Extract thumbnail
+        const thumbMatch = innerHtml.match(/(?:data-src|src)="([^"]+)"/i) ||
+                          fullMatch.match(/(?:data-src|src)="([^"]+)"/i);
+        let thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
+        if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
+        
+        // Extract duration
+        const durationMatch = innerHtml.match(/<span[^>]*class="[^"]*(?:l|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i) ||
+                             innerHtml.match(/>(\d+:\d+(?::\d+)?)</);
+        const duration = durationMatch ? parseDuration(durationMatch[1].trim()) : 0;
+        
+        videos.push({
+            id: videoId,
+            title: title,
+            thumbnail: thumbnail,
+            duration: duration,
+            views: 0,
+            uploadDate: 0,
+            url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
+            uploader: { name: "", url: "", avatar: "" }
+        });
+    }
+    
+    // Pattern 2: Look for video-item divs
+    if (videos.length === 0) {
+        log("parsePlaylistVideos: Pattern 1 found 0, trying video-item divs...");
+        const videoItemPattern = /<div[^>]*class="[^"]*(?:video-item|item|video)[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/gi;
+        
+        while ((match = videoItemPattern.exec(html)) !== null) {
+            const block = match[0];
+            
+            const linkMatch = block.match(/href="\/([a-zA-Z0-9]+)\/video\/([^"]+)"/);
+            if (!linkMatch) continue;
+            
+            const videoId = linkMatch[1];
+            const videoSlug = linkMatch[2];
+            
+            if (seenIds.has(videoId)) continue;
+            seenIds.add(videoId);
+            
+            const titleMatch = block.match(/title="([^"]+)"/i);
+            let title = titleMatch ? cleanVideoTitle(titleMatch[1]) : videoSlug.replace(/[_-]/g, ' ');
+            
+            const thumbMatch = block.match(/(?:data-src|src)="([^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i);
+            let thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
+            if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
+            
+            const durationMatch = block.match(/<span[^>]*class="[^"]*(?:l|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i);
+            const duration = durationMatch ? parseDuration(durationMatch[1].trim()) : 0;
+            
+            videos.push({
+                id: videoId,
+                title: title,
+                thumbnail: thumbnail,
+                duration: duration,
+                views: 0,
+                uploadDate: 0,
+                url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
+                uploader: { name: "", url: "", avatar: "" }
+            });
+        }
+    }
+    
+    log(`parsePlaylistVideos: Found ${videos.length} videos`);
+    return videos;
+}
+
+// Direct video link extraction as ultimate fallback
+function extractVideoLinksFromHtml(html) {
+    const videos = [];
+    const seenIds = new Set();
+    
+    log("extractVideoLinksFromHtml: Extracting all video links...");
+    
+    // Find all video links
+    const videoLinkPattern = /href="\/([a-zA-Z0-9]+)\/video\/([^"\/]+)\/?"/gi;
+    let match;
+    
+    while ((match = videoLinkPattern.exec(html)) !== null) {
+        const videoId = match[1];
+        const videoSlug = match[2];
+        
+        if (seenIds.has(videoId)) continue;
+        seenIds.add(videoId);
+        
+        // Look for title in surrounding context
+        const matchIndex = match.index;
+        const contextStart = Math.max(0, matchIndex - 200);
+        const contextEnd = Math.min(html.length, matchIndex + 400);
+        const context = html.substring(contextStart, contextEnd);
+        
+        const titleMatch = context.match(/title="([^"]+)"/i);
+        let title = titleMatch ? cleanVideoTitle(titleMatch[1]) : videoSlug.replace(/[_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        
+        // Look for thumbnail
+        const thumbMatch = context.match(/(?:data-src|src)="([^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i);
+        let thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
+        if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
+        else if (thumbnail && !thumbnail.startsWith('http')) thumbnail = CONFIG.EXTERNAL_URL_BASE + thumbnail;
+        
+        // Look for duration
+        const durationMatch = context.match(/<span[^>]*class="[^"]*(?:l|len|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i) ||
+                             context.match(/>(\d+:\d+(?::\d+)?)</);
+        const duration = durationMatch ? parseDuration(durationMatch[1].trim()) : 0;
+        
+        videos.push({
+            id: videoId,
+            title: title,
+            thumbnail: thumbnail,
+            duration: duration,
+            views: 0,
+            uploadDate: 0,
+            url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
+            uploader: { name: "", url: "", avatar: "" }
+        });
+    }
+    
+    log(`extractVideoLinksFromHtml: Found ${videos.length} videos`);
+    return videos;
 }
 
 function parseComments(html, videoId) {
@@ -3420,8 +3799,11 @@ source.search = function(query, type, order, filters, continuationToken) {
         if (query && typeof query === 'string') {
             const playlistExternalMatch = query.match(REGEX_PATTERNS.urls.playlistExternal);
             const playlistSimpleMatch = query.match(REGEX_PATTERNS.urls.playlistSimple);
+            const userPlaylistsMatch = query.match(REGEX_PATTERNS.urls.userPlaylistsPage);
+            const userPlaylistsSubsMatch = query.match(REGEX_PATTERNS.urls.userPlaylistsSubsPage);
+            const profilePlaylistsMatch = query.match(REGEX_PATTERNS.urls.profilePlaylistsPage);
             
-            if (playlistExternalMatch || playlistSimpleMatch) {
+            if (playlistExternalMatch || playlistSimpleMatch || userPlaylistsMatch || userPlaylistsSubsMatch || profilePlaylistsMatch) {
                 log("Detected playlist URL in search, redirecting to searchPlaylists");
                 return source.searchPlaylists(query, type, order, filters, continuationToken);
             }
@@ -4000,7 +4382,10 @@ source.isPlaylistUrl = function(url) {
     return REGEX_PATTERNS.urls.playlistInternal.test(url) ||
            REGEX_PATTERNS.urls.categoryInternal.test(url) ||
            REGEX_PATTERNS.urls.playlistExternal.test(url) ||
-           REGEX_PATTERNS.urls.playlistSimple.test(url);
+           REGEX_PATTERNS.urls.playlistSimple.test(url) ||
+           REGEX_PATTERNS.urls.userPlaylistsPage.test(url) ||
+           REGEX_PATTERNS.urls.userPlaylistsSubsPage.test(url) ||
+           REGEX_PATTERNS.urls.profilePlaylistsPage.test(url);
 };
 
 source.searchPlaylists = function(query, type, order, filters, continuationToken) {
@@ -4012,6 +4397,104 @@ source.searchPlaylists = function(query, type, order, filters, continuationToken
         if (query && typeof query === 'string') {
             const playlistExternalMatch = query.match(REGEX_PATTERNS.urls.playlistExternal);
             const playlistSimpleMatch = query.match(REGEX_PATTERNS.urls.playlistSimple);
+            const userPlaylistsMatch = query.match(REGEX_PATTERNS.urls.userPlaylistsPage);
+            const userPlaylistsSubsMatch = query.match(REGEX_PATTERNS.urls.userPlaylistsSubsPage);
+            const profilePlaylistsMatch = query.match(REGEX_PATTERNS.urls.profilePlaylistsPage);
+            
+            // Handle user's own playlists page URL
+            if (userPlaylistsMatch || userPlaylistsSubsMatch) {
+                log("Detected user playlists page URL, fetching playlists list...");
+                
+                const playlistsUrl = userPlaylistsSubsMatch ? `${BASE_URL}/users/playlists_subs` : `${BASE_URL}/users/playlists`;
+                log("Fetching playlists from: " + playlistsUrl);
+                
+                const response = http.GET(playlistsUrl, getAuthHeaders(), true);
+                
+                if (!response.isOk) {
+                    log("Failed to fetch user playlists: HTTP " + response.code);
+                    throw new ScriptException("Failed to fetch user playlists. Please make sure you are logged in.");
+                }
+                
+                const html = response.body;
+                if (!html || html.length < 100) {
+                    log("Empty response from user playlists page");
+                    return new SpankBangPlaylistPager([], false, { query: query });
+                }
+                
+                log("User playlists page HTML length: " + html.length);
+                
+                // Parse playlists from user page
+                let playlists = parseUserPlaylistsPageEnhanced(html);
+                
+                if (playlists.length === 0) {
+                    log("parseUserPlaylistsPageEnhanced found 0, trying parsePlaylistsPage...");
+                    playlists = parsePlaylistsPage(html);
+                }
+                
+                if (playlists.length === 0) {
+                    log("Still 0 playlists, trying direct link extraction...");
+                    playlists = extractPlaylistLinksFromHtml(html);
+                }
+                
+                log(`Found ${playlists.length} playlists from user playlists page`);
+                
+                const platformPlaylists = playlists.map(p => new PlatformPlaylist({
+                    id: new PlatformID(PLATFORM, p.id, plugin.config.id),
+                    name: p.name,
+                    thumbnail: p.thumbnail || "",
+                    author: new PlatformAuthorLink(
+                        new PlatformID(PLATFORM, p.author || "User", plugin.config.id),
+                        p.author || "User",
+                        "",
+                        ""
+                    ),
+                    videoCount: p.videoCount || 0,
+                    url: p.url
+                }));
+                
+                return new SpankBangPlaylistPager(platformPlaylists, false, {
+                    query: query,
+                    continuationToken: null
+                });
+            }
+            
+            // Handle profile playlists page (other user's playlists)
+            if (profilePlaylistsMatch) {
+                const profileName = profilePlaylistsMatch[1];
+                log("Detected profile playlists page URL for: " + profileName);
+                
+                const profilePlaylistsUrl = `${BASE_URL}/profile/${profileName}/playlists/`;
+                if (page > 1) {
+                    profilePlaylistsUrl += `${page}/`;
+                }
+                
+                log("Fetching profile playlists from: " + profilePlaylistsUrl);
+                
+                const html = makeRequest(profilePlaylistsUrl, API_HEADERS, 'profile playlists', true);
+                const playlists = parsePlaylistsPage(html);
+                
+                const platformPlaylists = playlists.map(p => new PlatformPlaylist({
+                    id: new PlatformID(PLATFORM, p.id, plugin.config.id),
+                    name: p.name,
+                    thumbnail: p.thumbnail || "",
+                    author: new PlatformAuthorLink(
+                        new PlatformID(PLATFORM, profileName, plugin.config.id),
+                        profileName,
+                        `${BASE_URL}/profile/${profileName}/`,
+                        ""
+                    ),
+                    videoCount: p.videoCount || 0,
+                    url: p.url
+                }));
+                
+                const hasMore = playlists.length >= 20;
+                const nextToken = hasMore ? (page + 1).toString() : null;
+                
+                return new SpankBangPlaylistPager(platformPlaylists, hasMore, {
+                    query: query,
+                    continuationToken: nextToken
+                });
+            }
             
             if (playlistExternalMatch) {
                 // Direct URL match: https://spankbang.com/dqcr2/playlist/feet+joi/
@@ -4020,21 +4503,23 @@ source.searchPlaylists = function(query, type, order, filters, continuationToken
                 const playlistId = `${shortId}:${slug}`;
                 const internalUrl = `spankbang://playlist/${playlistId}`;
                 
-                log("Detected playlist URL, converting to internal: " + internalUrl);
+                log("Detected playlist URL, fetching playlist details: " + query);
                 
-                // Return a single result pointing to this playlist
-                const playlistName = slug.replace(/[+_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                // Fetch the actual playlist to get video count and thumbnail
+                const playlistUrl = `${BASE_URL}/${shortId}/playlist/${slug}/`;
+                const playlistInfo = fetchPlaylistInfo(playlistUrl, playlistId, slug);
+                
                 const playlist = new PlatformPlaylist({
                     id: new PlatformID(PLATFORM, playlistId, plugin.config.id),
-                    name: playlistName,
-                    thumbnail: "",
+                    name: playlistInfo.name,
+                    thumbnail: playlistInfo.thumbnail,
                     author: new PlatformAuthorLink(
-                        new PlatformID(PLATFORM, "Unknown", plugin.config.id),
-                        "Unknown",
+                        new PlatformID(PLATFORM, playlistInfo.author || "Unknown", plugin.config.id),
+                        playlistInfo.author || "Unknown",
                         "",
                         ""
                     ),
-                    videoCount: 0,
+                    videoCount: playlistInfo.videoCount,
                     url: internalUrl
                 });
                 
@@ -4047,20 +4532,22 @@ source.searchPlaylists = function(query, type, order, filters, continuationToken
                 const slug = playlistSimpleMatch[1];
                 const internalUrl = `spankbang://playlist/${slug}`;
                 
-                log("Detected simple playlist URL, converting to internal: " + internalUrl);
+                log("Detected simple playlist URL, fetching playlist details: " + query);
                 
-                const playlistName = slug.replace(/[+_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                const playlistUrl = `${BASE_URL}/playlist/${slug}/`;
+                const playlistInfo = fetchPlaylistInfo(playlistUrl, slug, slug);
+                
                 const playlist = new PlatformPlaylist({
                     id: new PlatformID(PLATFORM, slug, plugin.config.id),
-                    name: playlistName,
-                    thumbnail: "",
+                    name: playlistInfo.name,
+                    thumbnail: playlistInfo.thumbnail,
                     author: new PlatformAuthorLink(
-                        new PlatformID(PLATFORM, "Unknown", plugin.config.id),
-                        "Unknown",
+                        new PlatformID(PLATFORM, playlistInfo.author || "Unknown", plugin.config.id),
+                        playlistInfo.author || "Unknown",
                         "",
                         ""
                     ),
-                    videoCount: 0,
+                    videoCount: playlistInfo.videoCount,
                     url: internalUrl
                 });
                 
@@ -4199,8 +4686,22 @@ source.getPlaylist = function(url) {
         }
         
         log("Parsing videos from playlist page...");
-        const videos = parseSearchResults(html);
-        log(`Found ${videos.length} videos in playlist`);
+        let videos = parseSearchResults(html);
+        log(`parseSearchResults found ${videos.length} videos`);
+        
+        // If parseSearchResults found nothing, try alternative extraction
+        if (videos.length === 0) {
+            log("parseSearchResults found 0 videos, trying parsePlaylistVideos...");
+            videos = parsePlaylistVideos(html);
+            log(`parsePlaylistVideos found ${videos.length} videos`);
+        }
+        
+        // If still nothing, try the most permissive extraction
+        if (videos.length === 0) {
+            log("Still 0 videos, trying direct video link extraction...");
+            videos = extractVideoLinksFromHtml(html);
+            log(`extractVideoLinksFromHtml found ${videos.length} videos`);
+        }
         
         if (videos.length === 0) {
             log("WARNING: No videos found in playlist. This might indicate:");
@@ -4208,7 +4709,7 @@ source.getPlaylist = function(url) {
             log("  2. HTML structure doesn't match parsing patterns");
             log("  3. Authentication issue preventing access to videos");
             // Log a sample of the HTML for debugging
-            log("HTML sample (first 1000 chars): " + html.substring(0, 1000));
+            log("HTML sample (first 2000 chars): " + html.substring(0, 2000));
             
             // Check if we can see any video links at all
             const anyVideoLinks = html.match(/href="\/[a-zA-Z0-9]+\/video\//g);
@@ -4219,6 +4720,10 @@ source.getPlaylist = function(url) {
         
         // Get thumbnail URL from first video if available
         const thumbnailUrl = videos.length > 0 && videos[0].thumbnail ? videos[0].thumbnail : "";
+
+        // Check if there's pagination (more videos on subsequent pages)
+        const hasMore = html.match(/class="[^"]*pagination[^"]*"/) !== null || 
+                       html.match(/href="[^"]*\/\d+\/?[^"]*"[^>]*>\s*(?:Next|>|&gt;|→)/i) !== null;
 
         const playlistDetails = new PlatformPlaylistDetails({
             id: new PlatformID(PLATFORM, playlistId, plugin.config.id),
@@ -4233,7 +4738,11 @@ source.getPlaylist = function(url) {
             datetime: 0,
             url: url,
             videoCount: platformVideos.length,
-            contents: new SpankBangSearchPager(platformVideos, false, { query: playlistId })
+            contents: new SpankBangPlaylistVideosPager(platformVideos, hasMore, { 
+                playlistUrl: playlistUrl,
+                playlistId: playlistId,
+                page: 1
+            })
         });
         
         log(`Successfully created playlist details: ${playlistName} with ${platformVideos.length} videos`);
@@ -4314,7 +4823,76 @@ class SpankBangPlaylistPager extends PlaylistPager {
     }
 
     nextPage() {
+        // Support pagination for playlist search
+        if (this.context.continuationToken) {
+            return source.searchPlaylists(
+                this.context.query,
+                null,
+                null,
+                null,
+                this.context.continuationToken
+            );
+        }
         return new SpankBangPlaylistPager([], false, this.context);
+    }
+}
+
+// Pager for videos inside a playlist
+class SpankBangPlaylistVideosPager extends ContentPager {
+    constructor(results, hasMore, context) {
+        super(results, hasMore, context);
+    }
+
+    nextPage() {
+        try {
+            const nextPage = (this.context.page || 1) + 1;
+            let nextUrl = this.context.playlistUrl;
+            
+            // Add page number to URL
+            if (nextUrl.endsWith('/')) {
+                nextUrl = nextUrl + nextPage + '/';
+            } else {
+                nextUrl = nextUrl + '/' + nextPage + '/';
+            }
+            
+            log("SpankBangPlaylistVideosPager: Fetching next page: " + nextUrl);
+            
+            const response = http.GET(nextUrl, getAuthHeaders(), true);
+            
+            if (!response.isOk || !response.body || response.body.length < 100) {
+                log("SpankBangPlaylistVideosPager: No more pages or fetch failed");
+                return new SpankBangPlaylistVideosPager([], false, this.context);
+            }
+            
+            const html = response.body;
+            
+            // Try multiple parsing strategies
+            let videos = parseSearchResults(html);
+            if (videos.length === 0) {
+                videos = parsePlaylistVideos(html);
+            }
+            if (videos.length === 0) {
+                videos = extractVideoLinksFromHtml(html);
+            }
+            
+            log(`SpankBangPlaylistVideosPager: Found ${videos.length} videos on page ${nextPage}`);
+            
+            const platformVideos = videos.map(v => createPlatformVideo(v));
+            
+            // Check if there are more pages
+            const hasMore = videos.length >= 20 || 
+                           html.match(/href="[^"]*\/\d+\/?[^"]*"[^>]*>\s*(?:Next|>|&gt;|→)/i) !== null;
+            
+            return new SpankBangPlaylistVideosPager(platformVideos, hasMore, {
+                playlistUrl: this.context.playlistUrl,
+                playlistId: this.context.playlistId,
+                page: nextPage
+            });
+            
+        } catch (error) {
+            log("SpankBangPlaylistVideosPager error: " + error.message);
+            return new SpankBangPlaylistVideosPager([], false, this.context);
+        }
     }
 }
 

@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 49,
+  "version": 50,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -51,6 +51,21 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "50": [
+      "Major playlist search improvements - now supports searching by URL or keyword",
+      "Added support for user playlist page URLs (https://spankbang.com/users/playlists)",
+      "Added support for profile playlist URLs (https://spankbang.com/profile/xxx/playlists)",
+      "When pasting a playlist URL, now fetches actual video count and thumbnail",
+      "Added parseUserPlaylistsPageEnhanced() for better user playlist parsing",
+      "Added parsePlaylistVideos() for dedicated playlist video extraction",
+      "Added extractPlaylistLinksFromHtml() and extractVideoLinksFromHtml() fallbacks",
+      "Added fetchPlaylistInfo() to get playlist details when searching by URL",
+      "Added SpankBangPlaylistVideosPager for playlist video pagination",
+      "Enhanced getPlaylist() with multi-tier video extraction fallbacks",
+      "Improved SpankBangPlaylistPager to support pagination",
+      "Fixed issue where imported playlists showed 0 videos",
+      "Added regex patterns for userPlaylistsPage, userPlaylistsSubsPage, profilePlaylistsPage"
+    ],
     "49": [
       "Enhanced playlist video count extraction with 10+ new patterns",
       "Added support for various HTML structures: <span class='len'>, <p>, <div> elements",
