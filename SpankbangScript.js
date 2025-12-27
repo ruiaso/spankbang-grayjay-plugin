@@ -2548,14 +2548,19 @@ source.getSubscriptions = function() {
 
 source.getWatchHistory = function() {
     try {
-        if (!source.isLoggedIn()) {
-            log("getWatchHistory: Not logged in");
-            return [];
-        }
-
+        // Use authenticated request directly (same pattern as getUserSubscriptions)
+        // Don't check isLoggedIn() as it may fail even with valid cookies in the http client
         const historyUrl = USER_URLS.HISTORY;
         log("Fetching watch history from: " + historyUrl);
-        const html = makeRequest(historyUrl, null, 'watch history', true);
+        
+        const response = http.GET(historyUrl, API_HEADERS, true);
+        
+        if (!response.isOk) {
+            log("getWatchHistory: Failed with status " + response.code + ", user may not be logged in");
+            return [];
+        }
+        
+        const html = response.body;
         
         if (!html || html.length < 100) {
             log("getWatchHistory: Empty or invalid HTML response (length: " + (html ? html.length : 0) + ")");
@@ -2587,7 +2592,13 @@ function parseHistoryPage(html) {
     const videos = [];
     const seenIds = new Set();
     
+    log("parseHistoryPage: Starting parse, HTML length = " + html.length);
+    
+    // SpankBang history page specific patterns - they use "video-item" and "thumb" classes
     const videoItemPatterns = [
+        // Pattern for SpankBang's history page structure: <a class="thumb">...<span class="l">duration</span>...</a>
+        /<a[^>]*class="[^"]*thumb[^"]*"[^>]*href="\/([a-zA-Z0-9]+)\/video\/([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi,
+        // Standard video-item div pattern
         /<div[^>]*class="[^"]*video-item[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/gi,
         /<div[^>]*class="[^"]*(?:video-list-item|thumb|media-item|item|results)[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/gi,
         /<div[^>]*class="[^"]*(?:video-item|video-list-item|thumb|media-item|item)[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/gi,
@@ -2596,92 +2607,191 @@ function parseHistoryPage(html) {
         /<div[^>]*class="[^"]*thumb[^"]*"[^>]*>([\s\S]*?)<\/a>/gi
     ];
     
-    for (const itemPattern of videoItemPatterns) {
-        let itemMatch;
-        while ((itemMatch = itemPattern.exec(html)) !== null && videos.length < 200) {
-            const block = itemMatch[1] || itemMatch[0];
-            if (!block || block.trim().length < 10) continue;
-            
-            const linkMatch = block.match(/href="\/([a-zA-Z0-9]+)\/video\/([^"]+)"/i);
-            if (!linkMatch) continue;
-            
-            const videoId = linkMatch[1];
-            const videoSlug = linkMatch[2].replace(/["']/g, '');
-            
-            if (seenIds.has(videoId)) continue;
-            if (videoId === 'users' || videoId === 'search' || videoId === 'playlists') continue;
-            seenIds.add(videoId);
-            
-            const titleMatch = block.match(/title="([^"]+)"/i) || 
-                              block.match(/alt="([^"]+)"/i) ||
-                              block.match(/<span[^>]*class="[^"]*(?:title|name|n)[^"]*"[^>]*>([^<]+)<\/span>/i);
-            let title = titleMatch ? cleanVideoTitle(titleMatch[1]) : videoSlug.replace(/[_+-]/g, ' ');
-            
-            const thumbPatterns = [
-                /data-src="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i,
-                /src="(https?:\/\/[^"]*tbi\.sb-cd\.com[^"]+)"/i,
-                /src="(https?:\/\/[^"]*sb-cd\.com[^"]+)"/i,
-                /src="(https?:\/\/[^"]*spankbang[^"]*\/t\/[^"]+)"/i,
-                /src="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i,
-                /data-src="([^"]+)"/i,
-                /style="[^"]*background[^:]*:\s*url\(['"]?(https?:\/\/[^'")\s]+)['"]?\)/i
-            ];
-            let thumbnail = "";
-            for (const thumbPattern of thumbPatterns) {
-                const thumbMatch = block.match(thumbPattern);
-                if (thumbMatch && thumbMatch[1]) {
-                    thumbnail = thumbMatch[1];
-                    if (!thumbnail.includes('avatar') && !thumbnail.includes('icon')) {
-                        break;
-                    }
-                    thumbnail = "";
+    // First try the <a class="thumb"> pattern which directly captures video ID
+    const thumbAnchorPattern = /<a[^>]*class="[^"]*thumb[^"]*"[^>]*href="\/([a-zA-Z0-9]+)\/video\/([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+    let thumbMatch;
+    while ((thumbMatch = thumbAnchorPattern.exec(html)) !== null && videos.length < 200) {
+        const videoId = thumbMatch[1];
+        const videoSlug = thumbMatch[2].replace(/["']/g, '');
+        const innerContent = thumbMatch[3] || "";
+        
+        if (seenIds.has(videoId)) continue;
+        if (videoId === 'users' || videoId === 'search' || videoId === 'playlists') continue;
+        seenIds.add(videoId);
+        
+        // Get title from nearby context
+        const fullMatch = thumbMatch[0];
+        const matchIndex = thumbMatch.index;
+        const contextStart = Math.max(0, matchIndex - 200);
+        const contextEnd = Math.min(html.length, matchIndex + fullMatch.length + 300);
+        const fullContext = html.substring(contextStart, contextEnd);
+        
+        const titleMatch = fullMatch.match(/title="([^"]+)"/i) || 
+                          fullMatch.match(/alt="([^"]+)"/i) ||
+                          fullContext.match(/title="([^"]+)"/i) ||
+                          fullContext.match(/<span[^>]*class="[^"]*(?:title|name|n)[^"]*"[^>]*>([^<]+)<\/span>/i) ||
+                          fullContext.match(/<p[^>]*class="[^"]*n[^"]*"[^>]*>([^<]+)<\/p>/i);
+        let title = titleMatch ? cleanVideoTitle(titleMatch[1]) : videoSlug.replace(/[_+-]/g, ' ');
+        
+        // Extract thumbnail - try data-src first, then src, check inner content
+        let thumbnail = "";
+        const thumbPatterns = [
+            /data-src="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i,
+            /src="(https?:\/\/[^"]*tbi\.sb-cd\.com[^"]+)"/i,
+            /src="(https?:\/\/[^"]*sb-cd\.com[^"]+)"/i,
+            /data-src="([^"]+)"/i,
+            /src="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i,
+            /style="[^"]*background[^:]*:\s*url\(['"]?(https?:\/\/[^'")\s]+)['"]?\)/i
+        ];
+        
+        for (const thumbPattern of thumbPatterns) {
+            const tMatch = innerContent.match(thumbPattern) || fullMatch.match(thumbPattern);
+            if (tMatch && tMatch[1]) {
+                thumbnail = tMatch[1];
+                if (!thumbnail.includes('avatar') && !thumbnail.includes('icon') && !thumbnail.includes('pornstarimg')) {
+                    break;
                 }
+                thumbnail = "";
             }
-            if (!thumbnail || thumbnail.length < 10) {
-                thumbnail = `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
-            }
-            if (thumbnail.startsWith('//')) {
-                thumbnail = 'https:' + thumbnail;
-            }
-            
-            const durationPatterns = [
-                /<span[^>]*class="[^"]*l[^"]*"[^>]*>([^<]+)<\/span>/i,
-                /<span[^>]*class="[^"]*(?:length|duration|time)[^"]*"[^>]*>([^<]+)<\/span>/i,
-                /<div[^>]*class="[^"]*(?:l|length|duration|time)[^"]*"[^>]*>([^<]+)<\/div>/i,
-                />(\d{1,3}:\d{2}(?::\d{2})?)</,
-                /duration[^>]*>([^<]+)</i,
-                /<span[^>]*>(\d{1,3}:\d{2}(?::\d{2})?)<\/span>/i,
-                /(\d{1,3}:\d{2}(?::\d{2})?)/
-            ];
-            let duration = 0;
-            for (const durationPattern of durationPatterns) {
-                const durationMatch = block.match(durationPattern);
-                if (durationMatch && durationMatch[1]) {
-                    const durStr = durationMatch[1].trim();
-                    if (durStr.match(/^\d{1,3}:\d{2}(?::\d{2})?$/)) {
-                        duration = parseDuration(durStr);
-                        if (duration > 0) break;
-                    }
-                }
-            }
-            
-            const viewsMatch = block.match(/<span[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/span>/i);
-            const views = viewsMatch ? parseViewCount(viewsMatch[1].trim()) : 0;
-            
-            videos.push({
-                id: videoId,
-                title: title,
-                thumbnail: thumbnail,
-                duration: duration,
-                views: views,
-                url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
-                uploader: { name: "", url: "", avatar: "" }
-            });
         }
-        if (videos.length > 0) break;
+        
+        // Fallback to default CDN thumbnail
+        if (!thumbnail || thumbnail.length < 10) {
+            thumbnail = `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
+        }
+        if (thumbnail.startsWith('//')) {
+            thumbnail = 'https:' + thumbnail;
+        }
+        
+        // Extract duration from <span class="l">...</span> inside the anchor or nearby
+        let duration = 0;
+        const durationPatterns = [
+            /<span[^>]*class="[^"]*l[^"]*"[^>]*>([^<]+)<\/span>/i,
+            /<span[^>]*class="[^"]*(?:length|duration|time)[^"]*"[^>]*>([^<]+)<\/span>/i,
+            /<div[^>]*class="[^"]*(?:l|length|duration|time)[^"]*"[^>]*>([^<]+)<\/div>/i,
+            />(\d{1,3}:\d{2}(?::\d{2})?)</,
+            /(\d{1,3}:\d{2}(?::\d{2})?)/
+        ];
+        
+        for (const durPattern of durationPatterns) {
+            const dMatch = innerContent.match(durPattern) || fullMatch.match(durPattern) || fullContext.match(durPattern);
+            if (dMatch && dMatch[1]) {
+                const durStr = dMatch[1].trim();
+                if (durStr.match(/^\d{1,3}:\d{2}(?::\d{2})?$/)) {
+                    duration = parseDuration(durStr);
+                    if (duration > 0) break;
+                }
+            }
+        }
+        
+        // Extract views if available
+        const viewsMatch = fullContext.match(/<span[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/span>/i);
+        const views = viewsMatch ? parseViewCount(viewsMatch[1].trim()) : 0;
+        
+        videos.push({
+            id: videoId,
+            title: title,
+            thumbnail: thumbnail,
+            duration: duration,
+            views: views,
+            url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
+            uploader: { name: "", url: "", avatar: "" }
+        });
     }
     
+    log("parseHistoryPage: After thumb anchor pattern, found " + videos.length + " videos");
+    
+    // If thumb anchor pattern didn't work, try div-based patterns
     if (videos.length === 0) {
+        for (const itemPattern of videoItemPatterns.slice(1)) { // Skip first pattern which we already tried
+            let itemMatch;
+            while ((itemMatch = itemPattern.exec(html)) !== null && videos.length < 200) {
+                const block = itemMatch[1] || itemMatch[0];
+                if (!block || block.trim().length < 10) continue;
+                
+                const linkMatch = block.match(/href="\/([a-zA-Z0-9]+)\/video\/([^"]+)"/i);
+                if (!linkMatch) continue;
+                
+                const videoId = linkMatch[1];
+                const videoSlug = linkMatch[2].replace(/["']/g, '');
+                
+                if (seenIds.has(videoId)) continue;
+                if (videoId === 'users' || videoId === 'search' || videoId === 'playlists') continue;
+                seenIds.add(videoId);
+                
+                const titleMatch = block.match(/title="([^"]+)"/i) || 
+                                  block.match(/alt="([^"]+)"/i) ||
+                                  block.match(/<span[^>]*class="[^"]*(?:title|name|n)[^"]*"[^>]*>([^<]+)<\/span>/i);
+                let title = titleMatch ? cleanVideoTitle(titleMatch[1]) : videoSlug.replace(/[_+-]/g, ' ');
+                
+                const thumbPatterns = [
+                    /data-src="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i,
+                    /src="(https?:\/\/[^"]*tbi\.sb-cd\.com[^"]+)"/i,
+                    /src="(https?:\/\/[^"]*sb-cd\.com[^"]+)"/i,
+                    /src="(https?:\/\/[^"]*spankbang[^"]*\/t\/[^"]+)"/i,
+                    /src="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i,
+                    /data-src="([^"]+)"/i,
+                    /style="[^"]*background[^:]*:\s*url\(['"]?(https?:\/\/[^'")\s]+)['"]?\)/i
+                ];
+                let thumbnail = "";
+                for (const thumbPattern of thumbPatterns) {
+                    const thumbMatch = block.match(thumbPattern);
+                    if (thumbMatch && thumbMatch[1]) {
+                        thumbnail = thumbMatch[1];
+                        if (!thumbnail.includes('avatar') && !thumbnail.includes('icon') && !thumbnail.includes('pornstarimg')) {
+                            break;
+                        }
+                        thumbnail = "";
+                    }
+                }
+                if (!thumbnail || thumbnail.length < 10) {
+                    thumbnail = `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
+                }
+                if (thumbnail.startsWith('//')) {
+                    thumbnail = 'https:' + thumbnail;
+                }
+                
+                const durationPatterns = [
+                    /<span[^>]*class="[^"]*l[^"]*"[^>]*>([^<]+)<\/span>/i,
+                    /<span[^>]*class="[^"]*(?:length|duration|time)[^"]*"[^>]*>([^<]+)<\/span>/i,
+                    /<div[^>]*class="[^"]*(?:l|length|duration|time)[^"]*"[^>]*>([^<]+)<\/div>/i,
+                    />(\d{1,3}:\d{2}(?::\d{2})?)</,
+                    /duration[^>]*>([^<]+)</i,
+                    /<span[^>]*>(\d{1,3}:\d{2}(?::\d{2})?)<\/span>/i,
+                    /(\d{1,3}:\d{2}(?::\d{2})?)/
+                ];
+                let duration = 0;
+                for (const durationPattern of durationPatterns) {
+                    const durationMatch = block.match(durationPattern);
+                    if (durationMatch && durationMatch[1]) {
+                        const durStr = durationMatch[1].trim();
+                        if (durStr.match(/^\d{1,3}:\d{2}(?::\d{2})?$/)) {
+                            duration = parseDuration(durStr);
+                            if (duration > 0) break;
+                        }
+                    }
+                }
+                
+                const viewsMatch = block.match(/<span[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/span>/i);
+                const views = viewsMatch ? parseViewCount(viewsMatch[1].trim()) : 0;
+                
+                videos.push({
+                    id: videoId,
+                    title: title,
+                    thumbnail: thumbnail,
+                    duration: duration,
+                    views: views,
+                    url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
+                    uploader: { name: "", url: "", avatar: "" }
+                });
+            }
+            if (videos.length > 0) break;
+        }
+    }
+    
+    // Final fallback: extract any video links and get surrounding context
+    if (videos.length === 0) {
+        log("parseHistoryPage: Trying direct video link extraction fallback");
         const videoPatterns = [
             /href="\/([a-zA-Z0-9]+)\/video\/([^"]+)"/gi,
             /href='\/([a-zA-Z0-9]+)\/video\/([^']+)'/gi
@@ -2717,7 +2827,7 @@ function parseHistoryPage(html) {
                     const thumbMatch = context.match(thumbPattern);
                     if (thumbMatch && thumbMatch[1]) {
                         thumbnail = thumbMatch[1];
-                        if (!thumbnail.includes('avatar') && !thumbnail.includes('icon')) {
+                        if (!thumbnail.includes('avatar') && !thumbnail.includes('icon') && !thumbnail.includes('pornstarimg')) {
                             break;
                         }
                         thumbnail = "";
@@ -2765,6 +2875,8 @@ function parseHistoryPage(html) {
     if (videos.length === 0) {
         const anyVideoLinks = html.match(/href="[^"]*\/video\/[^"]+"/gi);
         log("parseHistoryPage: Fallback check - found " + (anyVideoLinks ? anyVideoLinks.length : 0) + " video links in HTML");
+        // Log a sample of the HTML structure
+        log("parseHistoryPage: HTML sample (chars 0-2000): " + html.substring(0, 2000).replace(/[\n\r]/g, ' ').substring(0, 500));
     }
     
     log("parseHistoryPage: Found " + videos.length + " videos");
@@ -2809,18 +2921,23 @@ function fetchVideoBasicInfo(videoId) {
 
 source.syncRemoteWatchHistory = function(continuationToken) {
     try {
-        if (!source.isLoggedIn()) {
-            log("syncRemoteWatchHistory: Not logged in");
-            return new SpankBangHistoryPager([], false, { continuationToken: null });
-        }
-
+        // Use authenticated request directly (same pattern as getUserSubscriptions)
+        // Don't check isLoggedIn() as it may fail even with valid cookies in the http client
         const page = continuationToken ? parseInt(continuationToken) : 1;
         const historyUrl = page > 1 
             ? `${USER_URLS.HISTORY}/${page}/`
             : USER_URLS.HISTORY;
         
         log("Syncing remote watch history from: " + historyUrl);
-        const html = makeRequest(historyUrl, null, 'sync watch history', true);
+        
+        const response = http.GET(historyUrl, API_HEADERS, true);
+        
+        if (!response.isOk) {
+            log("syncRemoteWatchHistory: Failed with status " + response.code + ", user may not be logged in");
+            return new SpankBangHistoryPager([], false, { continuationToken: null });
+        }
+        
+        const html = response.body;
         
         if (!html || html.length < 100) {
             log("syncRemoteWatchHistory: Empty or invalid HTML response (length: " + (html ? html.length : 0) + ")");
@@ -2857,17 +2974,63 @@ source.getUserPlaylists = function() {
     log("Getting user playlists");
 
     try {
-        // Fetch playlists using authenticated client
+        // Fetch playlists using authenticated client (same pattern as getUserSubscriptions)
         log("Fetching playlists from /users/playlists");
         const playlistsResp = http.GET(`${BASE_URL}/users/playlists`, API_HEADERS, true);
         
         if (!playlistsResp.isOk) {
-            log("Failed to fetch playlists, user may not be logged in");
+            log("Failed to fetch playlists with status " + playlistsResp.code + ", user may not be logged in");
             return [];
         }
         
-        const playlists = parsePlaylistsPage(playlistsResp.body);
-        log(`Found ${playlists.length} playlists`);
+        const html = playlistsResp.body;
+        if (!html || html.length < 100) {
+            log("getUserPlaylists: Empty or invalid HTML response");
+            return [];
+        }
+        
+        log("getUserPlaylists: HTML length = " + html.length);
+        
+        // Parse user playlists using dedicated parser
+        let playlists = parseUserPlaylistsPage(html);
+        
+        // Fallback to general playlist parser if needed
+        if (playlists.length === 0) {
+            log("getUserPlaylists: parseUserPlaylistsPage returned 0, trying parsePlaylistsPage");
+            playlists = parsePlaylistsPage(html);
+        }
+        
+        // Final fallback: direct link extraction
+        if (playlists.length === 0) {
+            log("getUserPlaylists: Still 0 playlists, trying direct link extraction");
+            const playlistLinks = html.match(/href="\/([a-z0-9]+)\/playlist\/([^"\/]+)\/?"/gi);
+            if (playlistLinks) {
+                log("getUserPlaylists: Found " + playlistLinks.length + " raw playlist links");
+                const seenIds = new Set();
+                for (const linkStr of playlistLinks) {
+                    const match = linkStr.match(/href="\/([a-z0-9]+)\/playlist\/([^"\/]+)\/?"/i);
+                    if (match) {
+                        const shortId = match[1];
+                        const slug = match[2];
+                        const playlistId = `${shortId}:${slug}`;
+                        if (!seenIds.has(playlistId) && shortId !== 'users' && shortId !== 'search') {
+                            seenIds.add(playlistId);
+                            playlists.push({
+                                id: playlistId,
+                                name: slug.replace(/[+_-]/g, ' '),
+                                url: `spankbang://playlist/${playlistId}`
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        
+        if (playlists.length === 0) {
+            log("getUserPlaylists: WARNING - No playlists found. HTML snippet (first 1000 chars): " + html.substring(0, 1000));
+        }
+        
+        log(`getUserPlaylists found ${playlists.length} playlists`);
         return playlists.map(pl => pl.url);
     } catch (error) {
         log("Failed to fetch playlists: " + error.message);
@@ -4035,4 +4198,4 @@ class SpankBangHistoryPager extends ContentPager {
     }
 }
 
-log("SpankBang plugin loaded - v44");
+log("SpankBang plugin loaded - v46");
