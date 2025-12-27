@@ -94,8 +94,7 @@ function extractVideoId(url) {
 
     const patterns = [
         /-(\d+)$/,
-        /videos\/[^\/]+-(\d+)/,
-        /xvideos\/(\d+)/
+        /videos\/[^\/]+-(\d+)/
     ];
 
     for (const pattern of patterns) {
