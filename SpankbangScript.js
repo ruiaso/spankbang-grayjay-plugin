@@ -1560,14 +1560,7 @@ function parsePornstarsPage(html) {
 }
 
 function parsePlaylistsPage(html) {
-    log("===== parsePlaylistsPage CALLED =====");
-    log(`HTML length: ${html ? html.length : 0} characters`);
-    
     const playlists = [];
-    
-    // Check if HTML contains playlist-item
-    const hasPlaylistItems = html && html.includes('playlist-item');
-    log(`HTML contains 'playlist-item': ${hasPlaylistItems}`);
     
     // Enhanced patterns to match SpankBang's playlist structure
     // Added pattern for <a> tags with class="playlist-item"
@@ -1579,24 +1572,13 @@ function parsePlaylistsPage(html) {
         /<div[^>]*class="[^"]*(?:thumb|item)[^"]*"[^>]*>([\s\S]*?)<\/div>/gi
     ];
     
-    log(`Trying ${playlistBlockPatterns.length} different block patterns...`);
-    
-    for (let patternIndex = 0; patternIndex < playlistBlockPatterns.length; patternIndex++) {
-        const playlistBlockPattern = playlistBlockPatterns[patternIndex];
-        log(`  Pattern ${patternIndex + 1}: Attempting match...`);
-        
+    for (const playlistBlockPattern of playlistBlockPatterns) {
         let blockMatch;
-        let matchCount = 0;
-        
         while ((blockMatch = playlistBlockPattern.exec(html)) !== null) {
-            matchCount++;
             // Use full match for <a> tags to include href, use capture group for others
             const fullMatch = blockMatch[0];
             const block = blockMatch[1] || blockMatch[0];
-            if (!block || block.trim().length < 10) {
-                log(`    Match ${matchCount}: Skipped (block too short)`);
-                continue;
-            }
+            if (!block || block.trim().length < 10) continue;
             
             // Check for href in both full match and block (for different pattern types)
             const hrefMatch = fullMatch.match(/href="\/([a-z0-9]+)\/playlist\/([^"\/]+)\/?"/i) ||
@@ -1656,7 +1638,7 @@ function parsePlaylistsPage(html) {
                 }
                 
                 if (!playlists.find(p => p.id === playlistId) && name.length > 0) {
-                    log(`✓ Found playlist: "${name}" (ID: ${playlistId}) with ${videoCount} videos`);
+                    log(`Found playlist: ${name} (ID: ${playlistId}) with ${videoCount} videos`);
                     playlists.push({
                         id: playlistId,
                         name: name,
@@ -1666,16 +1648,9 @@ function parsePlaylistsPage(html) {
                         url: `spankbang://playlist/${playlistId}`
                     });
                 }
-            } else {
-                log(`    Match ${matchCount}: No playlist href found`);
             }
         }
-        
-        log(`  Pattern ${patternIndex + 1}: Found ${matchCount} matches, extracted ${playlists.length} playlists so far`);
-        if (playlists.length > 0) {
-            log(`  Breaking early - found playlists with pattern ${patternIndex + 1}`);
-            break;
-        }
+        if (playlists.length > 0) break;
     }
     
     // Fallback: broader link pattern search
@@ -2879,57 +2854,23 @@ source.syncRemoteWatchHistory = function(continuationToken) {
 };
 
 source.getUserPlaylists = function() {
-    log("===== getUserPlaylists CALLED =====");
+    log("Getting user playlists");
 
     try {
-        // Check authentication status first
-        const isLoggedIn = source.isLoggedIn();
-        log(`Authentication status: ${isLoggedIn ? 'LOGGED IN' : 'NOT LOGGED IN'}`);
-        
-        if (!isLoggedIn) {
-            log("WARNING: User is not logged in - playlists require authentication");
-            return [];
-        }
-        
         // Fetch playlists using authenticated client
-        log("Fetching playlists from /users/playlists with authentication");
-        const authHeaders = getAuthHeaders();
-        log("Auth headers prepared: " + JSON.stringify(Object.keys(authHeaders)));
-        
-        const playlistsResp = http.GET(`${BASE_URL}/users/playlists`, authHeaders, false);
-        
-        log(`Playlists fetch response code: ${playlistsResp.code}`);
-        log(`Response body length: ${playlistsResp.body ? playlistsResp.body.length : 0} characters`);
+        log("Fetching playlists from /users/playlists");
+        const playlistsResp = http.GET(`${BASE_URL}/users/playlists`, API_HEADERS, true);
         
         if (!playlistsResp.isOk) {
-            log(`ERROR: Failed to fetch playlists - HTTP ${playlistsResp.code}`);
-            // Log first 500 chars of response to see if it's a login page
-            if (playlistsResp.body && playlistsResp.body.length > 0) {
-                log("Response preview: " + playlistsResp.body.substring(0, 500));
-            }
+            log("Failed to fetch playlists, user may not be logged in");
             return [];
         }
         
-        // Check if we got redirected to login page
-        if (playlistsResp.body && playlistsResp.body.includes('authentication_container')) {
-            log("ERROR: Got login page instead of playlists - authentication failed");
-            log("User needs to re-authenticate");
-            return [];
-        }
-        
-        log("Parsing playlists page HTML...");
         const playlists = parsePlaylistsPage(playlistsResp.body);
-        log(`✓ Successfully parsed ${playlists.length} playlists`);
-        
-        // Log details of each playlist found
-        playlists.forEach((pl, index) => {
-            log(`  Playlist ${index + 1}: "${pl.name}" - ${pl.videoCount} videos (ID: ${pl.id})`);
-        });
-        
+        log(`Found ${playlists.length} playlists`);
         return playlists.map(pl => pl.url);
     } catch (error) {
-        log("ERROR in getUserPlaylists: " + error.message);
-        log("Error stack: " + (error.stack || "No stack trace"));
+        log("Failed to fetch playlists: " + error.message);
         return [];
     }
 };
