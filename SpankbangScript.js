@@ -386,8 +386,19 @@ function createVideoDetails(videoData, url) {
 
 function extractVideoSources(html) {
     const sources = {};
+    log("Extracting video sources from HTML");
 
-    // Try to extract HLS stream first (most reliable)
+    // Check for JSON-LD or script objects first as they are more reliable
+    const streamDataMatch = html.match(/var\s+stream_data\s*=\s*(\{.*?\});/);
+    if (streamDataMatch) {
+        try {
+            const data = JSON.parse(streamDataMatch[1]);
+            if (data.hls) sources.hls = data.hls;
+            for (const q of ['4k', '1080p', '720p', '480p', '360p', '240p']) {
+                if (data[q]) sources[q.replace('p', '')] = data[q];
+            }
+        } catch (e) { log("Failed to parse stream_data JSON: " + e.message); }
+    }
     const hlsPatterns = [
         /"hls"\s*:\s*"([^"]+)"/i,
         /"sources"\s*:\s*\[\s*\{[^}]*"type"\s*:\s*"application\/x-mpegURL"[^}]*"src"\s*:\s*"([^"]+)"/i,
@@ -1010,7 +1021,17 @@ source.getChannel = function(url) {
             channelUrl = `${BASE_URL}/profile/${channelInfo.id}`;
         } else if (channelInfo.type === 'creator') {
             channelUrl = `${BASE_URL}/creators/${channelInfo.id}`;
+        } else {
+            // Handle unexpected spankbang:// schemes or just use a fallback
+            log("Unexpected internal URL scheme: " + url);
+            channelUrl = url.replace('spankbang://', 'https://spankbang.com/');
         }
+    }
+    
+    if (!channelUrl.startsWith('http')) {
+        log("Ensuring absolute URL for channel: " + channelUrl);
+        if (channelUrl.startsWith('/')) channelUrl = BASE_URL + channelUrl;
+        else channelUrl = 'https://' + channelUrl;
     }
     
     const html = makeRequest(channelUrl, API_HEADERS, 'channel page');
@@ -1046,9 +1067,18 @@ function getChannelVideos(url, page) {
             channelUrl = `${BASE_URL}/profile/${channelInfo.id}`;
         } else if (channelInfo.type === 'creator') {
             channelUrl = `${BASE_URL}/creators/${channelInfo.id}`;
+        } else {
+            channelUrl = url.replace('spankbang://', 'https://spankbang.com/');
         }
-    } else if (!url.includes('/videos')) {
-        channelUrl = url.replace(/\/$/, '') + '/videos';
+    } 
+    
+    if (!channelUrl.startsWith('http')) {
+        if (channelUrl.startsWith('/')) channelUrl = BASE_URL + channelUrl;
+        else channelUrl = 'https://' + channelUrl;
+    }
+
+    if (!channelUrl.includes('/videos')) {
+        channelUrl = channelUrl.replace(/\/$/, '') + '/videos';
     }
     
     if (page > 1) {
