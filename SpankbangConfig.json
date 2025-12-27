@@ -34,8 +34,23 @@
     "userAgent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
     "loginUrl": "https://spankbang.com/users/login",
     "completionUrl": "https://spankbang.com/",
-    "cookiesToFind": ["auth", "session", "sid"],
-    "allowedDomains": ["spankbang.com", "www.spankbang.com", ".spankbang.com"]
+    "completionUrls": [
+      "https://spankbang.com/",
+      "https://www.spankbang.com/",
+      "https://spankbang.com/users/",
+      "https://spankbang.com/profile/"
+    ],
+    "headersToFind": ["cookie", "set-cookie"],
+    "domainHeadersToFind": {
+      ".spankbang.com": ["cookie", "set-cookie"],
+      "spankbang.com": ["cookie", "set-cookie"],
+      "www.spankbang.com": ["cookie", "set-cookie"]
+    },
+    "cookiesToFind": ["auth", "session", "sid", "fingerprint", "user_id"],
+    "cookiesExclOthers": false,
+    "allowedDomains": ["spankbang.com", "www.spankbang.com", ".spankbang.com"],
+    "loginButton": "Login",
+    "loginWarning": "After logging in successfully, you will be redirected. The plugin will automatically detect your login."
   },
   "settings": [
     {
