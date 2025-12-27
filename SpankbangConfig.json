@@ -51,6 +51,13 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "45": [
+      "Fixed playlist video count parsing to correctly extract from <span class='len'> elements",
+      "Added specific regex pattern to match SpankBang's playlist-item anchor tags",
+      "Enhanced name extraction to parse <p class='inf'> playlist titles",
+      "Improved fallback patterns with wider context search (500 chars) for better video count detection",
+      "Fixed slug replacement to handle '+' characters in playlist URLs"
+    ],
     "44": [
       "Fixed playlist video parsing with enhanced multi-tier fallback patterns",
       "Added comprehensive logging to diagnose empty playlist issues",

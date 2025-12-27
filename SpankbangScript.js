@@ -1318,9 +1318,7 @@ function parseSearchResults(html) {
     const videos = [];
     const seenIds = new Set();
 
-    log("parseSearchResults: Starting video parsing");
-
-    // Tier 1: Standard video-item pattern (search pages, category pages)
+    // Primary pattern: full video-item divs
     const videoItemRegex = /<div[^>]*class="[^"]*video-item[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/gi;
 
     let itemMatch;
@@ -1382,19 +1380,15 @@ function parseSearchResults(html) {
         });
     }
 
-    log(`parseSearchResults: Tier 1 (video-item) found ${videos.length} videos`);
-
-    // Tier 2: Playlist-specific pattern - videos in playlist pages often use different structure
+    // Fallback 1: Try broader video-item pattern
     if (videos.length === 0) {
-        log("parseSearchResults: Trying playlist video pattern");
+        log("parseSearchResults: Primary pattern found 0 videos, trying broader patterns...");
+        const broadVideoItemRegex = /<div[^>]*class="[^"]*(?:video-item|item|thumb|video-list-item)[^"]*"[^>]*>([\s\S]*?)<\/div>/gi;
         
-        // Pattern for videos in playlists - they might be in a different container
-        const playlistVideoPattern = /<div[^>]*class="[^"]*(?:video-list-item|item|video|thumb)[^"]*"[^>]*>([\s\S]*?)<\/div>/gi;
-        
-        while ((itemMatch = playlistVideoPattern.exec(html)) !== null) {
+        while ((itemMatch = broadVideoItemRegex.exec(html)) !== null) {
             const block = itemMatch[0];
             
-            const linkMatch = block.match(/href="\/([a-zA-Z0-9]+)\/video\/([^"\/\?]+)"/);
+            const linkMatch = block.match(/href="\/([a-zA-Z0-9]+)\/video\/([^"]+)"/);
             if (!linkMatch) continue;
             
             const videoId = linkMatch[1];
@@ -1403,39 +1397,33 @@ function parseSearchResults(html) {
             
             const videoSlug = linkMatch[2];
             
-            const titleMatch = block.match(/title="([^"]+)"/i) || block.match(/alt="([^"]+)"/i);
-            let title = titleMatch ? titleMatch[1] : videoSlug.replace(/[\+_-]/g, ' ');
+            const titleMatch = block.match(/title="([^"]+)"/);
+            let title = titleMatch ? titleMatch[1] : videoSlug.replace(/[_-]/g, ' ');
             title = cleanVideoTitle(title);
             
             const thumbMatch = block.match(/(?:data-src|src)="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/);
             const thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
             
-            // Try to extract duration
-            const durationMatch = block.match(/<span[^>]*class="[^"]*(?:l|length|duration|len)[^"]*"[^>]*>([^<]+)<\/span>/i) ||
-                                  block.match(/>(\d+:\d+(?::\d+)?)</);
-            const finalDuration = durationMatch ? durationMatch[1].trim() : "0:00";
-            
             videos.push({
                 id: videoId,
                 title: title,
                 thumbnail: thumbnail,
-                duration: parseDuration(finalDuration),
+                duration: 0,
                 views: 0,
                 uploadDate: 0,
                 url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
                 uploader: { name: "", url: "", avatar: "" }
             });
         }
-        
-        log(`parseSearchResults: Tier 2 (playlist pattern) found ${videos.length} videos`);
+        log(`parseSearchResults: Broader pattern found ${videos.length} videos`);
     }
 
-    // Tier 3: Direct link extraction with title
+    // Fallback 2: Direct link extraction
     if (videos.length === 0) {
-        log("parseSearchResults: Trying direct link extraction");
-        const directLinkRegex = /href="\/([a-zA-Z0-9]+)\/video\/([^"\/\?]+)"[^>]*title="([^"]+)"/gi;
+        log("parseSearchResults: Broader pattern found 0 videos, trying direct link extraction...");
+        const altVideoRegex = /href="\/([a-zA-Z0-9]+)\/video\/([^"]+)"[^>]*title="([^"]+)"/gi;
         let altMatch;
-        while ((altMatch = directLinkRegex.exec(html)) !== null) {
+        while ((altMatch = altVideoRegex.exec(html)) !== null) {
             const videoId = altMatch[1];
             if (seenIds.has(videoId)) continue;
             seenIds.add(videoId);
@@ -1454,12 +1442,12 @@ function parseSearchResults(html) {
                 uploader: { name: "", url: "", avatar: "" }
             });
         }
-        log(`parseSearchResults: Tier 3 (direct links) found ${videos.length} videos`);
+        log(`parseSearchResults: Direct link extraction found ${videos.length} videos`);
     }
 
-    // Tier 4: Most permissive - any video link
+    // Fallback 3: Most permissive - any video link
     if (videos.length === 0) {
-        log("parseSearchResults: Trying most permissive pattern");
+        log("parseSearchResults: All patterns found 0 videos, trying most permissive pattern...");
         const anyVideoLinkRegex = /href="\/([a-zA-Z0-9]+)\/video\/([^"\/\?]+)/gi;
         let anyMatch;
         while ((anyMatch = anyVideoLinkRegex.exec(html)) !== null) {
@@ -1470,21 +1458,17 @@ function parseSearchResults(html) {
             const videoSlug = anyMatch[2];
             
             // Try to find title nearby
-            const contextStart = Math.max(0, anyMatch.index - 300);
-            const contextEnd = Math.min(html.length, anyMatch.index + 300);
+            const contextStart = Math.max(0, anyMatch.index - 200);
+            const contextEnd = Math.min(html.length, anyMatch.index + 200);
             const context = html.substring(contextStart, contextEnd);
             
-            const titleMatch = context.match(/title="([^"]+)"/i) || context.match(/alt="([^"]+)"/i);
-            let title = titleMatch ? cleanVideoTitle(titleMatch[1]) : videoSlug.replace(/[\+_-]/g, ' ');
-            
-            // Try to find thumbnail in context
-            const thumbMatch = context.match(/(?:data-src|src)="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i);
-            const thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
+            const titleMatch = context.match(/title="([^"]+)"/);
+            let title = titleMatch ? cleanVideoTitle(titleMatch[1]) : videoSlug.replace(/[_-]/g, ' ');
 
             videos.push({
                 id: videoId,
                 title: title,
-                thumbnail: thumbnail,
+                thumbnail: `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`,
                 duration: 0,
                 views: 0,
                 uploadDate: 0,
@@ -1492,21 +1476,13 @@ function parseSearchResults(html) {
                 uploader: { name: "", url: "", avatar: "" }
             });
         }
-        log(`parseSearchResults: Tier 4 (permissive) found ${videos.length} videos`);
+        log(`parseSearchResults: Most permissive pattern found ${videos.length} videos`);
     }
 
     if (videos.length === 0) {
         log("parseSearchResults: WARNING - No videos found with any pattern!");
         log("HTML length: " + html.length);
-        log("HTML sample (first 1500 chars): " + html.substring(0, 1500));
-        
-        // Check if we can see any video links at all
-        const anyVideoLinks = html.match(/href="\/[a-zA-Z0-9]+\/video\//g);
-        log("Raw video links found in HTML: " + (anyVideoLinks ? anyVideoLinks.length : 0));
-        
-        if (anyVideoLinks && anyVideoLinks.length > 0) {
-            log("Sample video links found: " + anyVideoLinks.slice(0, 3).join(", "));
-        }
+        log("HTML sample (first 1000 chars): " + html.substring(0, 1000));
     } else {
         log(`parseSearchResults: Successfully parsed ${videos.length} videos`);
     }
@@ -1585,109 +1561,134 @@ function parsePornstarsPage(html) {
 
 function parsePlaylistsPage(html) {
     const playlists = [];
-    const seenIds = new Set();
     
-    log("parsePlaylistsPage: Starting to parse playlists HTML");
+    // Enhanced patterns to match SpankBang's playlist structure
+    // Added pattern for <a> tags with class="playlist-item"
+    const playlistBlockPatterns = [
+        /<a[^>]*class="[^"]*playlist-item[^"]*"[^>]*>([\s\S]*?)<\/a>/gi,
+        /<div[^>]*class="[^"]*(?:playlist-item|playlist|video-item|item|thumb|card)[^"]*"[^>]*>([\s\S]*?)<\/div>\s*(?:<\/div>|\s*<div)/gi,
+        /<article[^>]*class="[^"]*(?:playlist|item)[^"]*"[^>]*>([\s\S]*?)<\/article>/gi,
+        /<li[^>]*class="[^"]*(?:playlist|item)[^"]*"[^>]*>([\s\S]*?)<\/li>/gi,
+        /<div[^>]*class="[^"]*(?:thumb|item)[^"]*"[^>]*>([\s\S]*?)<\/div>/gi
+    ];
     
-    // Strategy 1: Parse playlist-item anchors with full structure
-    const playlistItemPattern = /<a[^>]*href="\/([a-z0-9]+)\/playlist\/([^"\/]+)\/?\"[^>]*class="[^"]*playlist-item[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
-    
-    let match;
-    while ((match = playlistItemPattern.exec(html)) !== null) {
-        const shortId = match[1];
-        const slug = match[2].replace(/\+/g, ' ').replace(/%20/g, ' ');
-        const block = match[3];
-        const playlistId = `${shortId}:${match[2]}`;
-        
-        if (seenIds.has(playlistId)) continue;
-        seenIds.add(playlistId);
-        
-        // Extract name from <p class="inf">
-        const nameMatch = block.match(/<p[^>]*class="[^"]*inf[^"]*"[^>]*>([^<]+)<\/p>/i);
-        const name = nameMatch ? nameMatch[1].trim() : slug;
-        
-        // Extract video count from <span class="len">
-        const countMatch = block.match(/<span[^>]*class="[^"]*len[^"]*"[^>]*>\s*(\d+)\s*videos?\s*<\/span>/i);
-        const videoCount = countMatch ? parseInt(countMatch[1]) : 0;
-        
-        // Extract thumbnail - get first cover image
-        const thumbMatch = block.match(/<span[^>]*class="[^"]*cover[^"]*"[^>]*>[\s\S]*?<img[^>]*src="([^"]+)"/i);
-        let thumbnail = thumbMatch ? thumbMatch[1] : "";
-        if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
-        else if (thumbnail && !thumbnail.startsWith('http')) thumbnail = CONFIG.EXTERNAL_URL_BASE + thumbnail;
-        
-        log(`Found playlist: ${name} (${playlistId}) with ${videoCount} videos`);
-        
-        playlists.push({
-            id: playlistId,
-            name: name,
-            thumbnail: thumbnail,
-            author: "",
-            videoCount: videoCount,
-            url: `spankbang://playlist/${playlistId}`
-        });
+    for (const playlistBlockPattern of playlistBlockPatterns) {
+        let blockMatch;
+        while ((blockMatch = playlistBlockPattern.exec(html)) !== null) {
+            // Use full match for <a> tags to include href, use capture group for others
+            const fullMatch = blockMatch[0];
+            const block = blockMatch[1] || blockMatch[0];
+            if (!block || block.trim().length < 10) continue;
+            
+            // Check for href in both full match and block (for different pattern types)
+            const hrefMatch = fullMatch.match(/href="\/([a-z0-9]+)\/playlist\/([^"\/]+)\/?"/i) ||
+                              block.match(/href="\/([a-z0-9]+)\/playlist\/([^"\/]+)\/?"/i);
+            if (hrefMatch) {
+                const shortId = hrefMatch[1];
+                const playlistId = `${shortId}:${hrefMatch[2]}`;
+                
+                // Enhanced name extraction - also look for <p class="inf">
+                const nameMatch = block.match(/<p[^>]*class="[^"]*inf[^"]*"[^>]*>([^<]+)<\/p>/i) ||
+                                  block.match(/title="([^"]+)"/i) || 
+                                  block.match(/<span[^>]*class="[^"]*(?:title|name)[^"]*"[^>]*>([^<]+)<\/span>/i) ||
+                                  block.match(/<h[1-6][^>]*>([^<]+)<\/h[1-6]>/i) ||
+                                  block.match(/<div[^>]*class="[^"]*(?:title|name)[^"]*"[^>]*>([^<]+)<\/div>/i);
+                const name = nameMatch ? (nameMatch[1] || nameMatch[2] || "").trim() : hrefMatch[2].replace(/[+_-]/g, ' ');
+                
+                const thumbMatch = block.match(/(?:data-src|src)="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i) ||
+                                   block.match(/(?:data-src|src)="([^"]+)"/i);
+                let thumbnail = thumbMatch ? thumbMatch[1] : "";
+                if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
+                else if (thumbnail && !thumbnail.startsWith('http')) thumbnail = CONFIG.EXTERNAL_URL_BASE + thumbnail;
+                
+                // Enhanced video count extraction with multiple patterns
+                // Added specific pattern for <span class="len">
+                const countPatterns = [
+                    /<span[^>]*class="[^"]*len[^"]*"[^>]*>\s*(\d+)\s*videos?/i,
+                    /(\d+)\s*videos?/i,
+                    /<span[^>]*class="[^"]*(?:count|videos|video-count|vid)[^"]*"[^>]*>(\d+)<\/span>/i,
+                    /<div[^>]*class="[^"]*(?:count|videos|video-count|vid)[^"]*"[^>]*>(\d+)<\/div>/i,
+                    />\s*(\d+)\s*<\/span>/i,
+                    />\s*(\d+)\s*<\/div>/i
+                ];
+                
+                let videoCount = 0;
+                for (const pattern of countPatterns) {
+                    const countMatch = block.match(pattern);
+                    if (countMatch && countMatch[1]) {
+                        const parsedCount = parseInt(countMatch[1]);
+                        if (!isNaN(parsedCount) && parsedCount > 0) {
+                            videoCount = parsedCount;
+                            break;
+                        }
+                    }
+                }
+                
+                // If we still can't find count in block, search in nearby context
+                if (videoCount === 0) {
+                    const contextStart = Math.max(0, playlistBlockPattern.lastIndex - 600);
+                    const contextEnd = Math.min(html.length, playlistBlockPattern.lastIndex + 200);
+                    const context = html.substring(contextStart, contextEnd);
+                    
+                    const contextPattern = new RegExp(`/${shortId}/playlist/${hrefMatch[2]}[^>]*>[\\s\\S]{0,150}?(\\d+)\\s*videos?`, 'i');
+                    const contextMatch = context.match(contextPattern);
+                    if (contextMatch && contextMatch[1]) {
+                        videoCount = parseInt(contextMatch[1]);
+                    }
+                }
+                
+                if (!playlists.find(p => p.id === playlistId) && name.length > 0) {
+                    log(`Found playlist: ${name} (ID: ${playlistId}) with ${videoCount} videos`);
+                    playlists.push({
+                        id: playlistId,
+                        name: name,
+                        thumbnail: thumbnail,
+                        author: "",
+                        videoCount: videoCount,
+                        url: `spankbang://playlist/${playlistId}`
+                    });
+                }
+            }
+        }
+        if (playlists.length > 0) break;
     }
     
-    // Strategy 2: Find all playlist links and extract context
-    if (playlists.length === 0) {
-        log("parsePlaylistsPage: Strategy 1 found 0 playlists, trying context-based extraction");
+    // Fallback: broader link pattern search
+    const linkPattern = /<a[^>]*href="\/([a-z0-9]+)\/playlist\/([^"\/]+)\/?\"[^>]*(?:title="([^"]+)")?/gi;
+    let match;
+    while ((match = linkPattern.exec(html)) !== null) {
+        const shortId = match[1];
+        const slug = match[2];
+        const playlistId = `${shortId}:${slug}`;
+        const name = match[3] ? match[3].trim() : slug.replace(/[+_-]/g, ' ');
         
-        const allPlaylistLinks = /href="\/([a-z0-9]+)\/playlist\/([^"\/\?]+)\/?"/gi;
-        while ((match = allPlaylistLinks.exec(html)) !== null) {
-            const shortId = match[1];
-            const slugRaw = match[2];
-            const slug = slugRaw.replace(/\+/g, ' ').replace(/%20/g, ' ');
-            const playlistId = `${shortId}:${slugRaw}`;
-            
-            if (seenIds.has(playlistId)) continue;
-            if (shortId === 'users' || shortId === 'search') continue;
-            seenIds.add(playlistId);
-            
-            // Extract context around the link
-            const contextStart = Math.max(0, match.index - 800);
-            const contextEnd = Math.min(html.length, match.index + 800);
-            const context = html.substring(contextStart, contextEnd);
-            
-            // Look for name in <p class="inf"> or title attribute
-            let name = slug;
-            const namePatterns = [
-                /<p[^>]*class="[^"]*inf[^"]*"[^>]*>([^<]+)<\/p>/i,
-                /title="([^"]+)"/i,
-                /alt="([^"]+)"/i
-            ];
-            for (const pattern of namePatterns) {
-                const nameMatch = context.match(pattern);
-                if (nameMatch && nameMatch[1]) {
-                    name = nameMatch[1].trim();
-                    break;
-                }
-            }
-            
-            // Look for video count in <span class="len">
-            const countPatterns = [
-                /<span[^>]*class="[^"]*len[^"]*"[^>]*>\s*(\d+)\s*videos?\s*<\/span>/i,
-                />\s*(\d+)\s*videos?\s*</i
-            ];
-            let videoCount = 0;
-            for (const pattern of countPatterns) {
-                const countMatch = context.match(pattern);
-                if (countMatch && countMatch[1]) {
-                    videoCount = parseInt(countMatch[1]);
-                    if (videoCount > 0) break;
-                }
-            }
-            
-            // Look for thumbnail
+        if (!playlists.find(p => p.id === playlistId)) {
             let thumbnail = "";
-            const thumbMatch = context.match(/<img[^>]*(?:data-src|src)="([^"]+)"/i);
+            const thumbPattern = new RegExp(`href="/${shortId}/playlist/${slug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^"]*"[\\s\\S]{0,500}?(?:data-src|src)="([^"]+)"`, 'i');
+            const thumbMatch = html.match(thumbPattern);
             if (thumbMatch && thumbMatch[1]) {
                 thumbnail = thumbMatch[1];
                 if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
-                else if (!thumbnail.startsWith('http')) thumbnail = CONFIG.EXTERNAL_URL_BASE + thumbnail;
             }
             
-            log(`Found playlist (context): ${name} (${playlistId}) with ${videoCount} videos`);
+            // Enhanced context search for video count - look for both patterns
+            // Pattern 1: <span class="len"> 7 videos </span>
+            // Pattern 2: general (\d+) videos
+            const countPattern1 = new RegExp(`href="/${shortId}/playlist/${slug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^"]*"[\\s\\S]{0,500}?<span[^>]*class="[^"]*len[^"]*"[^>]*>\\s*(\\d+)\\s*videos?`, 'i');
+            const countPattern2 = new RegExp(`href="/${shortId}/playlist/${slug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^"]*"[\\s\\S]{0,500}?(\\d+)\\s*videos?`, 'i');
             
+            let videoCount = 0;
+            let countMatch = html.match(countPattern1);
+            if (countMatch && countMatch[1]) {
+                videoCount = parseInt(countMatch[1]);
+            } else {
+                countMatch = html.match(countPattern2);
+                if (countMatch && countMatch[1]) {
+                    videoCount = parseInt(countMatch[1]);
+                }
+            }
+            
+            log(`Found playlist (fallback): ${name} (ID: ${playlistId}) with ${videoCount} videos`);
             playlists.push({
                 id: playlistId,
                 name: name,
@@ -1699,41 +1700,29 @@ function parsePlaylistsPage(html) {
         }
     }
     
-    // Strategy 3: Fallback to any playlist href pattern
     if (playlists.length === 0) {
-        log("parsePlaylistsPage: Strategy 2 found 0 playlists, trying simple link extraction");
-        
-        const simplePattern = /<a[^>]*href="\/playlist\/([^"]+)"[^>]*>/gi;
+        const simplePattern = /<a[^>]*href="\/playlist\/([^"]+)"[^>]*>[\s\S]*?(?:<img[^>]*(?:data-src|src)="([^"]+)")?[\s\S]*?([^<>]{3,50})<\/a>/gi;
         while ((match = simplePattern.exec(html)) !== null) {
             const playlistId = match[1].replace(/\/$/, '');
-            const slug = playlistId.replace(/\+/g, ' ').replace(/[_-]/g, ' ');
+            const thumbnail = match[2] || "";
+            const name = match[3] ? match[3].replace(/<[^>]*>/g, '').trim() : playlistId;
             
-            if (seenIds.has(playlistId)) continue;
-            seenIds.add(playlistId);
-            
-            playlists.push({
-                id: playlistId,
-                name: slug,
-                thumbnail: "",
-                author: "",
-                videoCount: 0,
-                url: `spankbang://playlist/${playlistId}`
-            });
+            if (name.length > 2 && name.length < 100) {
+                if (!playlists.find(p => p.id === playlistId)) {
+                    playlists.push({
+                        id: playlistId,
+                        name: name,
+                        thumbnail: thumbnail.startsWith('//') ? 'https:' + thumbnail : thumbnail,
+                        author: "",
+                        videoCount: 0,
+                        url: `spankbang://playlist/${playlistId}`
+                    });
+                }
+            }
         }
     }
     
-    if (playlists.length === 0) {
-        log("parsePlaylistsPage: WARNING - No playlists found with any strategy");
-        log("HTML length: " + html.length);
-        log("HTML sample (first 1000 chars): " + html.substring(0, 1000));
-        
-        // Check if we can see any playlist links at all
-        const anyPlaylistLinks = html.match(/\/playlist\//g);
-        log("Raw playlist links found in HTML: " + (anyPlaylistLinks ? anyPlaylistLinks.length : 0));
-    } else {
-        log(`parsePlaylistsPage: Successfully found ${playlists.length} playlists`);
-    }
-    
+    log(`parsePlaylistsPage: Found total ${playlists.length} playlists`);
     return playlists;
 }
 
@@ -3866,12 +3855,12 @@ source.getPlaylist = function(url) {
                 const [shortId, slug] = id.split(':');
                 playlistUrl = `${BASE_URL}/${shortId}/playlist/${slug}/`;
                 playlistId = id;
-                playlistName = slug.replace(/[_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                playlistName = slug.replace(/[+_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
                 log(`Parsed playlist ID: ${playlistId} (shortId: ${shortId}, slug: ${slug})`);
             } else {
                 playlistUrl = `${BASE_URL}/playlist/${id}/`;
                 playlistId = id;
-                playlistName = id.replace(/[_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                playlistName = id.replace(/[+_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
             }
         } else {
             throw new ScriptException("Invalid playlist URL format: " + url);
