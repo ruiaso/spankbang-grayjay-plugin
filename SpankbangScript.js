@@ -351,7 +351,7 @@ function createVideoSources(videoData) {
                 const configQ = CONFIG.VIDEO_QUALITIES[qualityKey] || { width: 854, height: 480 };
                 videoSources.push(new VideoUrlSource({
                     url: url,
-                    name: quality.toUpperCase(),
+                    name: quality.toUpperCase().includes('P') ? quality.toUpperCase() : quality.toUpperCase() + "P",
                     container: "video/mp4",
                     width: configQ.width,
                     height: configQ.height
@@ -360,7 +360,24 @@ function createVideoSources(videoData) {
         }
     }
 
+    // Fallback: If no sources found yet, try to look for any .mp4 URL in sources
+    if (videoSources.length === 0 && videoData.sources) {
+        for (const url of Object.values(videoData.sources)) {
+            if (typeof url === 'string' && url.startsWith('http') && url.includes('.mp4')) {
+                videoSources.push(new VideoUrlSource({
+                    url: url,
+                    name: "MP4 Source",
+                    container: "video/mp4",
+                    width: 854,
+                    height: 480
+                }));
+                break;
+            }
+        }
+    }
+
     if (videoSources.length === 0) {
+        log("No video sources found for data: " + JSON.stringify(videoData.sources));
         throw new ScriptException("No video sources available for this video");
     }
 
@@ -607,10 +624,31 @@ function parseSearchResults(html) {
     const videos = [];
     const seenIds = new Set();
 
-    // Strategy 1: Find video elements via class
+    // Strategy 0: Direct JSON extraction if available
+    const jsonDataMatch = html.match(/var\s+initial_data\s*=\s*(\{.*?\});/s) || html.match(/window\.__INITIAL_STATE__\s*=\s*(\{.*?\});/s);
+    if (jsonDataMatch) {
+        try {
+            const data = JSON.parse(jsonDataMatch[1]);
+            const videoList = data.videos || (data.content && data.content.videos) || [];
+            for (const v of videoList) {
+                if (seenIds.has(v.id)) continue;
+                seenIds.add(v.id);
+                videos.push({
+                    id: v.id.toString(),
+                    title: cleanVideoTitle(v.title || v.name),
+                    thumbnail: v.thumbnail || v.thumb || "",
+                    url: v.url ? (v.url.startsWith('http') ? v.url : BASE_URL + v.url) : `${BASE_URL}/videos/${v.id}`,
+                    uploader: { name: v.uploader || "", url: "", avatar: "" }
+                });
+            }
+        } catch (e) {}
+    }
+
+    // Strategy 1: Find video elements via class (updated classes)
     const videoPatterns = [
-        /<div[^>]*class="[^"]*video-item[^"]*"[^>]*>[\s\S]*?href="([^"]*\/videos\/([^"\/]+))"[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?<div[^>]*class="[^"]*title[^"]*"[^>]*>([^<]+)<\/div>/gi,
-        /<div[^>]*class="[^"]*v-item[^"]*"[^>]*>[\s\S]*?href="([^"]*\/videos\/([^"\/]+))"[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?<span[^>]*class="[^"]*title[^"]*"[^>]*>([^<]+)<\/span>/gi
+        /<div[^>]*class="[^"]*video-item[^"]*"[^>]*>[\s\S]*?href="([^"]*\/videos\/([^"\/]+))"[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?(?:<div[^>]*class="[^"]*title[^"]*"[^>]*>|<a[^>]*>)([^<]+)<\/(?:div|a)>/gi,
+        /<div[^>]*class="[^"]*v-item[^"]*"[^>]*>[\s\S]*?href="([^"]*\/videos\/([^"\/]+))"[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?<span[^>]*class="[^"]*title[^"]*"[^>]*>([^<]+)<\/span>/gi,
+        /<div[^>]*class="[^"]*video_list[^"]*"[^>]*>[\s\S]*?href="([^"]*\/videos\/([^"\/]+))"[\s\S]*?src="([^"]+)"[\s\S]*?<span[^>]*>([^<]+)<\/span>/gi
     ];
 
     for (const pattern of videoPatterns) {
@@ -637,43 +675,45 @@ function parseSearchResults(html) {
         }
     }
 
-    // Strategy 2: More general parsing
-    const allVideoLinksPattern = /href="((?:https?:\/\/)?(?:www\.)?spankbang\.com)?([^"]*\/videos\/([^"\/]+))"/gi;
-    let linkMatch;
-    
-    while ((linkMatch = allVideoLinksPattern.exec(html)) !== null) {
-        if (videos.length >= 100) break;
+    // Strategy 2: More general fallback parsing
+    if (videos.length === 0) {
+        const allVideoLinksPattern = /href="((?:https?:\/\/)?(?:www\.)?spankbang\.com)?([^"]*\/videos\/([^"\/]+))"/gi;
+        let linkMatch;
         
-        let videoUrl = linkMatch[2];
-        let videoId = linkMatch[3];
-        
-        if (seenIds.has(videoId)) continue;
-        seenIds.add(videoId);
+        while ((linkMatch = allVideoLinksPattern.exec(html)) !== null) {
+            if (videos.length >= 100) break;
+            
+            let videoUrl = linkMatch[2];
+            let videoId = linkMatch[3];
+            
+            if (seenIds.has(videoId)) continue;
+            seenIds.add(videoId);
 
-        if (videoUrl.startsWith('/')) videoUrl = BASE_URL + videoUrl;
-        
-        // Try to find title and thumbnail in surrounding context
-        const contextIdx = linkMatch.index;
-        const context = html.substring(Math.max(0, contextIdx - 500), Math.min(html.length, contextIdx + 500));
-        
-        let title = videoId.replace(/-/g, ' ');
-        const titleMatch = context.match(/title="([^"]+)"|<[^>]*class="[^"]*title[^"]*"[^>]*>([^<]+)<\//i);
-        if (titleMatch) title = titleMatch[1] || titleMatch[2];
+            if (videoUrl.startsWith('/')) videoUrl = BASE_URL + videoUrl;
+            
+            // Try to find title and thumbnail in surrounding context
+            const contextIdx = linkMatch.index;
+            const context = html.substring(Math.max(0, contextIdx - 500), Math.min(html.length, contextIdx + 500));
+            
+            let title = videoId.replace(/-/g, ' ');
+            const titleMatch = context.match(/title="([^"]+)"|<[^>]*class="[^"]*title[^"]*"[^>]*>([^<]+)<\//i);
+            if (titleMatch) title = titleMatch[1] || titleMatch[2];
 
-        let thumbnail = "";
-        const thumbMatch = context.match(/(?:data-src|src)="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i);
-        if (thumbMatch) {
-            thumbnail = thumbMatch[1];
-            if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
+            let thumbnail = "";
+            const thumbMatch = context.match(/(?:data-src|src)="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i);
+            if (thumbMatch) {
+                thumbnail = thumbMatch[1];
+                if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
+            }
+
+            videos.push({
+                id: videoId,
+                title: cleanVideoTitle(title),
+                thumbnail: thumbnail,
+                url: videoUrl,
+                uploader: { name: "", url: "", avatar: "" }
+            });
         }
-
-        videos.push({
-            id: videoId,
-            title: cleanVideoTitle(title),
-            thumbnail: thumbnail,
-            url: videoUrl,
-            uploader: { name: "", url: "", avatar: "" }
-        });
     }
 
     return videos;
@@ -958,6 +998,11 @@ function getHomeResults(page) {
     try {
         const html = makeRequest(url, API_HEADERS, 'home page');
         const videos = parseSearchResults(html);
+        if (videos.length === 0) {
+            log("No videos found on home page, trying mobile version");
+            const mobileHtml = makeRequest(url, { ...API_HEADERS, "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1" }, 'home page mobile');
+            return parseSearchResults(mobileHtml).map(v => createPlatformVideo(v));
+        }
         return videos.map(v => createPlatformVideo(v));
     } catch (error) {
         log("Home page error: " + error.message);
