@@ -66,6 +66,17 @@ function getAuthHeaders() {
 
 function makeRequest(url, headers = null, context = 'request') {
     try {
+        // Normalize internal URLs to HTTPS
+        if (url.startsWith('spankbang://')) {
+            if (url.includes('/profile/pornstar:')) {
+                url = url.replace('spankbang://profile/pornstar:', `${BASE_URL}/pornstar/`);
+            } else if (url.includes('/profile/')) {
+                url = url.replace('spankbang://profile/', `${BASE_URL}/profile/`);
+            } else if (url.includes('/channel/')) {
+                url = url.replace('spankbang://channel/', `${BASE_URL}/creators/`);
+            }
+        }
+
         const requestHeaders = headers || getAuthHeaders();
         const response = http.GET(url, requestHeaders, false);
         if (!response.isOk) {
@@ -411,28 +422,39 @@ function extractVideoSources(html) {
         }
     }
 
-    // If no HLS found, try MP4 sources
-    if (!sources.hls) {
-        const mp4Patterns = [
-            /"(\d+)p?"\s*:\s*\{\s*[^}]*"url"\s*:\s*"([^"]+\.mp4[^"]*)"/gi,
-            /"quality"\s*:\s*"?(\d+)p?"?\s*[^}]*"url"\s*:\s*"([^"]+)"/gi,
-            /"(\d+)"\s*:\s*"(https?:\/\/[^"]+\.mp4[^"]*)"/gi,
-            /https?:\/\/[^\s"<>]+\.mp4[^\s"<>]*/g
-        ];
+    // Try to extract stream_data if present (often contains direct URLs)
+    const streamDataMatch = html.match(/var\s+stream_data\s*=\s*(\{.*?\});/s);
+    if (streamDataMatch) {
+        try {
+            const streamData = JSON.parse(streamDataMatch[1]);
+            for (const quality in streamData) {
+                if (streamData[quality] && typeof streamData[quality] === 'string' && streamData[quality].startsWith('http')) {
+                    sources[quality.replace('p', '')] = streamData[quality];
+                }
+            }
+        } catch (e) {}
+    }
 
-        for (const pattern of mp4Patterns) {
-            let match;
-            const localPattern = typeof pattern === 'string' ? new RegExp(pattern, 'gi') : pattern;
-            while ((match = localPattern.exec(html)) !== null) {
-                let quality = match[1];
-                let url = match[2] ? match[2].replace(/\\/g, '') : match[0].replace(/\\/g, '');
-                
-                if (url.startsWith('//')) url = 'https:' + url;
-                if (url && url.startsWith('http') && url.includes('.mp4')) {
-                    if (!quality) quality = '720';
-                    if (!sources[quality] || url.length > sources[quality].length) {
-                        sources[quality] = url;
-                    }
+    // If no HLS found, try MP4 sources
+    const mp4Patterns = [
+        /"(\d+)p?"\s*:\s*\{\s*[^}]*"url"\s*:\s*"([^"]+\.mp4[^"]*)"/gi,
+        /"quality"\s*:\s*"?(\d+)p?"?\s*[^}]*"url"\s*:\s*"([^"]+)"/gi,
+        /"(\d+)"\s*:\s*"(https?:\/\/[^"]+\.mp4[^"]*)"/gi,
+        /https?:\/\/[^\s"<>]+\.mp4[^\s"<>]*/g
+    ];
+
+    for (const pattern of mp4Patterns) {
+        let match;
+        const localPattern = typeof pattern === 'string' ? new RegExp(pattern, 'gi') : pattern;
+        while ((match = localPattern.exec(html)) !== null) {
+            let quality = match[1];
+            let url = match[2] ? match[2].replace(/\\/g, '') : match[0].replace(/\\/g, '');
+            
+            if (url.startsWith('//')) url = 'https:' + url;
+            if (url && url.startsWith('http') && url.includes('.mp4')) {
+                if (!quality) quality = '720';
+                if (!sources[quality] || url.length > sources[quality].length) {
+                    sources[quality] = url;
                 }
             }
         }
@@ -585,92 +607,70 @@ function parseSearchResults(html) {
     const videos = [];
     const seenIds = new Set();
 
-    // First, try to find all video links on the page - BUT ONLY SPANKBANG URLS
-    const allVideoLinksPattern = /href="((?:https?:\/\/)?(?:www\.)?spankbang\.com)?([^"]*\/videos\/[^"]+)"/gi;
-    let linkMatch;
-    let videoUrlsFound = [];
-    
-    while ((linkMatch = allVideoLinksPattern.exec(html)) !== null) {
-        let videoUrl = linkMatch[2] || linkMatch[0];
-        
-        // Skip if it's not a spankbang URL
-        if (videoUrl.includes('xhamster') || videoUrl.includes('xvideos') || videoUrl.includes('pornhub')) {
-            continue;
+    // Strategy 1: Find video elements via class
+    const videoPatterns = [
+        /<div[^>]*class="[^"]*video-item[^"]*"[^>]*>[\s\S]*?href="([^"]*\/videos\/([^"\/]+))"[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?<div[^>]*class="[^"]*title[^"]*"[^>]*>([^<]+)<\/div>/gi,
+        /<div[^>]*class="[^"]*v-item[^"]*"[^>]*>[\s\S]*?href="([^"]*\/videos\/([^"\/]+))"[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?<span[^>]*class="[^"]*title[^"]*"[^>]*>([^<]+)<\/span>/gi
+    ];
+
+    for (const pattern of videoPatterns) {
+        let match;
+        while ((match = pattern.exec(html)) !== null) {
+            let videoUrl = match[1];
+            let videoId = match[2];
+            let thumbnail = match[3];
+            let title = match[4].trim();
+
+            if (seenIds.has(videoId)) continue;
+            seenIds.add(videoId);
+
+            if (videoUrl.startsWith('/')) videoUrl = BASE_URL + videoUrl;
+            if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
+
+            videos.push({
+                id: videoId,
+                title: cleanVideoTitle(title),
+                thumbnail: thumbnail,
+                url: videoUrl,
+                uploader: { name: "", url: "", avatar: "" }
+            });
         }
-        
-        // Normalize URL
-        if (videoUrl.startsWith('href="')) {
-            videoUrl = videoUrl.replace('href="', '').replace('"', '');
-        }
-        if (videoUrl.startsWith('/')) {
-            videoUrl = BASE_URL + videoUrl;
-        }
-        if (!videoUrl.startsWith('http')) {
-            videoUrl = BASE_URL + '/' + videoUrl;
-        }
-        
-        // Final check: must contain spankbang.com
-        if (!videoUrl.includes('spankbang.com')) {
-            continue;
-        }
-        
-        videoUrlsFound.push(videoUrl);
     }
 
-    // Remove duplicates and process
-    for (const videoUrl of videoUrlsFound) {
+    // Strategy 2: More general parsing
+    const allVideoLinksPattern = /href="((?:https?:\/\/)?(?:www\.)?spankbang\.com)?([^"]*\/videos\/([^"\/]+))"/gi;
+    let linkMatch;
+    
+    while ((linkMatch = allVideoLinksPattern.exec(html)) !== null) {
         if (videos.length >= 100) break;
         
-        const idMatch = videoUrl.match(/-(\d+)$/) || videoUrl.match(/\/videos\/([^\/\?-]+)/);
-        const videoId = idMatch ? idMatch[1] : generateVideoId();
+        let videoUrl = linkMatch[2];
+        let videoId = linkMatch[3];
         
         if (seenIds.has(videoId)) continue;
         seenIds.add(videoId);
 
-        // Extract title from URL or surrounding context
-        let title = videoUrl.split('/videos/')[1]?.replace(/-/g, ' ') || "Unknown";
+        if (videoUrl.startsWith('/')) videoUrl = BASE_URL + videoUrl;
         
-        // Try to find better title in nearby text
-        const contextIdx = html.indexOf(videoUrl);
-        if (contextIdx > 0) {
-            const context = html.substring(Math.max(0, contextIdx - 500), Math.min(html.length, contextIdx + 200));
-            
-            const titleMatch = context.match(/title="([^"]+)"|<[^>]*>([^<]{5,100})<\/a>/);
-            if (titleMatch && (titleMatch[1] || titleMatch[2])) {
-                title = cleanVideoTitle(titleMatch[1] || titleMatch[2]);
-            }
-        }
+        // Try to find title and thumbnail in surrounding context
+        const contextIdx = linkMatch.index;
+        const context = html.substring(Math.max(0, contextIdx - 500), Math.min(html.length, contextIdx + 500));
+        
+        let title = videoId.replace(/-/g, ' ');
+        const titleMatch = context.match(/title="([^"]+)"|<[^>]*class="[^"]*title[^"]*"[^>]*>([^<]+)<\//i);
+        if (titleMatch) title = titleMatch[1] || titleMatch[2];
 
         let thumbnail = "";
-        const thumbPatterns = [
-            /poster="([^"]+)"/,
-            /(?:data-src|src)="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/
-        ];
-
-        if (contextIdx > 0) {
-            const thumbContext = html.substring(Math.max(0, contextIdx - 300), Math.min(html.length, contextIdx + 100));
-            for (const pattern of thumbPatterns) {
-                const match = thumbContext.match(pattern);
-                if (match && match[1]) {
-                    thumbnail = match[1];
-                    // Skip xhamster thumbnails
-                    if (thumbnail.includes('xhamster.com') && !thumbnail.includes('xhcdn.com')) {
-                        thumbnail = "";
-                        continue;
-                    }
-                    if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
-                    break;
-                }
-            }
+        const thumbMatch = context.match(/(?:data-src|src)="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i);
+        if (thumbMatch) {
+            thumbnail = thumbMatch[1];
+            if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
         }
 
         videos.push({
             id: videoId,
-            title: title || "Unknown",
+            title: cleanVideoTitle(title),
             thumbnail: thumbnail,
-            duration: 0,
-            views: 0,
-            uploadDate: 0,
             url: videoUrl,
             uploader: { name: "", url: "", avatar: "" }
         });
@@ -952,7 +952,7 @@ source.getHome = function() {
 
 function getHomeResults(page) {
     // Parse the homepage directly - most reliable
-    let url = BASE_URL + "/";
+    let url = page > 1 ? `${BASE_URL}/?page=${page}` : `${BASE_URL}/`;
     log("Fetching home page: " + url);
     
     try {
@@ -961,7 +961,7 @@ function getHomeResults(page) {
         return videos.map(v => createPlatformVideo(v));
     } catch (error) {
         log("Home page error: " + error.message);
-        throw error;
+        return [];
     }
 }
 
@@ -1638,26 +1638,17 @@ function parseHistoryPage(html) {
     return historyVideos;
 }
 
-source.getUserHistory = function() {
-    log("Getting user history");
-    
-    try {
-        log("Fetching history from /users/history");
-        const historyResp = http.GET(`${BASE_URL}/users/history`, getAuthHeaders(), true);
-        
-        if (!historyResp.isOk) {
-            log("Failed to fetch history, user may not be logged in");
-            return [];
-        }
-        
-        const historyVideos = parseHistoryPage(historyResp.body);
-        log(`Found ${historyVideos.length} videos in history`);
-        
-        return historyVideos.map(v => createPlatformVideo(v));
-    } catch (error) {
-        log("Failed to fetch history: " + error.message);
-        return [];
-    }
+source.searchPlaylists = function(query) {
+    return new ContentPager([], false, {});
+};
+
+source.syncHistory = function() {
+    return [];
+};
+
+source.getHistoryPager = function() {
+    const videos = source.getUserHistory() || [];
+    return new ContentPager(videos, false, {});
 };
 
 log("Spankbang plugin loaded");
