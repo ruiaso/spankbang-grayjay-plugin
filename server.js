@@ -22,7 +22,7 @@ const loginPage = `
 <!DOCTYPE html>
 <html>
 <head>
-  <title>SpankBang Login</title>
+  <title>SpankBang Cookie Setup</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     * { box-sizing: border-box; }
@@ -39,30 +39,61 @@ const loginPage = `
     }
     .container {
       width: 100%;
-      max-width: 350px;
-      text-align: center;
+      max-width: 500px;
     }
     h1 {
-      font-size: 22px;
+      font-size: 24px;
       margin: 0 0 10px 0;
+      text-align: center;
     }
-    p {
+    .info-box {
+      background: rgba(255, 193, 7, 0.15);
+      border-left: 4px solid #ffc107;
+      padding: 15px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .step {
+      background: rgba(255,255,255,0.08);
+      padding: 15px;
+      margin-bottom: 12px;
+      border-radius: 10px;
       font-size: 14px;
-      opacity: 0.8;
-      margin: 0 0 25px 0;
-      line-height: 1.4;
+      line-height: 1.5;
+    }
+    .step-title {
+      font-weight: 700;
+      color: #4FC3F7;
+      margin-bottom: 8px;
+      font-size: 15px;
+    }
+    .step-content {
+      color: rgba(255,255,255,0.9);
+    }
+    .code {
+      background: rgba(0,0,0,0.3);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      margin: 8px 0;
+      word-break: break-all;
+      border: 1px solid rgba(255,255,255,0.1);
     }
     .btn {
       display: block;
       width: 100%;
-      padding: 16px 20px;
-      font-size: 16px;
+      padding: 14px 20px;
+      font-size: 15px;
       font-weight: 600;
       border: none;
-      border-radius: 12px;
+      border-radius: 10px;
       cursor: pointer;
       text-decoration: none;
-      margin-bottom: 12px;
+      text-align: center;
+      margin-bottom: 10px;
       transition: transform 0.1s, opacity 0.2s;
     }
     .btn:active { transform: scale(0.98); }
@@ -74,55 +105,80 @@ const loginPage = `
       background: #27ae60;
       color: white;
     }
-    .step {
-      display: flex;
-      align-items: center;
-      text-align: left;
-      margin-bottom: 15px;
-      padding: 12px;
-      background: rgba(255,255,255,0.1);
-      border-radius: 10px;
-    }
-    .step-num {
-      width: 28px;
-      height: 28px;
-      background: rgba(255,255,255,0.2);
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: bold;
-      font-size: 14px;
-      margin-right: 12px;
-      flex-shrink: 0;
-    }
-    .step-text {
-      font-size: 14px;
-      line-height: 1.3;
+    .warning {
+      color: #ffc107;
+      font-weight: 600;
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>SpankBang Login</h1>
-    <p>Follow these steps to connect your account:</p>
+    <h1>🍪 SpankBang Authentication Setup</h1>
     
-    <div class="step">
-      <div class="step-num">1</div>
-      <div class="step-text">Tap the button below to open SpankBang and log in</div>
+    <div class="info-box">
+      <strong>⚠️ Why Manual Cookies?</strong><br>
+      SpankBang uses JavaScript-based authentication that Grayjay plugins cannot automate. 
+      You need to manually extract your browser cookies after logging in.
     </div>
-    
-    <a href="https://www.spankbang.com/users/login" class="btn btn-primary" target="_blank">
-      Open SpankBang Login
-    </a>
-    
+
     <div class="step">
-      <div class="step-num">2</div>
-      <div class="step-text">After logging in, come back here and tap "Done"</div>
+      <div class="step-title">Step 1: Login to SpankBang</div>
+      <div class="step-content">
+        Open SpankBang in your browser and log in to your account normally.
+        <a href="https://spankbang.com/users/login" class="btn btn-primary" target="_blank" style="margin-top: 10px;">
+          Open SpankBang Login
+        </a>
+      </div>
     </div>
-    
-    <a href="/login-complete" class="btn btn-success">
-      Done - I'm Logged In
+
+    <div class="step">
+      <div class="step-title">Step 2: Open Browser Developer Tools</div>
+      <div class="step-content">
+        <strong>Chrome/Edge:</strong> Press F12 or Ctrl+Shift+I (Cmd+Option+I on Mac)<br>
+        <strong>Firefox:</strong> Press F12 or Ctrl+Shift+I (Cmd+Option+I on Mac)<br>
+        <strong>Safari:</strong> Enable Developer Menu first, then press Cmd+Option+I
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-title">Step 3: Go to Application/Storage Tab</div>
+      <div class="step-content">
+        • In <strong>Chrome/Edge</strong>: Click "Application" tab → Cookies → spankbang.com<br>
+        • In <strong>Firefox</strong>: Click "Storage" tab → Cookies → https://spankbang.com<br>
+        • In <strong>Safari</strong>: Click "Storage" tab → Cookies → spankbang.com
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-title">Step 4: Copy Cookie Values</div>
+      <div class="step-content">
+        Look for cookies named: <code class="code">auth</code>, <code class="code">session</code>, or <code class="code">sid</code><br><br>
+        Format them as:<br>
+        <div class="code">auth=YOUR_AUTH_VALUE; session=YOUR_SESSION_VALUE</div>
+        <br>
+        <span class="warning">Important:</span> Copy the entire cookie string with all values separated by semicolons.
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-title">Step 5: Configure in Grayjay</div>
+      <div class="step-content">
+        1. Go back to Grayjay app<br>
+        2. Open this plugin's settings<br>
+        3. Find "Authentication Cookies" setting<br>
+        4. Paste your cookie string<br>
+        5. Save settings
+      </div>
+    </div>
+
+    <div class="info-box">
+      <strong>🔒 Privacy Note:</strong><br>
+      Your cookies are stored only on your device and are used solely to authenticate your requests to SpankBang. 
+      Cookies typically expire after 30 days - you'll need to repeat this process when they expire.
+    </div>
+
+    <a href="javascript:window.close()" class="btn btn-success">
+      Done - Close This Window
     </a>
   </div>
 </body>
