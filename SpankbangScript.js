@@ -1316,7 +1316,9 @@ function cleanVideoTitle(title) {
 
 function parseSearchResults(html) {
     const videos = [];
+    const seenIds = new Set();
 
+    // Primary pattern: full video-item divs
     const videoItemRegex = /<div[^>]*class="[^"]*video-item[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/gi;
 
     let itemMatch;
@@ -1327,6 +1329,9 @@ function parseSearchResults(html) {
         if (!linkMatch) continue;
 
         const videoId = linkMatch[1];
+        if (seenIds.has(videoId)) continue;
+        seenIds.add(videoId);
+        
         const videoSlug = linkMatch[2];
 
         const thumbMatch = block.match(/(?:data-src|src)="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/);
@@ -1375,11 +1380,54 @@ function parseSearchResults(html) {
         });
     }
 
+    // Fallback 1: Try broader video-item pattern
     if (videos.length === 0) {
+        log("parseSearchResults: Primary pattern found 0 videos, trying broader patterns...");
+        const broadVideoItemRegex = /<div[^>]*class="[^"]*(?:video-item|item|thumb|video-list-item)[^"]*"[^>]*>([\s\S]*?)<\/div>/gi;
+        
+        while ((itemMatch = broadVideoItemRegex.exec(html)) !== null) {
+            const block = itemMatch[0];
+            
+            const linkMatch = block.match(/href="\/([a-zA-Z0-9]+)\/video\/([^"]+)"/);
+            if (!linkMatch) continue;
+            
+            const videoId = linkMatch[1];
+            if (seenIds.has(videoId)) continue;
+            seenIds.add(videoId);
+            
+            const videoSlug = linkMatch[2];
+            
+            const titleMatch = block.match(/title="([^"]+)"/);
+            let title = titleMatch ? titleMatch[1] : videoSlug.replace(/[_-]/g, ' ');
+            title = cleanVideoTitle(title);
+            
+            const thumbMatch = block.match(/(?:data-src|src)="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/);
+            const thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
+            
+            videos.push({
+                id: videoId,
+                title: title,
+                thumbnail: thumbnail,
+                duration: 0,
+                views: 0,
+                uploadDate: 0,
+                url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
+                uploader: { name: "", url: "", avatar: "" }
+            });
+        }
+        log(`parseSearchResults: Broader pattern found ${videos.length} videos`);
+    }
+
+    // Fallback 2: Direct link extraction
+    if (videos.length === 0) {
+        log("parseSearchResults: Broader pattern found 0 videos, trying direct link extraction...");
         const altVideoRegex = /href="\/([a-zA-Z0-9]+)\/video\/([^"]+)"[^>]*title="([^"]+)"/gi;
         let altMatch;
         while ((altMatch = altVideoRegex.exec(html)) !== null) {
             const videoId = altMatch[1];
+            if (seenIds.has(videoId)) continue;
+            seenIds.add(videoId);
+            
             const videoSlug = altMatch[2];
             let title = cleanVideoTitle(altMatch[3]);
 
@@ -1394,6 +1442,49 @@ function parseSearchResults(html) {
                 uploader: { name: "", url: "", avatar: "" }
             });
         }
+        log(`parseSearchResults: Direct link extraction found ${videos.length} videos`);
+    }
+
+    // Fallback 3: Most permissive - any video link
+    if (videos.length === 0) {
+        log("parseSearchResults: All patterns found 0 videos, trying most permissive pattern...");
+        const anyVideoLinkRegex = /href="\/([a-zA-Z0-9]+)\/video\/([^"\/\?]+)/gi;
+        let anyMatch;
+        while ((anyMatch = anyVideoLinkRegex.exec(html)) !== null) {
+            const videoId = anyMatch[1];
+            if (seenIds.has(videoId)) continue;
+            seenIds.add(videoId);
+            
+            const videoSlug = anyMatch[2];
+            
+            // Try to find title nearby
+            const contextStart = Math.max(0, anyMatch.index - 200);
+            const contextEnd = Math.min(html.length, anyMatch.index + 200);
+            const context = html.substring(contextStart, contextEnd);
+            
+            const titleMatch = context.match(/title="([^"]+)"/);
+            let title = titleMatch ? cleanVideoTitle(titleMatch[1]) : videoSlug.replace(/[_-]/g, ' ');
+
+            videos.push({
+                id: videoId,
+                title: title,
+                thumbnail: `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`,
+                duration: 0,
+                views: 0,
+                uploadDate: 0,
+                url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
+                uploader: { name: "", url: "", avatar: "" }
+            });
+        }
+        log(`parseSearchResults: Most permissive pattern found ${videos.length} videos`);
+    }
+
+    if (videos.length === 0) {
+        log("parseSearchResults: WARNING - No videos found with any pattern!");
+        log("HTML length: " + html.length);
+        log("HTML sample (first 1000 chars): " + html.substring(0, 1000));
+    } else {
+        log(`parseSearchResults: Successfully parsed ${videos.length} videos`);
     }
 
     return videos;
@@ -3757,7 +3848,19 @@ source.getPlaylist = function(url) {
         }
 
         log("Fetching playlist from: " + playlistUrl);
-        const html = makeRequest(playlistUrl, API_HEADERS, 'playlist');
+        
+        // Use authenticated request for playlist pages
+        const authHeaders = getAuthHeaders();
+        log("Using authenticated request with headers");
+        
+        const response = http.GET(playlistUrl, authHeaders, false);
+        
+        if (!response.isOk) {
+            log(`Playlist fetch failed with status ${response.code}`);
+            throw new ScriptException(`Failed to fetch playlist: HTTP ${response.code}`);
+        }
+        
+        const html = response.body;
         
         if (!html || html.length < 100) {
             throw new ScriptException("Failed to fetch playlist page or page is empty");
@@ -3778,9 +3881,16 @@ source.getPlaylist = function(url) {
         log(`Found ${videos.length} videos in playlist`);
         
         if (videos.length === 0) {
-            log("WARNING: No videos found in playlist. HTML might have different structure.");
+            log("WARNING: No videos found in playlist. This might indicate:");
+            log("  1. Playlist is actually empty");
+            log("  2. HTML structure doesn't match parsing patterns");
+            log("  3. Authentication issue preventing access to videos");
             // Log a sample of the HTML for debugging
-            log("HTML sample (first 500 chars): " + html.substring(0, 500));
+            log("HTML sample (first 1000 chars): " + html.substring(0, 1000));
+            
+            // Check if we can see any video links at all
+            const anyVideoLinks = html.match(/href="\/[a-zA-Z0-9]+\/video\//g);
+            log("Raw video links found in HTML: " + (anyVideoLinks ? anyVideoLinks.length : 0));
         }
         
         const platformVideos = videos.map(v => createPlatformVideo(v));
@@ -3906,4 +4016,4 @@ class SpankBangHistoryPager extends ContentPager {
     }
 }
 
-log("SpankBang plugin loaded - v43");
+log("SpankBang plugin loaded - v44");
