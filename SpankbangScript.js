@@ -909,34 +909,8 @@ function parseChannelPage(html, channelUrl) {
 source.enable = function(conf, settings, savedState) {
     config = conf ?? {};
     
-    // Check if authentication cookies are available from Grayjay's auth system
-    if (config.authentication && config.authentication.cookies) {
-        try {
-            // Grayjay provides cookies as an object or array
-            let cookieString = "";
-            
-            if (typeof config.authentication.cookies === 'string') {
-                cookieString = config.authentication.cookies;
-            } else if (Array.isArray(config.authentication.cookies)) {
-                cookieString = config.authentication.cookies.join('; ');
-            } else if (typeof config.authentication.cookies === 'object') {
-                // Convert cookie object to string format
-                cookieString = Object.entries(config.authentication.cookies)
-                    .map(([key, value]) => `${key}=${value}`)
-                    .join('; ');
-            }
-            
-            if (cookieString && cookieString.trim().length > 0) {
-                setCookies(cookieString);
-                log("Authentication cookies loaded from Grayjay authentication");
-            }
-        } catch (e) {
-            log("Failed to load cookies from authentication: " + e.message);
-        }
-    }
-    
-    // Fallback: Load settings (for backward compatibility if any custom settings exist)
-    if (!state.authCookies && settings && settings.authCookies) {
+    // Load settings (including auth cookies from user settings)
+    if (settings && settings.authCookies) {
         try {
             const cookieValue = typeof settings.authCookies === 'string' 
                 ? settings.authCookies 
@@ -952,10 +926,11 @@ source.enable = function(conf, settings, savedState) {
     }
     
     // Restore previous state if available
-    if (!state.authCookies && savedState) {
+    if (savedState) {
         try {
             const parsed = JSON.parse(savedState);
-            if (parsed.authCookies) {
+            // Restore cookies from saved state if not in settings
+            if (!state.authCookies && parsed.authCookies) {
                 state = { ...state, ...parsed };
                 log("Authentication state restored from saved state");
             }
