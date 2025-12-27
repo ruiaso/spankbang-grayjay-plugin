@@ -1314,6 +1314,188 @@ function cleanVideoTitle(title) {
         .trim();
 }
 
+function parsePlaylistVideos(html) {
+    log("parsePlaylistVideos: Starting specialized playlist video extraction");
+    const videos = [];
+    const seenIds = new Set();
+
+    // Pattern 1: Playlist-specific video items (li elements with video links)
+    const playlistItemRegex = /<li[^>]*class="[^"]*(?:video|item|playlist-item)[^"]*"[^>]*>([\s\S]*?)<\/li>/gi;
+    let itemMatch;
+    
+    while ((itemMatch = playlistItemRegex.exec(html)) !== null) {
+        const block = itemMatch[0];
+        
+        const linkMatch = block.match(/href="\/([a-zA-Z0-9]+)\/video\/([^"\/\?]+)/);
+        if (!linkMatch) continue;
+        
+        const videoId = linkMatch[1];
+        if (seenIds.has(videoId)) continue;
+        seenIds.add(videoId);
+        
+        const videoSlug = linkMatch[2];
+        
+        // Extract title
+        const titleMatch = block.match(/title="([^"]+)"/) || 
+                          block.match(/alt="([^"]+)"/) ||
+                          block.match(/<span[^>]*class="[^"]*(?:title|name)[^"]*"[^>]*>([^<]+)<\/span>/i);
+        let title = titleMatch ? cleanVideoTitle(titleMatch[1]) : videoSlug.replace(/[_+\-]/g, ' ');
+        
+        // Extract thumbnail
+        const thumbMatch = block.match(/(?:data-src|src)="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/);
+        const thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
+        
+        // Extract duration
+        const durationMatch = block.match(/<span[^>]*class="[^"]*(?:l|length|duration|time)[^"]*"[^>]*>([^<]+)<\/span>/i) ||
+                             block.match(/>(\d+:\d+(?::\d+)?)</);
+        const duration = durationMatch ? parseDuration(durationMatch[1].trim()) : 0;
+        
+        // Extract views
+        const viewsMatch = block.match(/<span[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/span>/i) ||
+                          block.match(/([0-9,.]+[KMB]?)\s*(?:views?|plays?)/i);
+        const views = viewsMatch ? parseViewCount(viewsMatch[1].trim()) : 0;
+        
+        videos.push({
+            id: videoId,
+            title: title,
+            thumbnail: thumbnail,
+            duration: duration,
+            views: views,
+            uploadDate: 0,
+            url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
+            uploader: extractUploaderFromSearchResult(block)
+        });
+    }
+    
+    log(`parsePlaylistVideos: Pattern 1 (li items) found ${videos.length} videos`);
+    
+    // Pattern 2: Table-based playlist layout
+    if (videos.length === 0) {
+        log("parsePlaylistVideos: Trying table-based pattern");
+        const tableRowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+        
+        while ((itemMatch = tableRowRegex.exec(html)) !== null) {
+            const block = itemMatch[0];
+            
+            const linkMatch = block.match(/href="\/([a-zA-Z0-9]+)\/video\/([^"\/\?]+)/);
+            if (!linkMatch) continue;
+            
+            const videoId = linkMatch[1];
+            if (seenIds.has(videoId)) continue;
+            seenIds.add(videoId);
+            
+            const videoSlug = linkMatch[2];
+            
+            const titleMatch = block.match(/title="([^"]+)"/) || block.match(/<a[^>]*>([^<]+)<\/a>/);
+            let title = titleMatch ? cleanVideoTitle(titleMatch[1]) : videoSlug.replace(/[_+\-]/g, ' ');
+            
+            const thumbMatch = block.match(/(?:data-src|src)="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/);
+            const thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
+            
+            videos.push({
+                id: videoId,
+                title: title,
+                thumbnail: thumbnail,
+                duration: 0,
+                views: 0,
+                uploadDate: 0,
+                url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
+                uploader: { name: "", url: "", avatar: "" }
+            });
+        }
+        
+        log(`parsePlaylistVideos: Pattern 2 (table rows) found ${videos.length} videos`);
+    }
+    
+    // Pattern 3: Div-based with playlist-video class
+    if (videos.length === 0) {
+        log("parsePlaylistVideos: Trying div-based playlist pattern");
+        const playlistDivRegex = /<div[^>]*class="[^"]*(?:playlist-video|playlist-item|video|item)[^"]*"[^>]*>([\s\S]*?)<\/div>/gi;
+        
+        while ((itemMatch = playlistDivRegex.exec(html)) !== null) {
+            const block = itemMatch[0];
+            
+            const linkMatch = block.match(/href="\/([a-zA-Z0-9]+)\/video\/([^"\/\?]+)/);
+            if (!linkMatch) continue;
+            
+            const videoId = linkMatch[1];
+            if (seenIds.has(videoId)) continue;
+            seenIds.add(videoId);
+            
+            const videoSlug = linkMatch[2];
+            
+            const titleMatch = block.match(/title="([^"]+)"/) || block.match(/alt="([^"]+)"/);
+            let title = titleMatch ? cleanVideoTitle(titleMatch[1]) : videoSlug.replace(/[_+\-]/g, ' ');
+            
+            const thumbMatch = block.match(/(?:data-src|src)="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/);
+            const thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
+            
+            videos.push({
+                id: videoId,
+                title: title,
+                thumbnail: thumbnail,
+                duration: 0,
+                views: 0,
+                uploadDate: 0,
+                url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
+                uploader: { name: "", url: "", avatar: "" }
+            });
+        }
+        
+        log(`parsePlaylistVideos: Pattern 3 (div items) found ${videos.length} videos`);
+    }
+    
+    // Pattern 4: Most aggressive - extract ALL video links from the page
+    if (videos.length === 0) {
+        log("parsePlaylistVideos: Trying aggressive extraction of all video links");
+        const allVideoLinksRegex = /href="\/([a-zA-Z0-9]+)\/video\/([^"\/\?]+)/gi;
+        let linkMatch;
+        
+        while ((linkMatch = allVideoLinksRegex.exec(html)) !== null) {
+            const videoId = linkMatch[1];
+            if (seenIds.has(videoId)) continue;
+            seenIds.add(videoId);
+            
+            const videoSlug = linkMatch[2];
+            
+            // Get context around the link
+            const contextStart = Math.max(0, linkMatch.index - 300);
+            const contextEnd = Math.min(html.length, linkMatch.index + 300);
+            const context = html.substring(contextStart, contextEnd);
+            
+            const titleMatch = context.match(/title="([^"]+)"/) || context.match(/alt="([^"]+)"/);
+            let title = titleMatch ? cleanVideoTitle(titleMatch[1]) : videoSlug.replace(/[_+\-]/g, ' ');
+            
+            const thumbMatch = context.match(/(?:data-src|src)="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/);
+            const thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
+            
+            const durationMatch = context.match(/>(\d+:\d+(?::\d+)?)</);
+            const duration = durationMatch ? parseDuration(durationMatch[1]) : 0;
+            
+            videos.push({
+                id: videoId,
+                title: title,
+                thumbnail: thumbnail,
+                duration: duration,
+                views: 0,
+                uploadDate: 0,
+                url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
+                uploader: { name: "", url: "", avatar: "" }
+            });
+        }
+        
+        log(`parsePlaylistVideos: Pattern 4 (aggressive) found ${videos.length} videos`);
+    }
+    
+    if (videos.length === 0) {
+        log("parsePlaylistVideos: WARNING - No videos found with any playlist pattern!");
+    } else {
+        log(`parsePlaylistVideos: Successfully extracted ${videos.length} videos from playlist`);
+    }
+    
+    return videos;
+}
+
 function parseSearchResults(html) {
     const videos = [];
     const seenIds = new Set();
@@ -1560,7 +1742,14 @@ function parsePornstarsPage(html) {
 }
 
 function parsePlaylistsPage(html) {
+    log("===== parsePlaylistsPage CALLED =====");
+    log(`HTML length: ${html ? html.length : 0} characters`);
+    
     const playlists = [];
+    
+    // Check if HTML contains playlist-item
+    const hasPlaylistItems = html && html.includes('playlist-item');
+    log(`HTML contains 'playlist-item': ${hasPlaylistItems}`);
     
     // Enhanced patterns to match SpankBang's playlist structure
     // Added pattern for <a> tags with class="playlist-item"
@@ -1572,13 +1761,24 @@ function parsePlaylistsPage(html) {
         /<div[^>]*class="[^"]*(?:thumb|item)[^"]*"[^>]*>([\s\S]*?)<\/div>/gi
     ];
     
-    for (const playlistBlockPattern of playlistBlockPatterns) {
+    log(`Trying ${playlistBlockPatterns.length} different block patterns...`);
+    
+    for (let patternIndex = 0; patternIndex < playlistBlockPatterns.length; patternIndex++) {
+        const playlistBlockPattern = playlistBlockPatterns[patternIndex];
+        log(`  Pattern ${patternIndex + 1}: Attempting match...`);
+        
         let blockMatch;
+        let matchCount = 0;
+        
         while ((blockMatch = playlistBlockPattern.exec(html)) !== null) {
+            matchCount++;
             // Use full match for <a> tags to include href, use capture group for others
             const fullMatch = blockMatch[0];
             const block = blockMatch[1] || blockMatch[0];
-            if (!block || block.trim().length < 10) continue;
+            if (!block || block.trim().length < 10) {
+                log(`    Match ${matchCount}: Skipped (block too short)`);
+                continue;
+            }
             
             // Check for href in both full match and block (for different pattern types)
             const hrefMatch = fullMatch.match(/href="\/([a-z0-9]+)\/playlist\/([^"\/]+)\/?"/i) ||
@@ -1638,7 +1838,7 @@ function parsePlaylistsPage(html) {
                 }
                 
                 if (!playlists.find(p => p.id === playlistId) && name.length > 0) {
-                    log(`Found playlist: ${name} (ID: ${playlistId}) with ${videoCount} videos`);
+                    log(`✓ Found playlist: "${name}" (ID: ${playlistId}) with ${videoCount} videos`);
                     playlists.push({
                         id: playlistId,
                         name: name,
@@ -1648,9 +1848,16 @@ function parsePlaylistsPage(html) {
                         url: `spankbang://playlist/${playlistId}`
                     });
                 }
+            } else {
+                log(`    Match ${matchCount}: No playlist href found`);
             }
         }
-        if (playlists.length > 0) break;
+        
+        log(`  Pattern ${patternIndex + 1}: Found ${matchCount} matches, extracted ${playlists.length} playlists so far`);
+        if (playlists.length > 0) {
+            log(`  Breaking early - found playlists with pattern ${patternIndex + 1}`);
+            break;
+        }
     }
     
     // Fallback: broader link pattern search
@@ -2854,23 +3061,57 @@ source.syncRemoteWatchHistory = function(continuationToken) {
 };
 
 source.getUserPlaylists = function() {
-    log("Getting user playlists");
+    log("===== getUserPlaylists CALLED =====");
 
     try {
-        // Fetch playlists using authenticated client
-        log("Fetching playlists from /users/playlists");
-        const playlistsResp = http.GET(`${BASE_URL}/users/playlists`, API_HEADERS, true);
+        // Check authentication status first
+        const isLoggedIn = source.isLoggedIn();
+        log(`Authentication status: ${isLoggedIn ? 'LOGGED IN' : 'NOT LOGGED IN'}`);
         
-        if (!playlistsResp.isOk) {
-            log("Failed to fetch playlists, user may not be logged in");
+        if (!isLoggedIn) {
+            log("WARNING: User is not logged in - playlists require authentication");
             return [];
         }
         
+        // Fetch playlists using authenticated client
+        log("Fetching playlists from /users/playlists with authentication");
+        const authHeaders = getAuthHeaders();
+        log("Auth headers prepared: " + JSON.stringify(Object.keys(authHeaders)));
+        
+        const playlistsResp = http.GET(`${BASE_URL}/users/playlists`, authHeaders, false);
+        
+        log(`Playlists fetch response code: ${playlistsResp.code}`);
+        log(`Response body length: ${playlistsResp.body ? playlistsResp.body.length : 0} characters`);
+        
+        if (!playlistsResp.isOk) {
+            log(`ERROR: Failed to fetch playlists - HTTP ${playlistsResp.code}`);
+            // Log first 500 chars of response to see if it's a login page
+            if (playlistsResp.body && playlistsResp.body.length > 0) {
+                log("Response preview: " + playlistsResp.body.substring(0, 500));
+            }
+            return [];
+        }
+        
+        // Check if we got redirected to login page
+        if (playlistsResp.body && playlistsResp.body.includes('authentication_container')) {
+            log("ERROR: Got login page instead of playlists - authentication failed");
+            log("User needs to re-authenticate");
+            return [];
+        }
+        
+        log("Parsing playlists page HTML...");
         const playlists = parsePlaylistsPage(playlistsResp.body);
-        log(`Found ${playlists.length} playlists`);
+        log(`✓ Successfully parsed ${playlists.length} playlists`);
+        
+        // Log details of each playlist found
+        playlists.forEach((pl, index) => {
+            log(`  Playlist ${index + 1}: "${pl.name}" - ${pl.videoCount} videos (ID: ${pl.id})`);
+        });
+        
         return playlists.map(pl => pl.url);
     } catch (error) {
-        log("Failed to fetch playlists: " + error.message);
+        log("ERROR in getUserPlaylists: " + error.message);
+        log("Error stack: " + (error.stack || "No stack trace"));
         return [];
     }
 };
@@ -3895,21 +4136,35 @@ source.getPlaylist = function(url) {
             log("Extracted playlist name from HTML: " + playlistName);
         }
         
-        log("Parsing videos from playlist page...");
-        const videos = parseSearchResults(html);
-        log(`Found ${videos.length} videos in playlist`);
+        log("Parsing videos from playlist page using specialized playlist parser...");
+        let videos = parsePlaylistVideos(html);
+        log(`parsePlaylistVideos found ${videos.length} videos`);
+        
+        // Fallback to regular search parser if playlist parser finds nothing
+        if (videos.length === 0) {
+            log("Falling back to parseSearchResults...");
+            videos = parseSearchResults(html);
+            log(`parseSearchResults found ${videos.length} videos`);
+        }
         
         if (videos.length === 0) {
-            log("WARNING: No videos found in playlist. This might indicate:");
-            log("  1. Playlist is actually empty");
-            log("  2. HTML structure doesn't match parsing patterns");
-            log("  3. Authentication issue preventing access to videos");
-            // Log a sample of the HTML for debugging
-            log("HTML sample (first 1000 chars): " + html.substring(0, 1000));
+            log("WARNING: No videos found in playlist with any parser!");
+            log("  1. Playlist might be empty");
+            log("  2. HTML structure doesn't match any known patterns");
+            log("  3. Authentication issue preventing access");
             
-            // Check if we can see any video links at all
+            // Log HTML sample for debugging
+            log("HTML sample (first 1500 chars): " + html.substring(0, 1500));
+            
+            // Check for video links
             const anyVideoLinks = html.match(/href="\/[a-zA-Z0-9]+\/video\//g);
-            log("Raw video links found in HTML: " + (anyVideoLinks ? anyVideoLinks.length : 0));
+            log("Raw video link count: " + (anyVideoLinks ? anyVideoLinks.length : 0));
+            
+            // Check for common playlist indicators
+            const hasPlaylistIndicators = html.includes('playlist') || html.includes('video-list') || html.includes('videos');
+            log("Has playlist indicators: " + hasPlaylistIndicators);
+        } else {
+            log(`✓ Successfully parsed ${videos.length} videos from playlist!`);
         }
         
         const platformVideos = videos.map(v => createPlatformVideo(v));
@@ -4035,4 +4290,4 @@ class SpankBangHistoryPager extends ContentPager {
     }
 }
 
-log("SpankBang plugin loaded - v44");
+log("SpankBang plugin loaded - v47");
