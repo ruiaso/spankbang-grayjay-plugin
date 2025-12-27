@@ -964,37 +964,19 @@ source.searchChannels = function(query) {
 };
 
 source.isContentDetailsUrl = function(url) {
-    // Only accept Spankbang URLs
-    if (!url || typeof url !== 'string') return false;
-    return url.includes('spankbang.com/') && url.includes('/videos/');
+    return url.includes('/videos/');
 };
 
 source.getContentDetails = function(url) {
     log("Getting video details for: " + url);
     
-    // Validate that this is a Spankbang URL
-    if (!url.includes('spankbang.com')) {
-        throw new ScriptException("Invalid URL: Only Spankbang URLs are supported. Received: " + url);
-    }
+    const html = makeRequest(url, API_HEADERS, 'video details');
+    const videoData = parseVideoPage(html);
     
-    try {
-        const html = makeRequest(url, API_HEADERS, 'video details');
-        const videoData = parseVideoPage(html);
-        
-        const idMatch = url.match(/-(\d+)$/) || url.match(/\/videos\/([^\/-]+)/);
-        videoData.id = idMatch ? idMatch[1] : "";
-        
-        if (!videoData.sources || Object.keys(videoData.sources).length === 0) {
-            log("No video sources found for: " + url);
-            throw new ScriptException("No playable video sources found. This video may be unavailable or restricted.");
-        }
-        
-        log("Found " + Object.keys(videoData.sources).length + " video sources");
-        return createVideoDetails(videoData, url);
-    } catch (error) {
-        log("Error getting video details: " + error.message);
-        throw error;
-    }
+    const idMatch = url.match(/-(\d+)$/) || url.match(/\/videos\/([^\/-]+)/);
+    videoData.id = idMatch ? idMatch[1] : "";
+    
+    return createVideoDetails(videoData, url);
 };
 
 source.getContentRecommendations = function(url) {
@@ -1012,9 +994,7 @@ source.getContentRecommendations = function(url) {
 };
 
 source.isChannelUrl = function(url) {
-    // Only accept Spankbang URLs
-    if (!url || typeof url !== 'string') return false;
-    return (url.includes('spankbang.com/') && (url.includes('/profile/') || url.includes('/pornstar/') || url.includes('/creators/'))) ||
+    return url.includes('/profile/') || url.includes('/pornstar/') || url.includes('/creators/') ||
            url.includes('spankbang://profile/') || url.includes('spankbang://channel/');
 };
 
@@ -1142,37 +1122,24 @@ function parseSubscriptionsPage(html) {
     const subscriptions = [];
     const seenIds = new Set();
 
-    // Multiple parsing strategies to catch all subscription formats
-    
-    // Strategy 1: Parse user subscriptions with profile links
+    // Parse user subscriptions from /users/subscriptions
     const userSubPatterns = [
-        /<a[^>]*href="\/profile\/([^"\/\?]+)"[^>]*>[\s\S]{0,500}?<img[^>]*(?:data-src|src)="([^"]+)"[^>]*(?:alt="([^"]+)")?/gi,
-        /<div[^>]*class="[^"]*(?:profile|subscription|user-item)[^"]*"[^>]*>[\s\S]{0,800}?<a[^>]*href="\/profile\/([^"\/]+)"[\s\S]{0,300}?<img[^>]*(?:data-src|src)="([^"]+)"/gi,
-        /<div[^>]*data-user="([^"]+)"[^>]*>[\s\S]{0,500}?href="\/profile\/([^"\/]+)"[\s\S]{0,300}?(?:data-src|src)="([^"]+)"/gi
+        /<a[^>]*href="\/profile\/([^"\/\?]+)"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[^>]*alt="([^"]+)"/gi,
+        /<div[^>]*class="[^"]*profile[^"]*"[^>]*>[\s\S]*?<a[^>]*href="\/profile\/([^"\/]+)"[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?([^<]+)<\/a>/gi
     ];
 
     for (const pattern of userSubPatterns) {
         let match;
-        pattern.lastIndex = 0; // Reset regex
         while ((match = pattern.exec(html)) !== null) {
-            let profileSlug, avatar, name;
-            
-            // Handle different capture group orders
-            if (match[1] && match[1].includes('/profile/')) {
-                continue; // Skip malformed matches
-            }
-            
-            profileSlug = (match[1] || match[2] || "").replace(/\/$/, '');
-            avatar = match[2] || match[3] || "";
-            name = match[3] || match[1] || profileSlug;
-            
-            if (!profileSlug || seenIds.has(profileSlug)) continue;
+            const profileSlug = match[1].replace(/\/$/, '');
+            if (seenIds.has(profileSlug)) continue;
             seenIds.add(profileSlug);
 
+            let avatar = match[2] || "";
             if (avatar.startsWith('//')) avatar = 'https:' + avatar;
-            else if (avatar && !avatar.startsWith('http')) avatar = 'https://spankbang.com' + avatar;
+            else if (!avatar.startsWith('http') && avatar) avatar = 'https://spankbang.com' + avatar;
 
-            name = (name || profileSlug.replace(/-/g, ' ')).trim();
+            const name = (match[3] || profileSlug.replace(/-/g, ' ')).trim();
 
             subscriptions.push({
                 id: profileSlug,
@@ -1183,47 +1150,6 @@ function parseSubscriptionsPage(html) {
             });
         }
     }
-    
-    // Strategy 2: Find all profile links and extract from surrounding context
-    const allProfileLinks = /href="\/profile\/([^"\/\?]+)"/gi;
-    let linkMatch;
-    while ((linkMatch = allProfileLinks.exec(html)) !== null) {
-        const profileSlug = linkMatch[1].replace(/\/$/, '');
-        if (seenIds.has(profileSlug)) continue;
-        
-        // Extract context around the link
-        const contextStart = Math.max(0, linkMatch.index - 400);
-        const contextEnd = Math.min(html.length, linkMatch.index + 400);
-        const context = html.substring(contextStart, contextEnd);
-        
-        // Look for avatar in context
-        let avatar = "";
-        const avatarMatch = context.match(/(?:data-src|src)="([^"]+\.(?:jpg|jpeg|png|webp|gif)[^"]*)"/i);
-        if (avatarMatch && avatarMatch[1]) {
-            avatar = avatarMatch[1];
-            if (avatar.startsWith('//')) avatar = 'https:' + avatar;
-            else if (!avatar.startsWith('http')) avatar = 'https://spankbang.com' + avatar;
-        }
-        
-        // Look for name in context
-        let name = profileSlug.replace(/-/g, ' ');
-        const nameMatch = context.match(/alt="([^"]+)"|title="([^"]+)"|>([^<]{3,30})</);
-        if (nameMatch && (nameMatch[1] || nameMatch[2] || nameMatch[3])) {
-            const foundName = (nameMatch[1] || nameMatch[2] || nameMatch[3]).trim();
-            if (foundName.length > 2 && foundName.length < 50) {
-                name = foundName;
-            }
-        }
-        
-        seenIds.add(profileSlug);
-        subscriptions.push({
-            id: profileSlug,
-            name: name,
-            url: `spankbang://profile/${profileSlug}`,
-            avatar: avatar,
-            type: 'user'
-        });
-    }
 
     return subscriptions;
 }
@@ -1232,23 +1158,22 @@ function parsePornstarSubscriptionsPage(html) {
     const subscriptions = [];
     const seenIds = new Set();
 
-    // Multiple parsing strategies for pornstar subscriptions
+    // Parse pornstar subscriptions from /users/subscriptions_pornstars
     const pornstarSubPatterns = [
-        /<a[^>]*href="\/pornstar\/([^"\/\?]+)"[^>]*>[\s\S]{0,500}?<img[^>]*(?:data-src|src)="([^"]+)"[^>]*(?:alt="([^"]+)")?/gi,
-        /<div[^>]*class="[^"]*(?:pornstar|model)[^"]*"[^>]*>[\s\S]{0,800}?<a[^>]*href="\/pornstar\/([^"\/]+)"[\s\S]{0,300}?<img[^>]*(?:data-src|src)="([^"]+)"/gi
+        /<a[^>]*href="\/pornstar\/([^"\/\?]+)"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[^>]*alt="([^"]+)"/gi,
+        /<div[^>]*class="[^"]*pornstar[^"]*"[^>]*>[\s\S]*?<a[^>]*href="\/pornstar\/([^"\/]+)"[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?<\/div>/gi
     ];
 
     for (const pattern of pornstarSubPatterns) {
         let match;
-        pattern.lastIndex = 0;
         while ((match = pattern.exec(html)) !== null) {
-            const pornstarSlug = (match[1] || "").replace(/\/$/, '');
-            if (!pornstarSlug || seenIds.has(`pornstar:${pornstarSlug}`)) continue;
+            const pornstarSlug = match[1].replace(/\/$/, '');
+            if (seenIds.has(`pornstar:${pornstarSlug}`)) continue;
             seenIds.add(`pornstar:${pornstarSlug}`);
 
             let avatar = match[2] || "";
             if (avatar.startsWith('//')) avatar = 'https:' + avatar;
-            else if (avatar && !avatar.startsWith('http')) avatar = 'https://spankbang.com' + avatar;
+            else if (!avatar.startsWith('http') && avatar) avatar = 'https://spankbang.com' + avatar;
 
             let name = match[3] || pornstarSlug.replace(/-/g, ' ');
             name = name.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
@@ -1262,46 +1187,6 @@ function parsePornstarSubscriptionsPage(html) {
             });
         }
     }
-    
-    // Strategy 2: Find all pornstar links
-    const allPornstarLinks = /href="\/pornstar\/([^"\/\?]+)"/gi;
-    let linkMatch;
-    while ((linkMatch = allPornstarLinks.exec(html)) !== null) {
-        const pornstarSlug = linkMatch[1].replace(/\/$/, '');
-        if (seenIds.has(`pornstar:${pornstarSlug}`)) continue;
-        
-        const contextStart = Math.max(0, linkMatch.index - 400);
-        const contextEnd = Math.min(html.length, linkMatch.index + 400);
-        const context = html.substring(contextStart, contextEnd);
-        
-        let avatar = "";
-        const avatarMatch = context.match(/(?:data-src|src)="([^"]+\.(?:jpg|jpeg|png|webp|gif)[^"]*)"/i);
-        if (avatarMatch && avatarMatch[1]) {
-            avatar = avatarMatch[1];
-            if (avatar.startsWith('//')) avatar = 'https:' + avatar;
-            else if (!avatar.startsWith('http')) avatar = 'https://spankbang.com' + avatar;
-        }
-        
-        let name = pornstarSlug.replace(/-/g, ' ');
-        name = name.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-        
-        const nameMatch = context.match(/alt="([^"]+)"|title="([^"]+)"/);
-        if (nameMatch && (nameMatch[1] || nameMatch[2])) {
-            const foundName = (nameMatch[1] || nameMatch[2]).trim();
-            if (foundName.length > 2 && foundName.length < 50) {
-                name = foundName;
-            }
-        }
-        
-        seenIds.add(`pornstar:${pornstarSlug}`);
-        subscriptions.push({
-            id: `pornstar:${pornstarSlug}`,
-            name: name,
-            url: `spankbang://profile/pornstar:${pornstarSlug}`,
-            avatar: avatar,
-            type: 'pornstar'
-        });
-    }
 
     return subscriptions;
 }
@@ -1310,22 +1195,20 @@ function parsePlaylistsPage(html) {
     const playlists = [];
     const seenIds = new Set();
 
-    // Multiple parsing strategies for playlists
+    // Parse playlists from /users/playlists
     const playlistPatterns = [
-        /<a[^>]*href="\/playlist\/([^"\/\?]+)"[^>]*(?:title="([^"]+)")?[^>]*>[\s\S]{0,200}?(?:<[^>]*>)?([^<]{0,100})</gi,
-        /<div[^>]*class="[^"]*playlist[^"]*"[^>]*>[\s\S]{0,500}?<a[^>]*href="\/playlist\/([^"\/]+)"[^>]*(?:title="([^"]+)")?/gi
+        /<a[^>]*href="\/playlist\/([^"\/\?]+)"[^>]*>[\s\S]*?<[^>]*>([^<]+)<\/[^>]*>/gi,
+        /<div[^>]*class="[^"]*playlist[^"]*"[^>]*>[\s\S]*?<a[^>]*href="\/playlist\/([^"\/]+)"[^>]*title="([^"]+)"/gi
     ];
 
     for (const pattern of playlistPatterns) {
         let match;
-        pattern.lastIndex = 0;
         while ((match = pattern.exec(html)) !== null) {
-            const playlistId = (match[1] || match[4] || "").replace(/\/$/, '');
-            if (!playlistId || seenIds.has(playlistId)) continue;
+            const playlistId = match[1].replace(/\/$/, '');
+            if (seenIds.has(playlistId)) continue;
             seenIds.add(playlistId);
 
-            let name = (match[2] || match[3] || match[5] || playlistId.replace(/-/g, ' ')).trim();
-            if (name.length < 2) name = playlistId.replace(/-/g, ' ');
+            const name = (match[2] || playlistId.replace(/-/g, ' ')).trim();
 
             playlists.push({
                 id: playlistId,
@@ -1334,34 +1217,6 @@ function parsePlaylistsPage(html) {
             });
         }
     }
-    
-    // Strategy 2: Find all playlist links
-    const allPlaylistLinks = /href="\/playlist\/([^"\/\?]+)"/gi;
-    let linkMatch;
-    while ((linkMatch = allPlaylistLinks.exec(html)) !== null) {
-        const playlistId = linkMatch[1].replace(/\/$/, '');
-        if (seenIds.has(playlistId)) continue;
-        
-        const contextStart = Math.max(0, linkMatch.index - 300);
-        const contextEnd = Math.min(html.length, linkMatch.index + 300);
-        const context = html.substring(contextStart, contextEnd);
-        
-        let name = playlistId.replace(/-/g, ' ');
-        const nameMatch = context.match(/title="([^"]+)"|alt="([^"]+)"|>([^<]{3,50})</);
-        if (nameMatch && (nameMatch[1] || nameMatch[2] || nameMatch[3])) {
-            const foundName = (nameMatch[1] || nameMatch[2] || nameMatch[3]).trim();
-            if (foundName.length > 2 && foundName.length < 100) {
-                name = foundName;
-            }
-        }
-        
-        seenIds.add(playlistId);
-        playlists.push({
-            id: playlistId,
-            name: name,
-            url: `${BASE_URL}/playlist/${playlistId}`
-        });
-    }
 
     return playlists;
 }
@@ -1369,19 +1224,18 @@ function parsePlaylistsPage(html) {
 source.getUserSubscriptions = function() {
     log("Getting user subscriptions");
     
+    if (!state.isAuthenticated || !state.authCookies) {
+        log("User not authenticated, returning empty subscriptions");
+        return [];
+    }
+
     const subscriptions = [];
     
     try {
-        // Fetch user subscriptions using authenticated client
+        // Fetch user subscriptions
         log("Fetching user subscriptions from /users/subscriptions");
-        const userSubsHtml = http.GET(`${BASE_URL}/users/subscriptions`, API_HEADERS, true);
-        
-        if (!userSubsHtml.isOk) {
-            log("Failed to fetch user subscriptions, user may not be logged in");
-            return [];
-        }
-        
-        const userSubs = parseSubscriptionsPage(userSubsHtml.body);
+        const userSubsHtml = makeRequest(`${BASE_URL}/users/subscriptions`, getAuthHeaders(), 'user subscriptions');
+        const userSubs = parseSubscriptionsPage(userSubsHtml);
         subscriptions.push(...userSubs);
         log(`Found ${userSubs.length} user subscriptions`);
     } catch (error) {
@@ -1389,16 +1243,10 @@ source.getUserSubscriptions = function() {
     }
     
     try {
-        // Fetch pornstar subscriptions using authenticated client
+        // Fetch pornstar subscriptions
         log("Fetching pornstar subscriptions from /users/subscriptions_pornstars");
-        const pornstarSubsHtml = http.GET(`${BASE_URL}/users/subscriptions_pornstars`, API_HEADERS, true);
-        
-        if (!pornstarSubsHtml.isOk) {
-            log("Failed to fetch pornstar subscriptions");
-            return subscriptions.map(sub => sub.url);
-        }
-        
-        const pornstarSubs = parsePornstarSubscriptionsPage(pornstarSubsHtml.body);
+        const pornstarSubsHtml = makeRequest(`${BASE_URL}/users/subscriptions_pornstars`, getAuthHeaders(), 'pornstar subscriptions');
+        const pornstarSubs = parsePornstarSubscriptionsPage(pornstarSubsHtml);
         subscriptions.push(...pornstarSubs);
         log(`Found ${pornstarSubs.length} pornstar subscriptions`);
     } catch (error) {
@@ -1411,18 +1259,16 @@ source.getUserSubscriptions = function() {
 
 source.getUserPlaylists = function() {
     log("Getting user playlists");
+    
+    if (!state.isAuthenticated || !state.authCookies) {
+        log("User not authenticated, returning empty playlists");
+        return [];
+    }
 
     try {
-        // Fetch playlists using authenticated client
         log("Fetching playlists from /users/playlists");
-        const playlistsResp = http.GET(`${BASE_URL}/users/playlists`, API_HEADERS, true);
-        
-        if (!playlistsResp.isOk) {
-            log("Failed to fetch playlists, user may not be logged in");
-            return [];
-        }
-        
-        const playlists = parsePlaylistsPage(playlistsResp.body);
+        const playlistsHtml = makeRequest(`${BASE_URL}/users/playlists`, getAuthHeaders(), 'user playlists');
+        const playlists = parsePlaylistsPage(playlistsHtml);
         log(`Found ${playlists.length} playlists`);
         return playlists.map(pl => pl.url);
     } catch (error) {
@@ -1432,53 +1278,7 @@ source.getUserPlaylists = function() {
 };
 
 source.getPlaylist = function(url) {
-    log("Getting playlist: " + url);
-    
-    try {
-        const html = makeRequest(url, getAuthHeaders(), 'playlist');
-        
-        // Extract playlist info
-        const playlistData = {
-            id: "",
-            name: "Unknown Playlist",
-            thumbnail: "",
-            videoCount: 0
-        };
-        
-        // Parse playlist name
-        const nameMatch = html.match(/<h1[^>]*class="[^"]*playlist[^"]*"[^>]*>([^<]+)<\/h1>/i) ||
-                         html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
-        if (nameMatch && nameMatch[1]) {
-            playlistData.name = nameMatch[1].trim();
-        }
-        
-        // Extract playlist ID from URL
-        const idMatch = url.match(/\/playlist\/([^\/\?]+)/);
-        if (idMatch && idMatch[1]) {
-            playlistData.id = idMatch[1];
-        }
-        
-        // Parse videos in playlist
-        const videos = parseSearchResults(html);
-        playlistData.videoCount = videos.length;
-        
-        // Get thumbnail from first video
-        if (videos.length > 0 && videos[0].thumbnail) {
-            playlistData.thumbnail = videos[0].thumbnail;
-        }
-        
-        return new PlatformPlaylistDetails({
-            id: new PlatformID(PLATFORM, playlistData.id, plugin.config.id),
-            name: playlistData.name,
-            thumbnail: playlistData.thumbnail,
-            videoCount: playlistData.videoCount,
-            url: url,
-            contents: new VideoPager(videos.map(v => createPlatformVideo(v)))
-        });
-    } catch (error) {
-        log("Failed to get playlist: " + error.message);
-        throw new ScriptException("Failed to load playlist: " + error.message);
-    }
+    throw new ScriptException("Playlists not implemented");
 };
 
 source.canDownload = function(video) {
@@ -1524,78 +1324,6 @@ source.getDownloadables = function(video) {
         return downloads;
     } catch (error) {
         log("Failed to get downloadables: " + error.message);
-        return [];
-    }
-};
-
-function parseHistoryPage(html) {
-    const historyVideos = [];
-    const seenIds = new Set();
-    
-    // Parse videos from history page
-    const videoPattern = /<a[^>]*href="([^"]*\/videos\/[^"]+)"[^>]*>/gi;
-    let match;
-    
-    while ((match = videoPattern.exec(html)) !== null) {
-        const videoUrl = match[1].startsWith('http') ? match[1] : BASE_URL + match[1];
-        const idMatch = videoUrl.match(/-(\d+)$/) || videoUrl.match(/\/videos\/([^\/\?]+)/);
-        const videoId = idMatch ? idMatch[1] : generateVideoId();
-        
-        if (seenIds.has(videoId)) continue;
-        seenIds.add(videoId);
-        
-        // Extract title
-        let title = "Unknown";
-        const contextStart = Math.max(0, match.index - 300);
-        const contextEnd = Math.min(html.length, match.index + 300);
-        const context = html.substring(contextStart, contextEnd);
-        
-        const titleMatch = context.match(/title="([^"]+)"|alt="([^"]+)"/);
-        if (titleMatch && (titleMatch[1] || titleMatch[2])) {
-            title = cleanVideoTitle(titleMatch[1] || titleMatch[2]);
-        }
-        
-        // Extract thumbnail
-        let thumbnail = "";
-        const thumbMatch = context.match(/(?:data-src|src)="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/);
-        if (thumbMatch && thumbMatch[1]) {
-            thumbnail = thumbMatch[1];
-            if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
-        }
-        
-        historyVideos.push({
-            id: videoId,
-            title: title,
-            thumbnail: thumbnail,
-            duration: 0,
-            views: 0,
-            uploadDate: 0,
-            url: videoUrl,
-            uploader: { name: "", url: "", avatar: "" }
-        });
-    }
-    
-    return historyVideos;
-}
-
-source.getUserHistory = function() {
-    log("Getting user history");
-    
-    try {
-        log("Fetching history from /users/history");
-        const historyResp = http.GET(`${BASE_URL}/users/history`, getAuthHeaders(), true);
-        
-        if (!historyResp.isOk) {
-            log("Failed to fetch history, user may not be logged in");
-            return [];
-        }
-        
-        const historyVideos = parseHistoryPage(historyResp.body);
-        log(`Found ${historyVideos.length} videos in history`);
-        
-        return historyVideos.map(v => createPlatformVideo(v));
-    } catch (error) {
-        log("Failed to fetch history: " + error.message);
         return [];
     }
 };
