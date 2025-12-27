@@ -594,70 +594,61 @@ function parseVideoPage(html) {
 function parseSearchResults(html) {
     const videos = [];
     const seenIds = new Set();
+    log("Parsing search results");
 
-    // First, try to find all video links on the page
-    const allVideoLinksPattern = /href="([^"]*\/videos\/[^"]+)"/gi;
-    let linkMatch;
-    let videoUrlsFound = [];
-    
-    while ((linkMatch = allVideoLinksPattern.exec(html)) !== null) {
+    // Try to find video blocks which are more reliable
+    const videoBlockPattern = /<div[^>]*class="[^"]*video-item[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/gi;
+    let blockMatch;
+    while ((blockMatch = videoBlockPattern.exec(html)) !== null) {
+        const block = blockMatch[1];
+        const linkMatch = block.match(/href="([^"]*\/videos\/[^"]+)"/i);
+        if (!linkMatch) continue;
+
         const url = linkMatch[1].startsWith('http') ? linkMatch[1] : BASE_URL + linkMatch[1];
-        videoUrlsFound.push(url);
-    }
+        const idMatch = url.match(/-(\d+)$/) || url.match(/\/videos\/([^\/\?-]+)/);
+        const videoId = idMatch ? idMatch[1] : "v_" + Math.random().toString(36).substr(2, 5);
 
-    // Remove duplicates and process
-    for (const videoUrl of videoUrlsFound) {
-        if (videos.length >= 100) break;
-        
-        const idMatch = videoUrl.match(/-(\d+)$/) || videoUrl.match(/\/videos\/([^\/\?-]+)/);
-        const videoId = idMatch ? idMatch[1] : generateVideoId();
-        
         if (seenIds.has(videoId)) continue;
         seenIds.add(videoId);
 
-        // Extract title from URL or surrounding context
-        let title = videoUrl.split('/videos/')[1]?.replace(/-/g, ' ') || "Unknown";
-        
-        // Try to find better title in nearby text
-        const contextIdx = html.indexOf(videoUrl);
-        if (contextIdx > 0) {
-            const context = html.substring(Math.max(0, contextIdx - 500), Math.min(html.length, contextIdx + 200));
-            
-            const titleMatch = context.match(/title="([^"]+)"|<[^>]*>([^<]{5,100})<\/a>/);
-            if (titleMatch && (titleMatch[1] || titleMatch[2])) {
-                title = cleanVideoTitle(titleMatch[1] || titleMatch[2]);
-            }
-        }
+        const titleMatch = block.match(/<a[^>]*class="[^"]*title[^"]*"[^>]*>([^<]+)<\/a>/i) || block.match(/title="([^"]+)"/i);
+        const title = cleanVideoTitle(titleMatch ? (titleMatch[1] || titleMatch[2]) : "Unknown");
 
         let thumbnail = "";
-        const thumbPatterns = [
-            /poster="([^"]+)"/,
-            /(?:data-src|src)="([^"]+xh[^"]*\.(?:jpg|jpeg|png|webp)[^"]*)"/,
-            /(?:data-src|src)="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/
-        ];
-
-        if (contextIdx > 0) {
-            const thumbContext = html.substring(Math.max(0, contextIdx - 300), Math.min(html.length, contextIdx + 100));
-            for (const pattern of thumbPatterns) {
-                const match = thumbContext.match(pattern);
-                if (match && match[1]) {
-                    thumbnail = match[1];
-                    if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
-                    break;
-                }
-            }
+        const thumbMatch = block.match(/(?:data-src|src)="([^"]+)"/i);
+        if (thumbMatch) {
+            thumbnail = thumbMatch[1];
+            if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
         }
+
+        const durationMatch = block.match(/<span[^>]*class="[^"]*duration[^"]*"[^>]*>([^<]+)<\/span>/i);
+        const duration = durationMatch ? parseDuration(durationMatch[1]) : 0;
 
         videos.push({
             id: videoId,
-            title: title || "Unknown",
+            title: title,
             thumbnail: thumbnail,
-            duration: 0,
+            duration: duration,
             views: 0,
             uploadDate: 0,
-            url: videoUrl,
+            url: url,
             uploader: { name: "", url: "", avatar: "" }
         });
+    }
+
+    if (videos.length === 0) {
+        log("No video blocks found, falling back to simple link extraction");
+        // Fallback to simple link extraction if blocks fail
+        const allVideoLinksPattern = /href="([^"]*\/videos\/[^"]+)"/gi;
+        let linkMatch;
+        while ((linkMatch = allVideoLinksPattern.exec(html)) !== null) {
+            const url = linkMatch[1].startsWith('http') ? linkMatch[1] : BASE_URL + linkMatch[1];
+            const idMatch = url.match(/-(\d+)$/) || url.match(/\/videos\/([^\/\?-]+)/);
+            const videoId = idMatch ? idMatch[1] : "v_" + Math.random().toString(36).substr(2, 5);
+            if (seenIds.has(videoId)) continue;
+            seenIds.add(videoId);
+            videos.push({ id: videoId, title: "Video", thumbnail: "", duration: 0, views: 0, uploadDate: 0, url: url, uploader: { name: "", url: "", avatar: "" } });
+        }
     }
 
     return videos;
