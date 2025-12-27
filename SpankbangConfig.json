@@ -32,8 +32,8 @@
   ],
   "authentication": {
     "userAgent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-    "loginUrl": "http://localhost:5000/login",
-    "completionUrl": "http://localhost:5000/login-complete",
+    "loginUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin/blob/main/AUTHENTICATION_GUIDE.md",
+    "completionUrl": "",
     "cookiesToFind": ["auth", "session", "sid"],
     "allowedDomains": ["spankbang.com", "www.spankbang.com", ".spankbang.com"]
   },
@@ -41,7 +41,7 @@
     {
       "variable": "authCookies",
       "name": "Authentication Cookies",
-      "description": "Paste your SpankBang cookies here (format: auth=value; session=value). Click Login button for instructions on how to extract cookies from your browser.",
+      "description": "⚠️ MANUAL COOKIE SETUP REQUIRED:\n\n1. Login to SpankBang in your browser: https://spankbang.com/users/login\n2. Open Developer Tools (Press F12)\n3. Go to Application/Storage → Cookies → spankbang.com\n4. Find 'auth' cookie and copy its value\n5. Format: auth=YOUR_VALUE_HERE\n6. Paste below and save\n\nFull guide: Click Login button above or see AUTHENTICATION_GUIDE.md\n\nCookie expires after ~30 days.",
       "type": "string",
       "default": ""
     }
