@@ -1663,17 +1663,34 @@ function parsePlaylistsPage(html) {
                 }
                 
                 if (!playlists.find(p => p.id === playlistId) && name.length > 0) {
+                    // Try to extract author from the block
+                    let author = "";
+                    const authorPatterns = [
+                        /(?:by|from)\s+<a[^>]*href="\/profile\/([^"\/]+)"[^>]*>([^<]+)<\/a>/i,
+                        /<a[^>]*href="\/profile\/([^"\/]+)"[^>]*>([^<]+)<\/a>/i
+                    ];
+                    for (const pattern of authorPatterns) {
+                        const authorMatch = block.match(pattern);
+                        if (authorMatch && authorMatch[2]) {
+                            const authorName = authorMatch[2].trim();
+                            if (authorName && authorName.length > 0 && authorName.length < 50) {
+                                author = authorName;
+                                break;
+                            }
+                        }
+                    }
+                    
                     if (videoCount === 0) {
-                        log(`WARNING: Found playlist with 0 videos: ${name} (ID: ${playlistId})`);
+                        log(`WARNING: Found playlist with 0 videos: ${name} (ID: ${playlistId})${author ? ' by ' + author : ''}`);
                         log(`  Block sample (first 300 chars): ${block.substring(0, 300)}`);
                     } else {
-                        log(`Found playlist: ${name} (ID: ${playlistId}) with ${videoCount} videos`);
+                        log(`Found playlist: ${name} (ID: ${playlistId}) with ${videoCount} videos${author ? ' by ' + author : ''}`);
                     }
                     playlists.push({
                         id: playlistId,
                         name: name,
                         thumbnail: thumbnail,
-                        author: "",
+                        author: author,
                         videoCount: videoCount,
                         url: `spankbang://playlist/${playlistId}`
                     });
@@ -1811,12 +1828,29 @@ function parseUserPlaylistsPageEnhanced(html) {
             }
         }
         
-        log(`Found user playlist: ${name} (ID: ${playlistId}) with ${videoCount} videos`);
+        // Try to extract author from the block
+        let author = "";
+        const authorPatterns = [
+            /(?:by|from)\s+<a[^>]*href="\/profile\/([^"\/]+)"[^>]*>([^<]+)<\/a>/i,
+            /<a[^>]*href="\/profile\/([^"\/]+)"[^>]*>([^<]+)<\/a>/i
+        ];
+        for (const authorPattern of authorPatterns) {
+            const authorMatch = innerHtml.match(authorPattern) || match[0].match(authorPattern);
+            if (authorMatch && authorMatch[2]) {
+                const authorName = authorMatch[2].trim();
+                if (authorName && authorName.length > 0 && authorName.length < 50) {
+                    author = authorName;
+                    break;
+                }
+            }
+        }
+        
+        log(`Found user playlist: ${name} (ID: ${playlistId}) with ${videoCount} videos${author ? ' by ' + author : ''}`);
         playlists.push({
             id: playlistId,
             name: name,
             thumbnail: thumbnail,
-            author: "",
+            author: author,
             videoCount: videoCount,
             url: `spankbang://playlist/${playlistId}`
         });
@@ -1913,12 +1947,23 @@ function extractPlaylistLinksFromHtml(html) {
         const thumbMatch = context.match(/(?:data-src|src)="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i);
         let thumbnail = thumbMatch ? thumbMatch[1] : "";
         
-        log(`Found playlist link: ${name} (ID: ${playlistId}) with ${videoCount} videos`);
+        // Try to find author nearby
+        let author = "";
+        const authorMatch = context.match(/(?:by|from)\s+<a[^>]*href="\/profile\/([^"\/]+)"[^>]*>([^<]+)<\/a>/i) ||
+                           context.match(/<a[^>]*href="\/profile\/([^"\/]+)"[^>]*>([^<]+)<\/a>/i);
+        if (authorMatch && authorMatch[2]) {
+            const authorName = authorMatch[2].trim();
+            if (authorName && authorName.length > 0 && authorName.length < 50) {
+                author = authorName;
+            }
+        }
+        
+        log(`Found playlist link: ${name} (ID: ${playlistId}) with ${videoCount} videos${author ? ' by ' + author : ''}`);
         playlists.push({
             id: playlistId,
             name: name,
             thumbnail: thumbnail,
-            author: "",
+            author: author,
             videoCount: videoCount,
             url: `spankbang://playlist/${playlistId}`
         });
@@ -1939,10 +1984,10 @@ function fetchPlaylistInfo(playlistUrl, playlistId, slug) {
     
     try {
         log("fetchPlaylistInfo: Fetching " + playlistUrl);
-        const response = makeRequestNoThrow(playlistUrl, API_HEADERS, 'playlist info');
+        const response = makeRequestNoThrow(playlistUrl, getAuthHeaders(), 'playlist info', true);
         
         if (!response.isOk || !response.body || response.body.length < 100) {
-            log("fetchPlaylistInfo: Failed to fetch playlist page");
+            log("fetchPlaylistInfo: Failed to fetch playlist page (status: " + response.code + ")");
             return result;
         }
         
@@ -1955,26 +2000,64 @@ function fetchPlaylistInfo(playlistUrl, playlistId, slug) {
             result.name = titleMatch[1].trim();
         }
         
-        // Count videos by finding video links
-        const videoLinks = html.match(/href="\/[a-zA-Z0-9]+\/video\//gi);
-        if (videoLinks) {
-            result.videoCount = videoLinks.length;
+        // Count videos by finding video links - multiple patterns for better accuracy
+        const videoLinkPatterns = [
+            /href="\/[a-zA-Z0-9]+\/video\//gi,
+            /<a[^>]*class="[^"]*thumb[^"]*"[^>]*href="\/[a-zA-Z0-9]+\/video\//gi,
+            /<div[^>]*class="[^"]*video-item[^"]*"[^>]*>[\s\S]*?href="\/[a-zA-Z0-9]+\/video\//gi
+        ];
+        
+        let videoCount = 0;
+        for (const pattern of videoLinkPatterns) {
+            const matches = html.match(pattern);
+            if (matches && matches.length > videoCount) {
+                videoCount = matches.length;
+            }
         }
         
-        // Get first thumbnail
-        const thumbMatch = html.match(/(?:data-src|src)="(https?:\/\/[^"]+(?:tbi\.sb-cd\.com|\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i);
+        // Also try to parse videos using existing parsers for more accurate count
+        if (videoCount === 0) {
+            log("fetchPlaylistInfo: No video links found via regex, trying parsers...");
+            let videos = parseSearchResults(html);
+            if (videos.length === 0) {
+                videos = parsePlaylistVideos(html);
+            }
+            if (videos.length === 0) {
+                videos = extractVideoLinksFromHtml(html);
+            }
+            videoCount = videos.length;
+        }
+        
+        result.videoCount = videoCount;
+        
+        // Get first thumbnail - look for video thumbnails
+        const thumbMatch = html.match(/(?:data-src|src)="(https?:\/\/[^"]+(?:tbi\.sb-cd\.com|cdn[0-9]?\.spankbang\.com)[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i) ||
+                          html.match(/(?:data-src|src)="(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i);
         if (thumbMatch) {
             result.thumbnail = thumbMatch[1];
         }
         
         // Try to get author/creator
-        const authorMatch = html.match(/class="[^"]*(?:uploader|creator|author)[^"]*"[^>]*>[\s\S]*?<a[^>]*>([^<]+)<\/a>/i) ||
-                           html.match(/<a[^>]*href="\/profile\/([^"]+)"[^>]*>([^<]+)<\/a>/i);
-        if (authorMatch) {
-            result.author = (authorMatch[2] || authorMatch[1] || "").trim();
+        const authorPatterns = [
+            /(?:by|from|creator?:?)\s*<a[^>]*href="\/profile\/([^"\/]+)"[^>]*>([^<]+)<\/a>/i,
+            /<a[^>]*href="\/profile\/([^"\/]+)"[^>]*class="[^"]*(?:user|creator|author|uploader)[^"]*"[^>]*>([^<]+)<\/a>/i,
+            /<div[^>]*class="[^"]*(?:info|creator|owner)[^"]*"[^>]*>[\s\S]{0,300}?<a[^>]*href="\/profile\/([^"\/]+)"[^>]*>([^<]+)<\/a>/i,
+            /<a[^>]*href="\/profile\/([^"]+)"[^>]*>([^<]+)<\/a>/i
+        ];
+        
+        for (const pattern of authorPatterns) {
+            const authorMatch = html.match(pattern);
+            if (authorMatch && authorMatch[2]) {
+                const authorName = authorMatch[2].replace(/<[^>]*>/g, '').trim();
+                if (authorName && authorName.length > 0 && authorName.length < 50 &&
+                    !authorName.match(/^(home|search|login|upload|all|videos?)$/i)) {
+                    result.author = authorName;
+                    break;
+                }
+            }
         }
         
-        log(`fetchPlaylistInfo: Found - name: ${result.name}, videos: ${result.videoCount}, thumbnail: ${result.thumbnail ? 'yes' : 'no'}`);
+        log(`fetchPlaylistInfo: Found - name: ${result.name}, videos: ${result.videoCount}, author: ${result.author || 'none'}, thumbnail: ${result.thumbnail ? 'yes' : 'no'}`);
     } catch (error) {
         log("fetchPlaylistInfo error: " + error.message);
     }
@@ -4497,19 +4580,28 @@ source.searchPlaylists = function(query, type, order, filters, continuationToken
                 
                 log(`Found ${playlists.length} playlists from user playlists page`);
                 
-                const platformPlaylists = playlists.map(p => new PlatformPlaylist({
-                    id: new PlatformID(PLATFORM, p.id, plugin.config.id),
-                    name: p.name,
-                    thumbnail: p.thumbnail || "",
-                    author: new PlatformAuthorLink(
-                        new PlatformID(PLATFORM, p.author || "User", plugin.config.id),
-                        p.author || "User",
-                        "",
-                        ""
-                    ),
-                    videoCount: p.videoCount || 0,
-                    url: p.url
-                }));
+                const platformPlaylists = playlists.map(p => {
+                    // Create proper author URL if author is present
+                    let authorUrl = "";
+                    let authorId = p.author || "User";
+                    if (p.author && p.author.length > 0) {
+                        authorUrl = `${BASE_URL}/profile/${p.author}/`;
+                    }
+                    
+                    return new PlatformPlaylist({
+                        id: new PlatformID(PLATFORM, p.id, plugin.config.id),
+                        name: p.name,
+                        thumbnail: p.thumbnail || "",
+                        author: new PlatformAuthorLink(
+                            new PlatformID(PLATFORM, authorId, plugin.config.id),
+                            authorId,
+                            authorUrl,
+                            ""
+                        ),
+                        videoCount: p.videoCount || 0,
+                        url: p.url
+                    });
+                });
                 
                 return new SpankBangPlaylistPager(platformPlaylists, false, {
                     query: query,
@@ -4568,14 +4660,21 @@ source.searchPlaylists = function(query, type, order, filters, continuationToken
                 const playlistUrl = `${BASE_URL}/${shortId}/playlist/${slug}/`;
                 const playlistInfo = fetchPlaylistInfo(playlistUrl, playlistId, slug);
                 
+                // Create proper author URL
+                let authorUrl = "";
+                let authorId = playlistInfo.author || "Unknown";
+                if (playlistInfo.author && playlistInfo.author.length > 0) {
+                    authorUrl = `${BASE_URL}/profile/${playlistInfo.author}/`;
+                }
+                
                 const playlist = new PlatformPlaylist({
                     id: new PlatformID(PLATFORM, playlistId, plugin.config.id),
                     name: playlistInfo.name,
                     thumbnail: playlistInfo.thumbnail,
                     author: new PlatformAuthorLink(
-                        new PlatformID(PLATFORM, playlistInfo.author || "Unknown", plugin.config.id),
-                        playlistInfo.author || "Unknown",
-                        "",
+                        new PlatformID(PLATFORM, authorId, plugin.config.id),
+                        authorId,
+                        authorUrl,
                         ""
                     ),
                     videoCount: playlistInfo.videoCount,
@@ -4596,14 +4695,21 @@ source.searchPlaylists = function(query, type, order, filters, continuationToken
                 const playlistUrl = `${BASE_URL}/playlist/${slug}/`;
                 const playlistInfo = fetchPlaylistInfo(playlistUrl, slug, slug);
                 
+                // Create proper author URL
+                let authorUrl = "";
+                let authorId = playlistInfo.author || "Unknown";
+                if (playlistInfo.author && playlistInfo.author.length > 0) {
+                    authorUrl = `${BASE_URL}/profile/${playlistInfo.author}/`;
+                }
+                
                 const playlist = new PlatformPlaylist({
                     id: new PlatformID(PLATFORM, slug, plugin.config.id),
                     name: playlistInfo.name,
                     thumbnail: playlistInfo.thumbnail,
                     author: new PlatformAuthorLink(
-                        new PlatformID(PLATFORM, playlistInfo.author || "Unknown", plugin.config.id),
-                        playlistInfo.author || "Unknown",
-                        "",
+                        new PlatformID(PLATFORM, authorId, plugin.config.id),
+                        authorId,
+                        authorUrl,
                         ""
                     ),
                     videoCount: playlistInfo.videoCount,
@@ -4637,19 +4743,28 @@ source.searchPlaylists = function(query, type, order, filters, continuationToken
         const html = makeRequest(searchUrl, API_HEADERS, 'playlist search', true);
         const playlists = parsePlaylistsPage(html);
 
-        const platformPlaylists = playlists.map(p => new PlatformPlaylist({
-            id: new PlatformID(PLATFORM, p.id, plugin.config.id),
-            name: p.name,
-            thumbnail: p.thumbnail || "",
-            author: new PlatformAuthorLink(
-                new PlatformID(PLATFORM, p.author || "Unknown", plugin.config.id),
-                p.author || "Unknown",
-                "",
-                ""
-            ),
-            videoCount: p.videoCount || 0,
-            url: p.url
-        }));
+        const platformPlaylists = playlists.map(p => {
+            // Create proper author URL if author is present
+            let authorUrl = "";
+            if (p.author && p.author.length > 0) {
+                // Check if author looks like a profile name (no special URL prefix)
+                authorUrl = `${BASE_URL}/profile/${p.author}/`;
+            }
+            
+            return new PlatformPlaylist({
+                id: new PlatformID(PLATFORM, p.id, plugin.config.id),
+                name: p.name,
+                thumbnail: p.thumbnail || "",
+                author: new PlatformAuthorLink(
+                    new PlatformID(PLATFORM, p.author || "Unknown", plugin.config.id),
+                    p.author || "Unknown",
+                    authorUrl,
+                    ""
+                ),
+                videoCount: p.videoCount || 0,
+                url: p.url
+            });
+        });
 
         const hasMore = playlists.length >= 20;
         const nextToken = hasMore ? (page + 1).toString() : null;
@@ -4744,6 +4859,58 @@ source.getPlaylist = function(url) {
             log("Extracted playlist name from HTML: " + playlistName);
         }
         
+        // Extract playlist creator/owner from HTML
+        log("Extracting playlist creator/owner...");
+        let playlistAuthor = {
+            name: "SpankBang",
+            url: CONFIG.EXTERNAL_URL_BASE,
+            avatar: "",
+            id: "spankbang"
+        };
+        
+        // Try to find the creator/owner - look for profile links near "by" or "created by" text
+        const creatorPatterns = [
+            // Pattern 1: "by <a href="/profile/username">Username</a>"
+            /(?:by|from|creator?:?)\s*<a[^>]*href="\/profile\/([^"\/]+)"[^>]*>([^<]+)<\/a>/i,
+            // Pattern 2: Direct profile link near playlist info
+            /<a[^>]*href="\/profile\/([^"\/]+)"[^>]*class="[^"]*(?:user|creator|author|uploader)[^"]*"[^>]*>([^<]+)<\/a>/i,
+            // Pattern 3: Profile link with avatar
+            /<a[^>]*href="\/profile\/([^"\/]+)"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?([^<]+)<\/a>/i,
+            // Pattern 4: Any profile link in playlist header/info area
+            /<div[^>]*class="[^"]*(?:info|head|meta|creator|owner)[^"]*"[^>]*>[\s\S]{0,500}?<a[^>]*href="\/profile\/([^"\/]+)"[^>]*>([^<]+)<\/a>/i,
+            // Pattern 5: Simple profile link
+            /<a[^>]*href="\/profile\/([^"\/]+)"[^>]*>([^<]+)<\/a>/i
+        ];
+        
+        for (const pattern of creatorPatterns) {
+            const creatorMatch = html.match(pattern);
+            if (creatorMatch && creatorMatch[1] && creatorMatch[2]) {
+                const profileName = creatorMatch[1].trim();
+                const displayName = creatorMatch[2].replace(/<[^>]*>/g, '').trim();
+                
+                // Skip if this looks like a generic link (common patterns to avoid)
+                if (profileName && displayName && 
+                    profileName.length > 0 && profileName.length < 50 &&
+                    displayName.length > 0 && displayName.length < 50 &&
+                    !displayName.match(/^(home|search|login|upload|all|videos?)$/i)) {
+                    
+                    playlistAuthor.name = displayName;
+                    playlistAuthor.url = `${CONFIG.EXTERNAL_URL_BASE}/profile/${profileName}/`;
+                    playlistAuthor.id = profileName;
+                    
+                    // Try to find avatar nearby
+                    const avatarContext = html.substring(Math.max(0, creatorMatch.index - 300), Math.min(html.length, creatorMatch.index + 300));
+                    const avatarMatch = avatarContext.match(/(?:data-src|src)="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i);
+                    if (avatarMatch) {
+                        playlistAuthor.avatar = avatarMatch[1];
+                    }
+                    
+                    log(`Found playlist creator: ${playlistAuthor.name} (profile: ${profileName})`);
+                    break;
+                }
+            }
+        }
+        
         log("Parsing videos from playlist page...");
         let videos = parseSearchResults(html);
         log(`parseSearchResults found ${videos.length} videos`);
@@ -4789,10 +4956,10 @@ source.getPlaylist = function(url) {
             name: playlistName,
             thumbnail: thumbnailUrl,
             author: new PlatformAuthorLink(
-                new PlatformID(PLATFORM, "spankbang", plugin.config.id),
-                "SpankBang",
-                CONFIG.EXTERNAL_URL_BASE,
-                ""
+                new PlatformID(PLATFORM, playlistAuthor.id, plugin.config.id),
+                playlistAuthor.name,
+                playlistAuthor.url,
+                playlistAuthor.avatar
             ),
             datetime: 0,
             url: url,
@@ -4804,7 +4971,7 @@ source.getPlaylist = function(url) {
             })
         });
         
-        log(`Successfully created playlist details: ${playlistName} with ${platformVideos.length} videos`);
+        log(`Successfully created playlist details: ${playlistName} with ${platformVideos.length} videos (creator: ${playlistAuthor.name})`);
         return playlistDetails;
 
     } catch (error) {
