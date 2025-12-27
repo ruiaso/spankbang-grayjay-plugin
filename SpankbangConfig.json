@@ -1,13 +1,15 @@
+
+
 {
   "name": "Spankbang",
-  "description": "Spankbang video platform plugin for Grayjay with model search, recommendations, and improved creator profiles. Supports subscriptions, playlists, and watch history with authentication. To login: Play any video -> tap menu -> Page -> Login (easiest method).",
+  "description": "Spankbang video platform plugin for Grayjay with model search, recommendations, and improved creator profiles",
   "platformUrl": "https://spankbang.com",
   "author": "GreyPluginDev",
   "authorUrl": "https://github.com/GreyPluginDev",
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 3,
+  "version": 1,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "b2c3d4e5-f6a7-8901-bcde-fg2345678901",
   "scriptSignature": "",
@@ -32,35 +34,10 @@
   ],
   "authentication": {
     "userAgent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-    "loginUrl": "https://spankbang.com/users/login",
-    "completionUrl": "https://spankbang.com/",
-    "completionUrls": [
-      "https://spankbang.com/",
-      "https://www.spankbang.com/",
-      "https://spankbang.com/users/",
-      "https://spankbang.com/profile/"
-    ],
-    "headersToFind": ["cookie", "set-cookie"],
-    "domainHeadersToFind": {
-      ".spankbang.com": ["cookie", "set-cookie"],
-      "spankbang.com": ["cookie", "set-cookie"],
-      "www.spankbang.com": ["cookie", "set-cookie"]
-    },
-    "cookiesToFind": ["auth", "session", "sid", "fingerprint", "user_id"],
-    "cookiesExclOthers": false,
-    "allowedDomains": ["spankbang.com", "www.spankbang.com", ".spankbang.com"],
-    "loginButton": "Login",
-    "loginWarning": "After logging in successfully, you will be redirected. The plugin will automatically detect your login."
+    "loginUrl": "https://spankbang.com/users/auth",
+    "cookiesToFind": ["auth"],
+    "allowedDomains": ["spankbang.com", "www.spankbang.com", ".spankbang.com"]
   },
-  "settings": [
-    {
-      "variable": "authCookies",
-      "name": "Authentication Cookies",
-      "description": "THREE WAYS TO LOGIN:\n\nMETHOD 1 - EASIEST (Works in Grayjay):\n1. Play any video\n2. Tap 3 dots menu -> Page\n3. Tap login button on page\n4. Login with your credentials\n5. Grayjay will remember your session\n\nMETHOD 2 - Manual Cookie Entry:\n1. Login to SpankBang in browser\n2. Press F12 -> Application -> Cookies -> spankbang.com\n3. Copy auth cookie value\n4. Format: auth=YOUR_VALUE_HERE\n5. Paste below and save\n\nMETHOD 3 - Auth Button:\nClick Login button under Authentication section\n\nNote: Methods 1 or 2 are most reliable. Cookie expires after 30 days.",
-      "type": "string",
-      "default": ""
-    }
-  ],
   "supportedClaimTypes": [3],
   "primaryClaimFieldType": 3,
   "changelog": {
@@ -71,23 +48,6 @@
       "Home feed",
       "Channel/Model support",
       "Related videos"
-    ],
-    "2": [
-      "Added manual cookie-based authentication",
-      "Fixed subscriptions support with proper auth",
-      "Fixed playlists support with proper auth",
-      "Added watch history support with thumbnails and duration",
-      "Improved login instructions page",
-      "Added cookie validation and expiry detection"
-    ],
-    "3": [
-      "Added multiple login methods for flexibility",
-      "EASIEST: Video -> 3 dots -> Page -> Login (works perfectly in Grayjay)",
-      "Manual cookie entry restored in settings",
-      "Authentication button also available",
-      "Full support for subscriptions, playlists, and watch history sync",
-      "Cookie validation and expiry detection",
-      "Improved login instructions with working method"
     ]
   }
 }
