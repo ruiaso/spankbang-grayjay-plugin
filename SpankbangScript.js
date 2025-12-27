@@ -126,10 +126,10 @@ function getAuthHeaders() {
     return headers;
 }
 
-function makeRequest(url, headers = null, context = 'request') {
+function makeRequest(url, headers = null, context = 'request', useAuth = false) {
     try {
         const requestHeaders = headers || getAuthHeaders();
-        const response = http.GET(url, requestHeaders, false);
+        const response = http.GET(url, requestHeaders, useAuth);
         if (!response.isOk) {
             throw new ScriptException(`${context} failed with status ${response.code}`);
         }
@@ -139,10 +139,10 @@ function makeRequest(url, headers = null, context = 'request') {
     }
 }
 
-function makeRequestNoThrow(url, headers = null, context = 'request') {
+function makeRequestNoThrow(url, headers = null, context = 'request', useAuth = false) {
     try {
         const requestHeaders = headers || getAuthHeaders();
-        const response = http.GET(url, requestHeaders, false);
+        const response = http.GET(url, requestHeaders, useAuth);
         return { isOk: response.isOk, code: response.code, body: response.body };
     } catch (error) {
         return { isOk: false, code: 0, body: null, error: error.message };
@@ -2555,7 +2555,7 @@ source.getWatchHistory = function() {
 
         const historyUrl = USER_URLS.HISTORY;
         log("Fetching watch history from: " + historyUrl);
-        const html = makeRequest(historyUrl, null, 'watch history');
+        const html = makeRequest(historyUrl, null, 'watch history', true);
         
         if (!html || html.length < 100) {
             log("getWatchHistory: Empty or invalid HTML response (length: " + (html ? html.length : 0) + ")");
@@ -2820,7 +2820,7 @@ source.syncRemoteWatchHistory = function(continuationToken) {
             : USER_URLS.HISTORY;
         
         log("Syncing remote watch history from: " + historyUrl);
-        const html = makeRequest(historyUrl, null, 'sync watch history');
+        const html = makeRequest(historyUrl, null, 'sync watch history', true);
         
         if (!html || html.length < 100) {
             log("syncRemoteWatchHistory: Empty or invalid HTML response (length: " + (html ? html.length : 0) + ")");
@@ -2997,7 +2997,7 @@ source.getFavorites = function() {
         }
 
         const likedUrl = `${BASE_URL}/users/liked`;
-        const html = makeRequest(likedUrl, null, 'user liked videos');
+        const html = makeRequest(likedUrl, null, 'user liked videos', true);
         
         let videos = parseSearchResults(html);
         
@@ -3059,7 +3059,7 @@ source.getUserPlaylistsSubs = function() {
         }
 
         const playlistsSubsUrl = `${BASE_URL}/users/playlists_subs`;
-        const html = makeRequest(playlistsSubsUrl, null, 'subscribed playlists');
+        const html = makeRequest(playlistsSubsUrl, null, 'subscribed playlists', true);
         
         const playlists = parsePlaylistsPage(html);
         
@@ -3802,7 +3802,7 @@ source.searchPlaylists = function(query, type, order, filters, continuationToken
         
         log("Playlist search URL: " + searchUrl);
 
-        const html = makeRequest(searchUrl, API_HEADERS, 'playlist search');
+        const html = makeRequest(searchUrl, API_HEADERS, 'playlist search', true);
         const playlists = parsePlaylistsPage(html);
 
         const platformPlaylists = playlists.map(p => new PlatformPlaylist({
@@ -3868,11 +3868,11 @@ source.getPlaylist = function(url) {
 
         log("Fetching playlist from: " + playlistUrl);
         
-        // Use authenticated request for playlist pages
+        // Use authenticated request for playlist pages (must use true for authenticated client with cookies)
         const authHeaders = getAuthHeaders();
-        log("Using authenticated request with headers");
+        log("Using authenticated request with headers and cookies");
         
-        const response = http.GET(playlistUrl, authHeaders, false);
+        const response = http.GET(playlistUrl, authHeaders, true);
         
         if (!response.isOk) {
             log(`Playlist fetch failed with status ${response.code}`);
