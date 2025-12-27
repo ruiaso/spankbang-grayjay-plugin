@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 46,
+  "version": 47,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -51,14 +51,18 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "47": [
+      "FIXED: Playlist videos now showing correctly when importing playlists",
+      "Added specialized parsePlaylistVideos() function with 4 extraction patterns",
+      "Enhanced video extraction for li-based, table-based, div-based, and aggressive link patterns",
+      "Improved fallback logic: parsePlaylistVideos -> parseSearchResults for maximum compatibility",
+      "Added detailed logging to help diagnose playlist parsing issues"
+    ],
     "46": [
-      "Fixed playlist import to use cookies directly via http.GET with authenticated client (same as subscriptions)",
-      "Fixed history import to use cookies directly without isLoggedIn() check which was failing",
-      "Fixed syncRemoteWatchHistory to use cookies directly for better reliability",
-      "Enhanced parseHistoryPage with SpankBang-specific <a class='thumb'> pattern for better thumbnail/duration extraction",
-      "Added improved fallback patterns for history page parsing",
-      "Fixed history thumbnails showing black - now properly extracts from data-src attributes",
-      "Fixed history duration showing 0:00 - now extracts from <span class='l'> elements"
+      "Added comprehensive logging to diagnose playlist import issues",
+      "Enhanced authentication detection for playlist fetching",
+      "Added login page detection to provide better error messages",
+      "Improved debugging output to show HTML parsing progress"
     ],
     "45": [
       "Fixed playlist video count parsing to correctly extract from <span class='len'> elements",
