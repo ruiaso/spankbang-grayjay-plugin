@@ -1,6 +1,6 @@
 {
   "name": "Spankbang",
-  "description": "Spankbang video platform plugin for Grayjay with model search, recommendations, and improved creator profiles. Click 'Login' under Authentication to login and enable subscriptions, playlists, and history features.",
+  "description": "Spankbang video platform plugin for Grayjay with model search, recommendations, and improved creator profiles. Supports subscriptions, playlists, and watch history with authentication. To login: Play any video → tap ⋮ → Page → Login (easiest method).",
   "platformUrl": "https://spankbang.com",
   "author": "GreyPluginDev",
   "authorUrl": "https://github.com/GreyPluginDev",
@@ -37,7 +37,15 @@
     "cookiesToFind": ["auth", "session", "sid"],
     "allowedDomains": ["spankbang.com", "www.spankbang.com", ".spankbang.com"]
   },
-  "settings": [],
+  "settings": [
+    {
+      "variable": "authCookies",
+      "name": "Authentication Cookies (Manual Entry)",
+      "description": "🔐 THREE WAYS TO LOGIN:\n\n✅ METHOD 1 - EASIEST (Works in Grayjay):\n1. Play any video\n2. Tap 3 dots (⋮) → 'Page'\n3. Tap login button on page\n4. Login with your credentials\n5. Grayjay will remember your session\n\n✅ METHOD 2 - Manual Cookie Entry:\n1. Login to SpankBang in browser: https://spankbang.com/users/login\n2. Press F12 → Application → Cookies → spankbang.com\n3. Copy 'auth' cookie value\n4. Format: auth=YOUR_VALUE_HERE\n5. Paste below\n\n✅ METHOD 3 - Auth Button:\nClick 'Login' button under Authentication section\n\n📝 Note: Methods 1 or 2 are most reliable. Cookie expires after ~30 days.",
+      "type": "string",
+      "default": ""
+    }
+  ],
   "supportedClaimTypes": [3],
   "primaryClaimFieldType": 3,
   "changelog": {
@@ -58,11 +66,13 @@
       "Added cookie validation and expiry detection"
     ],
     "3": [
-      "Changed authentication to use Login button",
-      "Click 'Login' under Authentication to sign in",
-      "Grayjay will automatically capture authentication cookies",
-      "Removed manual cookie entry from settings",
-      "Simplified authentication flow"
+      "Added multiple login methods for flexibility",
+      "✅ EASIEST: Video → ⋮ → Page → Login (works perfectly in Grayjay)",
+      "✅ Manual cookie entry restored in settings",
+      "✅ Authentication button also available",
+      "Full support for subscriptions, playlists, and watch history sync",
+      "Cookie validation and expiry detection",
+      "Improved login instructions with working method"
     ]
   }
 }
