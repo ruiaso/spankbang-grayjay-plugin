@@ -1224,19 +1224,18 @@ function parsePlaylistsPage(html) {
 source.getUserSubscriptions = function() {
     log("Getting user subscriptions");
     
+    if (!state.isAuthenticated || !state.authCookies) {
+        log("User not authenticated, returning empty subscriptions");
+        return [];
+    }
+
     const subscriptions = [];
     
     try {
-        // Fetch user subscriptions using authenticated client
+        // Fetch user subscriptions
         log("Fetching user subscriptions from /users/subscriptions");
-        const userSubsHtml = http.GET(`${BASE_URL}/users/subscriptions`, API_HEADERS, true);
-        
-        if (!userSubsHtml.isOk) {
-            log("Failed to fetch user subscriptions, user may not be logged in");
-            return [];
-        }
-        
-        const userSubs = parseSubscriptionsPage(userSubsHtml.body);
+        const userSubsHtml = makeRequest(`${BASE_URL}/users/subscriptions`, getAuthHeaders(), 'user subscriptions');
+        const userSubs = parseSubscriptionsPage(userSubsHtml);
         subscriptions.push(...userSubs);
         log(`Found ${userSubs.length} user subscriptions`);
     } catch (error) {
@@ -1244,16 +1243,10 @@ source.getUserSubscriptions = function() {
     }
     
     try {
-        // Fetch pornstar subscriptions using authenticated client
+        // Fetch pornstar subscriptions
         log("Fetching pornstar subscriptions from /users/subscriptions_pornstars");
-        const pornstarSubsHtml = http.GET(`${BASE_URL}/users/subscriptions_pornstars`, API_HEADERS, true);
-        
-        if (!pornstarSubsHtml.isOk) {
-            log("Failed to fetch pornstar subscriptions");
-            return subscriptions.map(sub => sub.url);
-        }
-        
-        const pornstarSubs = parsePornstarSubscriptionsPage(pornstarSubsHtml.body);
+        const pornstarSubsHtml = makeRequest(`${BASE_URL}/users/subscriptions_pornstars`, getAuthHeaders(), 'pornstar subscriptions');
+        const pornstarSubs = parsePornstarSubscriptionsPage(pornstarSubsHtml);
         subscriptions.push(...pornstarSubs);
         log(`Found ${pornstarSubs.length} pornstar subscriptions`);
     } catch (error) {
@@ -1266,18 +1259,16 @@ source.getUserSubscriptions = function() {
 
 source.getUserPlaylists = function() {
     log("Getting user playlists");
+    
+    if (!state.isAuthenticated || !state.authCookies) {
+        log("User not authenticated, returning empty playlists");
+        return [];
+    }
 
     try {
-        // Fetch playlists using authenticated client
         log("Fetching playlists from /users/playlists");
-        const playlistsResp = http.GET(`${BASE_URL}/users/playlists`, API_HEADERS, true);
-        
-        if (!playlistsResp.isOk) {
-            log("Failed to fetch playlists, user may not be logged in");
-            return [];
-        }
-        
-        const playlists = parsePlaylistsPage(playlistsResp.body);
+        const playlistsHtml = makeRequest(`${BASE_URL}/users/playlists`, getAuthHeaders(), 'user playlists');
+        const playlists = parsePlaylistsPage(playlistsHtml);
         log(`Found ${playlists.length} playlists`);
         return playlists.map(pl => pl.url);
     } catch (error) {

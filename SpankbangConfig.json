@@ -34,9 +34,25 @@
   ],
   "authentication": {
     "userAgent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-    "loginUrl": "https://spankbang.com/users/auth",
-    "cookiesToFind": ["auth"],
-    "allowedDomains": ["spankbang.com", "www.spankbang.com", ".spankbang.com"]
+    "loginUrl": "https://spankbang.com/users/login",
+    "completionUrl": "https://spankbang.com/",
+    "completionUrls": [
+      "https://spankbang.com/",
+      "https://www.spankbang.com/",
+      "https://spankbang.com/users/playlists",
+      "https://spankbang.com/users/subscriptions"
+    ],
+    "headersToFind": ["cookie", "set-cookie"],
+    "domainHeadersToFind": {
+      ".spankbang.com": ["cookie", "set-cookie"],
+      "spankbang.com": ["cookie", "set-cookie"],
+      "www.spankbang.com": ["cookie", "set-cookie"]
+    },
+    "cookiesToFind": ["auth", "sb_session", "__cf_bm", "cookie_consent"],
+    "cookiesExclOthers": false,
+    "allowedDomains": ["spankbang.com", "www.spankbang.com", ".spankbang.com"],
+    "loginButton": "#auth_register_form",
+    "loginWarning": "After logging in successfully, you will be redirected. The plugin will automatically detect your login."
   },
   "supportedClaimTypes": [3],
   "primaryClaimFieldType": 3,
