@@ -94,7 +94,8 @@ function extractVideoId(url) {
 
     const patterns = [
         /-(\d+)$/,
-        /videos\/[^\/]+-(\d+)/
+        /videos\/[^\/]+-(\d+)/,
+        /xvideos\/(\d+)/
     ];
 
     for (const pattern of patterns) {
@@ -386,19 +387,8 @@ function createVideoDetails(videoData, url) {
 
 function extractVideoSources(html) {
     const sources = {};
-    log("Extracting video sources from HTML");
 
-    // Check for JSON-LD or script objects first as they are more reliable
-    const streamDataMatch = html.match(/var\s+stream_data\s*=\s*(\{.*?\});/);
-    if (streamDataMatch) {
-        try {
-            const data = JSON.parse(streamDataMatch[1]);
-            if (data.hls) sources.hls = data.hls;
-            for (const q of ['4k', '1080p', '720p', '480p', '360p', '240p']) {
-                if (data[q]) sources[q.replace('p', '')] = data[q];
-            }
-        } catch (e) { log("Failed to parse stream_data JSON: " + e.message); }
-    }
+    // Try to extract HLS stream first (most reliable)
     const hlsPatterns = [
         /"hls"\s*:\s*"([^"]+)"/i,
         /"sources"\s*:\s*\[\s*\{[^}]*"type"\s*:\s*"application\/x-mpegURL"[^}]*"src"\s*:\s*"([^"]+)"/i,
@@ -1021,17 +1011,7 @@ source.getChannel = function(url) {
             channelUrl = `${BASE_URL}/profile/${channelInfo.id}`;
         } else if (channelInfo.type === 'creator') {
             channelUrl = `${BASE_URL}/creators/${channelInfo.id}`;
-        } else {
-            // Handle unexpected spankbang:// schemes or just use a fallback
-            log("Unexpected internal URL scheme: " + url);
-            channelUrl = url.replace('spankbang://', 'https://spankbang.com/');
         }
-    }
-    
-    if (!channelUrl.startsWith('http')) {
-        log("Ensuring absolute URL for channel: " + channelUrl);
-        if (channelUrl.startsWith('/')) channelUrl = BASE_URL + channelUrl;
-        else channelUrl = 'https://' + channelUrl;
     }
     
     const html = makeRequest(channelUrl, API_HEADERS, 'channel page');
@@ -1067,18 +1047,9 @@ function getChannelVideos(url, page) {
             channelUrl = `${BASE_URL}/profile/${channelInfo.id}`;
         } else if (channelInfo.type === 'creator') {
             channelUrl = `${BASE_URL}/creators/${channelInfo.id}`;
-        } else {
-            channelUrl = url.replace('spankbang://', 'https://spankbang.com/');
         }
-    } 
-    
-    if (!channelUrl.startsWith('http')) {
-        if (channelUrl.startsWith('/')) channelUrl = BASE_URL + channelUrl;
-        else channelUrl = 'https://' + channelUrl;
-    }
-
-    if (!channelUrl.includes('/videos')) {
-        channelUrl = channelUrl.replace(/\/$/, '') + '/videos';
+    } else if (!url.includes('/videos')) {
+        channelUrl = url.replace(/\/$/, '') + '/videos';
     }
     
     if (page > 1) {
@@ -1197,4 +1168,164 @@ function parsePornstarSubscriptionsPage(html) {
         let match;
         while ((match = pattern.exec(html)) !== null) {
             const pornstarSlug = match[1].replace(/\/$/, '');
-            if (see
+            if (seenIds.has(`pornstar:${pornstarSlug}`)) continue;
+            seenIds.add(`pornstar:${pornstarSlug}`);
+
+            let avatar = match[2] || "";
+            if (avatar.startsWith('//')) avatar = 'https:' + avatar;
+            else if (!avatar.startsWith('http') && avatar) avatar = 'https://spankbang.com' + avatar;
+
+            let name = match[3] || pornstarSlug.replace(/-/g, ' ');
+            name = name.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+
+            subscriptions.push({
+                id: `pornstar:${pornstarSlug}`,
+                name: name,
+                url: `spankbang://profile/pornstar:${pornstarSlug}`,
+                avatar: avatar,
+                type: 'pornstar'
+            });
+        }
+    }
+
+    return subscriptions;
+}
+
+function parsePlaylistsPage(html) {
+    const playlists = [];
+    const seenIds = new Set();
+
+    // Parse playlists from /users/playlists
+    const playlistPatterns = [
+        /<a[^>]*href="\/playlist\/([^"\/\?]+)"[^>]*>[\s\S]*?<[^>]*>([^<]+)<\/[^>]*>/gi,
+        /<div[^>]*class="[^"]*playlist[^"]*"[^>]*>[\s\S]*?<a[^>]*href="\/playlist\/([^"\/]+)"[^>]*title="([^"]+)"/gi
+    ];
+
+    for (const pattern of playlistPatterns) {
+        let match;
+        while ((match = pattern.exec(html)) !== null) {
+            const playlistId = match[1].replace(/\/$/, '');
+            if (seenIds.has(playlistId)) continue;
+            seenIds.add(playlistId);
+
+            const name = (match[2] || playlistId.replace(/-/g, ' ')).trim();
+
+            playlists.push({
+                id: playlistId,
+                name: name,
+                url: `${BASE_URL}/playlist/${playlistId}`
+            });
+        }
+    }
+
+    return playlists;
+}
+
+source.getUserSubscriptions = function() {
+    log("Getting user subscriptions");
+    
+    if (!state.isAuthenticated || !state.authCookies) {
+        log("User not authenticated, returning empty subscriptions");
+        return [];
+    }
+
+    const subscriptions = [];
+    
+    try {
+        // Fetch user subscriptions
+        log("Fetching user subscriptions from /users/subscriptions");
+        const userSubsHtml = makeRequest(`${BASE_URL}/users/subscriptions`, getAuthHeaders(), 'user subscriptions');
+        const userSubs = parseSubscriptionsPage(userSubsHtml);
+        subscriptions.push(...userSubs);
+        log(`Found ${userSubs.length} user subscriptions`);
+    } catch (error) {
+        log("Failed to fetch user subscriptions: " + error.message);
+    }
+    
+    try {
+        // Fetch pornstar subscriptions
+        log("Fetching pornstar subscriptions from /users/subscriptions_pornstars");
+        const pornstarSubsHtml = makeRequest(`${BASE_URL}/users/subscriptions_pornstars`, getAuthHeaders(), 'pornstar subscriptions');
+        const pornstarSubs = parsePornstarSubscriptionsPage(pornstarSubsHtml);
+        subscriptions.push(...pornstarSubs);
+        log(`Found ${pornstarSubs.length} pornstar subscriptions`);
+    } catch (error) {
+        log("Failed to fetch pornstar subscriptions: " + error.message);
+    }
+    
+    log(`Total subscriptions found: ${subscriptions.length}`);
+    return subscriptions.map(sub => sub.url);
+};
+
+source.getUserPlaylists = function() {
+    log("Getting user playlists");
+    
+    if (!state.isAuthenticated || !state.authCookies) {
+        log("User not authenticated, returning empty playlists");
+        return [];
+    }
+
+    try {
+        log("Fetching playlists from /users/playlists");
+        const playlistsHtml = makeRequest(`${BASE_URL}/users/playlists`, getAuthHeaders(), 'user playlists');
+        const playlists = parsePlaylistsPage(playlistsHtml);
+        log(`Found ${playlists.length} playlists`);
+        return playlists.map(pl => pl.url);
+    } catch (error) {
+        log("Failed to fetch playlists: " + error.message);
+        return [];
+    }
+};
+
+source.getPlaylist = function(url) {
+    throw new ScriptException("Playlists not implemented");
+};
+
+source.canDownload = function(video) {
+    return true;
+};
+
+source.getDownloadables = function(video) {
+    try {
+        const url = video.url.value || video.url;
+        const html = makeRequest(url, API_HEADERS, 'video download');
+        const videoData = parseVideoPage(html);
+        
+        const downloads = [];
+        
+        if (videoData.sources) {
+            const qualityOrder = ['2160', '1080', '720', '480', '240'];
+            for (const quality of qualityOrder) {
+                if (videoData.sources[quality] && videoData.sources[quality].startsWith('http')) {
+                    const name = quality + "p";
+                    downloads.push(new Downloadable({
+                        name: name,
+                        url: videoData.sources[quality],
+                        mimeType: "video/mp4"
+                    }));
+                }
+            }
+        }
+        
+        if (videoData.sources && (videoData.sources.hls || videoData.sources.m3u8)) {
+            const hlsUrl = videoData.sources.hls || videoData.sources.m3u8;
+            downloads.push(new Downloadable({
+                name: "HLS Stream",
+                url: hlsUrl,
+                mimeType: "application/x-mpegURL"
+            }));
+        }
+        
+        if (downloads.length === 0) {
+            log("No downloads available for video: " + url);
+            return [];
+        }
+        
+        return downloads;
+    } catch (error) {
+        log("Failed to get downloadables: " + error.message);
+        return [];
+    }
+};
+
+log("Spankbang plugin loaded");
