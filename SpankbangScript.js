@@ -2914,7 +2914,7 @@ source.getUserPlaylistsSubs = function() {
         const platformPlaylists = playlists.map(p => new PlatformPlaylist({
             id: new PlatformID(PLATFORM, p.id, plugin.config.id),
             name: p.name,
-            thumbnail: p.thumbnail,
+            thumbnail: createThumbnails(p.thumbnail),
             author: new PlatformAuthorLink(
                 new PlatformID(PLATFORM, p.author || "Unknown", plugin.config.id),
                 p.author || "Unknown",
@@ -3656,7 +3656,7 @@ source.searchPlaylists = function(query, type, order, filters, continuationToken
         const platformPlaylists = playlists.map(p => new PlatformPlaylist({
             id: new PlatformID(PLATFORM, p.id, plugin.config.id),
             name: p.name,
-            thumbnail: p.thumbnail,
+            thumbnail: createThumbnails(p.thumbnail),
             author: new PlatformAuthorLink(
                 new PlatformID(PLATFORM, p.author || "Unknown", plugin.config.id),
                 p.author || "Unknown",
