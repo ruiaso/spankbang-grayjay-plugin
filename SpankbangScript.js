@@ -488,10 +488,31 @@ function extractUploaderFromVideoToolbar(html) {
         avatar: ""
     };
 
-    const toolbarMatch = html.match(/<ul[^>]*class="[^"]*video_toolbar[^"]*"[^>]*>([\s\S]*?)<\/ul>/i);
-    const toolbarHtml = toolbarMatch ? toolbarMatch[1] : html;
+    // Extract only the video metadata section, BEFORE comments section to avoid confusion
+    // Comments section typically starts with patterns like: <div class="comments", <section id="comments", etc.
+    let videoMetadataHtml = html;
+    const commentsSectionPatterns = [
+        /<(?:div|section)[^>]*(?:class|id)="[^"]*comments?[^"]*"/i,
+        /<(?:div|section)[^>]*(?:class|id)="[^"]*comment[^"]*section/i,
+        /<h2[^>]*>Comments?<\/h2>/i
+    ];
     
-    const infoSectionMatch = html.match(/<div[^>]*class="[^"]*info[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/i);
+    for (const pattern of commentsSectionPatterns) {
+        const match = html.match(pattern);
+        if (match) {
+            const commentsStartIndex = html.indexOf(match[0]);
+            if (commentsStartIndex > 0) {
+                videoMetadataHtml = html.substring(0, commentsStartIndex);
+                log("Isolated video metadata section, removed comments to avoid uploader confusion");
+                break;
+            }
+        }
+    }
+
+    const toolbarMatch = videoMetadataHtml.match(/<ul[^>]*class="[^"]*video_toolbar[^"]*"[^>]*>([\s\S]*?)<\/ul>/i);
+    const toolbarHtml = toolbarMatch ? toolbarMatch[1] : "";
+    
+    const infoSectionMatch = videoMetadataHtml.match(/<div[^>]*class="[^"]*info[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/i);
     const infoHtml = infoSectionMatch ? infoSectionMatch[1] : "";
 
     const uploaderPatterns = [
@@ -521,7 +542,8 @@ function extractUploaderFromVideoToolbar(html) {
         }
     ];
 
-    const searchHtmls = [toolbarHtml, infoHtml, html];
+    // Only search in toolbar and info section, NOT full HTML to avoid picking up commenters
+    const searchHtmls = [toolbarHtml, infoHtml, videoMetadataHtml];
     
     for (const searchHtml of searchHtmls) {
         if (!searchHtml) continue;
@@ -568,11 +590,11 @@ function extractUploaderFromVideoToolbar(html) {
     ];
 
     for (const pattern of simpleChannelPatterns) {
-        const match = html.match(pattern);
+        const match = videoMetadataHtml.match(pattern);
         if (match) {
             uploader.name = match[3].replace(/<[^>]*>/g, '').trim();
             uploader.url = `spankbang://channel/${match[1]}:${match[2]}`;
-            uploader.avatar = extractChannelAvatarNearLink(html, match[1], match[2]) || extractAvatarFromHtml(html);
+            uploader.avatar = extractChannelAvatarNearLink(videoMetadataHtml, match[1], match[2]) || extractAvatarFromHtml(videoMetadataHtml);
             return uploader;
         }
     }
@@ -585,11 +607,11 @@ function extractUploaderFromVideoToolbar(html) {
     ];
 
     for (const pattern of simplePornstarPatterns) {
-        const match = html.match(pattern);
+        const match = videoMetadataHtml.match(pattern);
         if (match) {
             uploader.name = match[3].replace(/<[^>]*>/g, '').trim();
             uploader.url = `spankbang://profile/pornstar:${match[2]}`;
-            uploader.avatar = extractPornstarAvatarFromHtml(html, match[2]) || extractAvatarFromHtml(html);
+            uploader.avatar = extractPornstarAvatarFromHtml(videoMetadataHtml, match[2]) || extractAvatarFromHtml(videoMetadataHtml);
             return uploader;
         }
     }
@@ -601,11 +623,11 @@ function extractUploaderFromVideoToolbar(html) {
     ];
 
     for (const pattern of simpleProfilePatterns) {
-        const match = html.match(pattern);
+        const match = videoMetadataHtml.match(pattern);
         if (match) {
             uploader.name = match[2].replace(/<[^>]*>/g, '').trim();
             uploader.url = `spankbang://profile/${match[1]}`;
-            uploader.avatar = extractAvatarFromHtml(html);
+            uploader.avatar = extractAvatarFromHtml(videoMetadataHtml);
             return uploader;
         }
     }
@@ -1663,34 +1685,71 @@ function parsePlaylistsPage(html) {
                 }
                 
                 if (!playlists.find(p => p.id === playlistId) && name.length > 0) {
-                    // Try to extract author from the block
-                    let author = "";
+                    // Try to extract author from the block with full details
+                    let authorObj = null;
                     const authorPatterns = [
-                        /(?:by|from)\s+<a[^>]*href="\/profile\/([^"\/]+)"[^>]*>([^<]+)<\/a>/i,
-                        /<a[^>]*href="\/profile\/([^"\/]+)"[^>]*>([^<]+)<\/a>/i
+                        // Profile links
+                        /<a[^>]*href="\/profile\/([^"\/]+)"[^>]*>([^<]+)<\/a>/i,
+                        // Channel links  
+                        /<a[^>]*href="\/([a-z0-9]+)\/channel\/([^"\/]+)"[^>]*>([^<]+)<\/a>/i,
+                        // Pornstar links
+                        /<a[^>]*href="\/([a-z0-9]+)\/pornstar\/([^"\/]+)"[^>]*>([^<]+)<\/a>/i
                     ];
+                    
                     for (const pattern of authorPatterns) {
                         const authorMatch = block.match(pattern);
-                        if (authorMatch && authorMatch[2]) {
-                            const authorName = authorMatch[2].trim();
-                            if (authorName && authorName.length > 0 && authorName.length < 50) {
-                                author = authorName;
-                                break;
+                        if (authorMatch) {
+                            if (pattern.source.includes('profile')) {
+                                // Profile pattern
+                                const authorName = authorMatch[2].trim();
+                                if (authorName && authorName.length > 0 && authorName.length < 50) {
+                                    authorObj = {
+                                        name: authorName,
+                                        url: `spankbang://profile/${authorMatch[1]}`,
+                                        id: authorMatch[1],
+                                        avatar: ""
+                                    };
+                                    break;
+                                }
+                            } else if (pattern.source.includes('channel')) {
+                                // Channel pattern
+                                const authorName = authorMatch[3].trim();
+                                if (authorName && authorName.length > 0 && authorName.length < 50) {
+                                    authorObj = {
+                                        name: authorName,
+                                        url: `spankbang://channel/${authorMatch[1]}:${authorMatch[2]}`,
+                                        id: `${authorMatch[1]}:${authorMatch[2]}`,
+                                        avatar: ""
+                                    };
+                                    break;
+                                }
+                            } else {
+                                // Pornstar pattern
+                                const authorName = authorMatch[3].trim();
+                                if (authorName && authorName.length > 0 && authorName.length < 50) {
+                                    authorObj = {
+                                        name: authorName,
+                                        url: `spankbang://profile/pornstar:${authorMatch[2]}`,
+                                        id: `pornstar:${authorMatch[2]}`,
+                                        avatar: ""
+                                    };
+                                    break;
+                                }
                             }
                         }
                     }
                     
                     if (videoCount === 0) {
-                        log(`WARNING: Found playlist with 0 videos: ${name} (ID: ${playlistId})${author ? ' by ' + author : ''}`);
+                        log(`WARNING: Found playlist with 0 videos: ${name} (ID: ${playlistId})${authorObj ? ' by ' + authorObj.name : ''}`);
                         log(`  Block sample (first 300 chars): ${block.substring(0, 300)}`);
                     } else {
-                        log(`Found playlist: ${name} (ID: ${playlistId}) with ${videoCount} videos${author ? ' by ' + author : ''}`);
+                        log(`Found playlist: ${name} (ID: ${playlistId}) with ${videoCount} videos${authorObj ? ' by ' + authorObj.name : ''}`);
                     }
                     playlists.push({
                         id: playlistId,
                         name: name,
                         thumbnail: thumbnail,
-                        author: author,
+                        author: authorObj,
                         videoCount: videoCount,
                         url: `spankbang://playlist/${playlistId}`
                     });
@@ -1740,7 +1799,7 @@ function parsePlaylistsPage(html) {
                 id: playlistId,
                 name: name,
                 thumbnail: thumbnail,
-                author: "",
+                author: null,
                 videoCount: videoCount,
                 url: `spankbang://playlist/${playlistId}`
             });
@@ -1760,7 +1819,7 @@ function parsePlaylistsPage(html) {
                         id: playlistId,
                         name: name,
                         thumbnail: thumbnail.startsWith('//') ? 'https:' + thumbnail : thumbnail,
-                        author: "",
+                        author: null,
                         videoCount: 0,
                         url: `spankbang://playlist/${playlistId}`
                     });
@@ -4105,6 +4164,114 @@ source.isChannelUrl = function(url) {
     return false;
 };
 
+function getChannelPlaylists(url, result, page) {
+    try {
+        log("getChannelPlaylists called for: " + result.type + " - " + result.id + ", page: " + page);
+        
+        let playlistsUrl;
+        
+        if (result.type === 'pornstar') {
+            let resolvedShortId = result.shortId;
+            if (!resolvedShortId) {
+                resolvedShortId = resolvePornstarShortId(result.id);
+            }
+            
+            if (resolvedShortId) {
+                if (page > 1) {
+                    playlistsUrl = `${CONFIG.EXTERNAL_URL_BASE}/${resolvedShortId}/pornstar/${result.id}/playlists/${page}/`;
+                } else {
+                    playlistsUrl = `${CONFIG.EXTERNAL_URL_BASE}/${resolvedShortId}/pornstar/${result.id}/playlists/`;
+                }
+            } else {
+                if (page > 1) {
+                    playlistsUrl = `${CONFIG.EXTERNAL_URL_BASE}/pornstar/${result.id}/playlists/${page}/`;
+                } else {
+                    playlistsUrl = `${CONFIG.EXTERNAL_URL_BASE}/pornstar/${result.id}/playlists/`;
+                }
+            }
+        } else if (result.type === 'channel') {
+            const [shortId, channelName] = result.id.split(':');
+            if (page > 1) {
+                playlistsUrl = `${CONFIG.EXTERNAL_URL_BASE}/${shortId}/channel/${channelName}/playlists/${page}/`;
+            } else {
+                playlistsUrl = `${CONFIG.EXTERNAL_URL_BASE}/${shortId}/channel/${channelName}/playlists/`;
+            }
+        } else {
+            // For user profiles
+            if (page > 1) {
+                playlistsUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/playlists/${page}/`;
+            } else {
+                playlistsUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/playlists/`;
+            }
+        }
+        
+        log("Fetching channel playlists from: " + playlistsUrl);
+        const response = makeRequestNoThrow(playlistsUrl, API_HEADERS, 'channel playlists', false);
+        
+        if (!response.isOk) {
+            log("Channel playlists request failed with status: " + response.code);
+            
+            // If 404, user probably doesn't have playlists
+            if (response.code === 404) {
+                log("404 - channel has no playlists page");
+                return new SpankBangChannelContentPager([], false, {
+                    url: url,
+                    type: Type.Feed.Playlists,
+                    order: null,
+                    filters: [],
+                    continuationToken: null
+                });
+            }
+            
+            throw new ScriptException(`Failed to fetch channel playlists: status ${response.code}`);
+        }
+        
+        const html = response.body;
+        
+        // Parse playlists from the page
+        const playlists = parsePlaylistsPage(html);
+        log("Parsed " + playlists.length + " playlists from channel playlists page");
+        
+        // Convert to PlatformPlaylist objects
+        const platformPlaylists = playlists.map(pl => {
+            return new PlatformPlaylist({
+                id: new PlatformID(PLATFORM, pl.id, plugin.config.id),
+                name: pl.name,
+                author: pl.author ? new PlatformAuthorLink(
+                    new PlatformID(PLATFORM, pl.author.id || pl.author.name, plugin.config.id),
+                    pl.author.name,
+                    pl.author.url,
+                    pl.author.avatar
+                ) : null,
+                thumbnail: pl.thumbnail || "",
+                videoCount: pl.videoCount || 0,
+                url: pl.url
+            });
+        });
+        
+        const hasMore = playlists.length >= 20;
+        const nextToken = hasMore ? (page + 1).toString() : null;
+        
+        return new SpankBangChannelContentPager(platformPlaylists, hasMore, {
+            url: url,
+            type: Type.Feed.Playlists,
+            order: null,
+            filters: [],
+            continuationToken: nextToken
+        });
+        
+    } catch (error) {
+        log("getChannelPlaylists error: " + error.message);
+        return new SpankBangChannelContentPager([], false, {
+            url: url,
+            type: Type.Feed.Playlists,
+            order: null,
+            filters: [],
+            continuationToken: null
+        });
+    }
+}
+
 source.getChannel = function(url) {
     try {
         const result = extractChannelId(url);
@@ -4273,7 +4440,7 @@ source.getChannel = function(url) {
 
 source.getChannelCapabilities = function() {
     return {
-        types: [Type.Feed.Mixed],
+        types: [Type.Feed.Mixed, Type.Feed.Videos, Type.Feed.Playlists],
         sorts: [Type.Order.Chronological],
         filters: []
     };
@@ -4281,7 +4448,7 @@ source.getChannelCapabilities = function() {
 
 source.getSearchChannelContentsCapabilities = function() {
     return {
-        types: [Type.Feed.Mixed],
+        types: [Type.Feed.Mixed, Type.Feed.Videos, Type.Feed.Playlists],
         sorts: [Type.Order.Chronological],
         filters: []
     };
@@ -4289,11 +4456,16 @@ source.getSearchChannelContentsCapabilities = function() {
 
 source.getChannelContents = function(url, type, order, filters, continuationToken) {
     try {
-        log("getChannelContents called with URL: " + url + ", page: " + (continuationToken || "1"));
+        log("getChannelContents called with URL: " + url + ", type: " + type + ", page: " + (continuationToken || "1"));
         const result = extractChannelId(url);
         log("Extracted channel type: " + result.type + ", id: " + result.id);
         
         const page = continuationToken ? parseInt(continuationToken) : 1;
+
+        // Handle playlists separately
+        if (type === Type.Feed.Playlists) {
+            return getChannelPlaylists(url, result, page);
+        }
 
         let profileUrl;
         if (result.type === 'pornstar') {

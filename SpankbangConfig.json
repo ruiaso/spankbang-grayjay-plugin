@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 51,
+  "version": 52,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -51,6 +51,21 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "52": [
+      "CRITICAL FIX: Video uploader now correctly extracted from video toolbar section only",
+      "Fixed bug where commenters were shown as video uploaders instead of actual creators",
+      "Isolated video metadata section before comments to prevent uploader confusion",
+      "MAJOR FEATURE: Added Playlists tab to channel/profile pages (like YouTube)",
+      "Profiles now show separate VIDEOS and PLAYLISTS tabs for better organization",
+      "Implemented getChannelPlaylists() for dedicated playlist fetching per channel",
+      "Enhanced channel capabilities to support Type.Feed.Playlists alongside videos",
+      "Playlists no longer mixed with videos in profile video feeds",
+      "Enhanced playlist author extraction with full profile/channel/pornstar support",
+      "Playlist authors now return proper objects with name, URL, ID, and avatar",
+      "Fixed playlist author extraction in parsePlaylistsPage() to support all profile types",
+      "Profile playlists page URLs now properly supported (/profile/xxx/playlists)",
+      "All playlist-related features fully functional with proper author attribution"
+    ],
     "51": [
       "MAJOR FIX: Playlist creator/owner now properly extracted instead of showing 'SpankBang'",
       "Fixed playlist owner to show actual creator (e.g., 'd4r4g0r0n') with clickable profile link",
