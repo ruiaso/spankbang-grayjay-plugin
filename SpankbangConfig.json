@@ -8,7 +8,7 @@
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin/tree/5",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/5/SpankbangScript.js",
   "version": 5,
-  "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
+  "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/5/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
     "Http",
