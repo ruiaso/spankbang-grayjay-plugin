@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 52,
+  "version": 53,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -51,6 +51,17 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "53": [
+      "CRITICAL FIX: Playlist videos now use correct playlist context URLs (/{playlistId}-{videoId}/playlist/{slug}) for proper playback",
+      "Fixed issue where playlist videos generated broken URLs like /t2glc7/video/feet instead of /dqcqx-t2glc7/playlist/feet",
+      "Fixed video playback from imported playlists - all videos now play correctly",
+      "Fixed video thumbnails in playlists - properly extracts from HTML with multiple fallbacks",
+      "Fixed related playlist links in video descriptions - now use full web URLs (https://spankbang.com/{id}/playlist/{slug})",
+      "Updated parsePlaylistVideos() to maintain playlist context in all URL patterns",
+      "Updated extractVideoLinksFromHtml() to preserve playlist context URLs",
+      "Enhanced thumbnail extraction with better relative URL handling",
+      "All playlist functionality merged from branch 5 for showing ALL playlists, not just Watch Later"
+    ],
     "52": [
       "CRITICAL FIX: Fixed playlist video URL generation - videos now use correct video slugs instead of playlist names",
       "Fixed issue where imported playlist videos had URLs like '/video/feet' instead of '/video/actual-video-title'",
