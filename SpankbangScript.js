@@ -1280,7 +1280,20 @@ function createVideoDetails(videoData, url) {
     
     if (videoData.featuredPornstars && videoData.featuredPornstars.length > 0) {
         const pornstarLinks = videoData.featuredPornstars.map(p => {
-            return `[${p.name}](${p.url})`;
+            // Convert internal pornstar URL to full web URL for clickability
+            // Format: spankbang://profile/pornstar:slug -> https://spankbang.com/shortId/pornstar/slug
+            let webUrl = p.url;
+            if (p.url && p.url.startsWith('spankbang://profile/pornstar:')) {
+                const slug = p.url.replace('spankbang://profile/pornstar:', '');
+                // Use shortId if available, otherwise resolve it
+                const shortId = p.shortId || resolvePornstarShortId(slug);
+                if (shortId) {
+                    webUrl = `https://spankbang.com/${shortId}/pornstar/${slug}`;
+                } else {
+                    webUrl = `https://spankbang.com/pornstar/${slug}`;
+                }
+            }
+            return `[${p.name}](${webUrl})`;
         }).join(', ');
         
         if (description.length > 0) {
@@ -2096,9 +2109,13 @@ function parsePlaylistVideos(html) {
                              innerHtml.match(/>(\d+:\d+(?::\d+)?)</);
         const duration = durationMatch ? parseDuration(durationMatch[1].trim()) : 0;
         
-        // Extract views
-        const viewsMatch = innerHtml.match(/<span[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/span>/i);
+        // Extract views - improved patterns
+        const viewsMatch = context.match(/<span[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/span>/i) ||
+                          context.match(/([0-9,.]+[KMB]?)\s*(?:views?|plays?)/i);
         const views = viewsMatch ? parseViewCount(viewsMatch[1].trim()) : 0;
+        
+        // Extract uploader info from the video block
+        const uploader = extractUploaderFromSearchResult(context);
         
         // CRITICAL FIX: Keep playlist context URL format {playlistId}-{videoId}/playlist/{playlistSlug}
         // This matches the actual SpankBang URL structure for videos in playlists
@@ -2110,7 +2127,7 @@ function parsePlaylistVideos(html) {
             views: views,
             uploadDate: 0,
             url: `${CONFIG.EXTERNAL_URL_BASE}/${playlistId}-${videoId}/playlist/${playlistSlug}`,
-            uploader: { name: "", url: "", avatar: "" }
+            uploader: uploader
         });
     }
     
@@ -2189,15 +2206,23 @@ function parsePlaylistVideos(html) {
                                  innerHtml.match(/>(\d+:\d+(?::\d+)?)</);
             const duration = durationMatch ? parseDuration(durationMatch[1].trim()) : 0;
             
+            // Extract views - improved patterns
+            const viewsMatch = context.match(/<span[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/span>/i) ||
+                              context.match(/([0-9,.]+[KMB]?)\s*(?:views?|plays?)/i);
+            const views = viewsMatch ? parseViewCount(viewsMatch[1].trim()) : 0;
+            
+            // Extract uploader info from the video block
+            const uploader = extractUploaderFromSearchResult(context);
+            
             videos.push({
                 id: videoId,
                 title: title,
                 thumbnail: thumbnail,
                 duration: duration,
-                views: 0,
+                views: views,
                 uploadDate: 0,
                 url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
-                uploader: { name: "", url: "", avatar: "" }
+                uploader: uploader
             });
         }
         
@@ -2249,6 +2274,14 @@ function parsePlaylistVideos(html) {
             const durationMatch = block.match(/<span[^>]*class="[^"]*(?:l|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i);
             const duration = durationMatch ? parseDuration(durationMatch[1].trim()) : 0;
             
+            // Extract views - improved patterns
+            const viewsMatch = block.match(/<span[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/span>/i) ||
+                              block.match(/([0-9,.]+[KMB]?)\s*(?:views?|plays?)/i);
+            const views = viewsMatch ? parseViewCount(viewsMatch[1].trim()) : 0;
+            
+            // Extract uploader info from the video block
+            const uploader = extractUploaderFromSearchResult(block);
+            
             // CRITICAL FIX: Keep playlist context if available
             let videoUrl;
             if (isPlaylistVideo) {
@@ -2262,10 +2295,10 @@ function parsePlaylistVideos(html) {
                 title: title,
                 thumbnail: thumbnail,
                 duration: duration,
-                views: 0,
+                views: views,
                 uploadDate: 0,
                 url: videoUrl,
-                uploader: { name: "", url: "", avatar: "" }
+                uploader: uploader
             });
         }
         
@@ -3764,62 +3797,17 @@ source.getUserPlaylists = function() {
     log("Getting user playlists");
 
     try {
-        // Fetch playlists using authenticated client (same pattern as getUserSubscriptions)
+        // Fetch playlists using authenticated client
         log("Fetching playlists from /users/playlists");
         const playlistsResp = http.GET(`${BASE_URL}/users/playlists`, API_HEADERS, true);
         
         if (!playlistsResp.isOk) {
-            log("Failed to fetch playlists with status " + playlistsResp.code + ", user may not be logged in");
+            log("Failed to fetch playlists, user may not be logged in");
             return [];
         }
         
-        const html = playlistsResp.body;
-        if (!html || html.length < 100) {
-            log("getUserPlaylists: Empty or invalid HTML response");
-            return [];
-        }
-        
-        log("getUserPlaylists: HTML length = " + html.length);
-        
-        // Parse user playlists using dedicated parser
-        let playlists = parseUserPlaylistsPage(html);
-        
-        // Fallback to general playlist parser if needed
-        if (playlists.length === 0) {
-            log("getUserPlaylists: parseUserPlaylistsPage returned 0, trying parsePlaylistsPage");
-            playlists = parsePlaylistsPage(html);
-        }
-        
-        // Final fallback: direct link extraction
-        if (playlists.length === 0) {
-            log("getUserPlaylists: Still 0 playlists, trying direct link extraction");
-            const playlistLinks = html.match(/href="\/([a-z0-9]+)\/playlist\/([^"\/]+)\/?"/gi);
-            if (playlistLinks) {
-                log("getUserPlaylists: Found " + playlistLinks.length + " raw playlist links");
-                const seenIds = new Set();
-                for (const linkStr of playlistLinks) {
-                    const match = linkStr.match(/href="\/([a-z0-9]+)\/playlist\/([^"\/]+)\/?"/i);
-                    if (match) {
-                        const shortId = match[1];
-                        const slug = match[2];
-                        const playlistId = `${shortId}:${slug}`;
-                        if (!seenIds.has(playlistId) && shortId !== 'users' && shortId !== 'search') {
-                            seenIds.add(playlistId);
-                            playlists.push({
-                                id: playlistId,
-                                name: slug.replace(/[+_-]/g, ' '),
-                                url: `spankbang://playlist/${playlistId}`
-                            });
-                        }
-                    }
-                }
-            }
-        }
-        
-        if (playlists.length === 0) {
-            log("getUserPlaylists: WARNING - No playlists found. HTML snippet (first 1000 chars): " + html.substring(0, 1000));
-        }
-        
+        // Use parsePlaylistsPage directly - simpler and more reliable (branch 5 approach)
+        const playlists = parsePlaylistsPage(playlistsResp.body);
         log(`getUserPlaylists found ${playlists.length} playlists`);
         return playlists.map(pl => pl.url);
     } catch (error) {
