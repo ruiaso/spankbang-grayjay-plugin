@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 53,
+  "version": 54,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -51,6 +51,17 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "54": [
+      "CRITICAL FIX: Video titles in playlists now show actual video names instead of playlist name",
+      "CRITICAL FIX: Video thumbnails now properly extracted and displayed in playlists",
+      "Enhanced title extraction with multiple fallback patterns and context-aware parsing",
+      "Enhanced thumbnail extraction with priority-based pattern matching and CDN detection",
+      "Improved parsePlaylistVideos() to extract titles from surrounding HTML context",
+      "Improved extractVideoLinksFromHtml() with better title and thumbnail fallbacks",
+      "Fixed issue where all videos showed 'kata lumi nappi' (playlist name) as title",
+      "Fixed missing thumbnails for playlist videos with proper URL normalization",
+      "All playlist video parsing now uses context-aware extraction for accuracy"
+    ],
     "53": [
       "CRITICAL FIX: Playlist videos now use correct playlist context URLs (/{playlistId}-{videoId}/playlist/{slug}) for proper playback",
       "Fixed issue where playlist videos generated broken URLs like /t2glc7/video/feet instead of /dqcqx-t2glc7/playlist/feet",

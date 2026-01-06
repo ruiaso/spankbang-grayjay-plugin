@@ -2007,16 +2007,82 @@ function parsePlaylistVideos(html) {
         if (seenIds.has(videoId)) continue;
         seenIds.add(videoId);
         
-        // Extract title from HTML
-        const titleMatch = fullMatch.match(/title="([^"]+)"/i) || 
-                          innerHtml.match(/<span[^>]*class="[^"]*(?:title|name|n)[^"]*"[^>]*>([^<]+)<\/span>/i);
-        let title = titleMatch ? titleMatch[1].trim() : playlistSlug.replace(/[+_-]/g, ' ');
+        // CRITICAL FIX: Extract title from broader context, not just the link
+        // Get surrounding context to find the actual video title
+        const contextStart = Math.max(0, match.index - 500);
+        const contextEnd = Math.min(html.length, match.index + fullMatch.length + 500);
+        const context = html.substring(contextStart, contextEnd);
+        
+        // Try multiple title extraction patterns with priority
+        let title = null;
+        const titlePatterns = [
+            // Priority 1: title attribute on the link itself
+            /title="([^"]+)"/i,
+            // Priority 2: alt attribute on images
+            /alt="([^"]+)"/i,
+            // Priority 3: span with title/name class inside the link
+            /<span[^>]*class="[^"]*(?:title|name|n)[^"]*"[^>]*>([^<]+)<\/span>/i,
+            // Priority 4: div with title class near the link
+            /<div[^>]*class="[^"]*(?:title|name|n)[^"]*"[^>]*>([^<]+)<\/div>/i,
+            // Priority 5: p tag with name/title class
+            /<p[^>]*class="[^"]*(?:n|name|title)[^"]*"[^>]*>([^<]+)<\/p>/i
+        ];
+        
+        for (const pattern of titlePatterns) {
+            const titleMatch = fullMatch.match(pattern) || context.match(pattern);
+            if (titleMatch && titleMatch[1] && titleMatch[1].trim().length > 0) {
+                const candidateTitle = titleMatch[1].trim();
+                // Make sure we didn't just grab the playlist name again
+                // Check if title is substantially different from playlist slug
+                if (candidateTitle.length > 2 && 
+                    candidateTitle.toLowerCase() !== playlistSlug.toLowerCase().replace(/[+_-]/g, ' ')) {
+                    title = candidateTitle;
+                    break;
+                }
+            }
+        }
+        
+        // If still no title, use a generic format with video ID
+        if (!title) {
+            title = `Video ${videoId}`;
+            log(`WARNING: Could not extract title for video ${videoId}, using fallback`);
+        }
+        
         title = cleanVideoTitle(title);
         
-        // Extract thumbnail
-        const thumbMatch = innerHtml.match(/(?:data-src|src)="([^"]+)"/i) ||
-                          fullMatch.match(/(?:data-src|src)="([^"]+)"/i);
-        let thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
+        // Extract thumbnail - look in broader context
+        const thumbPatterns = [
+            // Priority 1: data-src with image extensions
+            /(?:data-src)="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i,
+            // Priority 2: src with CDN domains
+            /(?:src)="(https?:\/\/[^"]*(?:tbi\.sb-cd\.com|cdn[0-9]?\.spankbang\.com)[^"]+)"/i,
+            // Priority 3: any data-src
+            /(?:data-src)="(https?:\/\/[^"]+)"/i,
+            // Priority 4: any src with image extension
+            /(?:src)="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i,
+            // Priority 5: relative URLs
+            /(?:data-src|src)="(\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i
+        ];
+        
+        let thumbnail = "";
+        for (const thumbPattern of thumbPatterns) {
+            const thumbMatch = innerHtml.match(thumbPattern) || fullMatch.match(thumbPattern) || context.match(thumbPattern);
+            if (thumbMatch && thumbMatch[1]) {
+                thumbnail = thumbMatch[1];
+                // Skip if it's an avatar or icon
+                if (!thumbnail.includes('avatar') && !thumbnail.includes('icon') && !thumbnail.includes('pornstarimg')) {
+                    break;
+                }
+                thumbnail = "";
+            }
+        }
+        
+        // Default thumbnail if none found
+        if (!thumbnail || thumbnail.length < 5) {
+            thumbnail = `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
+        }
+        
+        // Normalize thumbnail URL
         if (thumbnail.startsWith('//')) {
             thumbnail = 'https:' + thumbnail;
         } else if (thumbnail && thumbnail.startsWith('/') && !thumbnail.startsWith('//')) {
@@ -2064,15 +2130,60 @@ function parsePlaylistVideos(html) {
             if (seenIds.has(videoId)) continue;
             seenIds.add(videoId);
             
-            const titleMatch = fullMatch.match(/title="([^"]+)"/i) || 
-                              innerHtml.match(/<span[^>]*class="[^"]*(?:title|name|n)[^"]*"[^>]*>([^<]+)<\/span>/i);
-            let title = titleMatch ? titleMatch[1].trim() : videoSlug.replace(/[_-]/g, ' ');
+            // Get context for better extraction
+            const contextStart = Math.max(0, match.index - 300);
+            const contextEnd = Math.min(html.length, match.index + fullMatch.length + 300);
+            const context = html.substring(contextStart, contextEnd);
+            
+            // Try multiple title patterns
+            let title = null;
+            const titlePatterns = [
+                /title="([^"]+)"/i,
+                /alt="([^"]+)"/i,
+                /<span[^>]*class="[^"]*(?:title|name|n)[^"]*"[^>]*>([^<]+)<\/span>/i,
+                /<p[^>]*class="[^"]*n[^"]*"[^>]*>([^<]+)<\/p>/i
+            ];
+            
+            for (const pattern of titlePatterns) {
+                const titleMatch = fullMatch.match(pattern) || context.match(pattern);
+                if (titleMatch && titleMatch[1] && titleMatch[1].trim().length > 0) {
+                    title = titleMatch[1].trim();
+                    break;
+                }
+            }
+            
+            if (!title) {
+                title = videoSlug.replace(/[_-]/g, ' ');
+            }
             title = cleanVideoTitle(title);
             
-            const thumbMatch = innerHtml.match(/(?:data-src|src)="([^"]+)"/i) ||
-                              fullMatch.match(/(?:data-src|src)="([^"]+)"/i);
-            let thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
-            if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
+            // Better thumbnail extraction
+            const thumbPatterns = [
+                /(?:data-src)="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i,
+                /(?:src)="(https?:\/\/[^"]*(?:tbi\.sb-cd\.com|cdn[0-9]?\.spankbang\.com)[^"]+)"/i,
+                /(?:data-src|src)="(https?:\/\/[^"]+)"/i
+            ];
+            
+            let thumbnail = "";
+            for (const thumbPattern of thumbPatterns) {
+                const thumbMatch = innerHtml.match(thumbPattern) || fullMatch.match(thumbPattern);
+                if (thumbMatch && thumbMatch[1]) {
+                    thumbnail = thumbMatch[1];
+                    if (!thumbnail.includes('avatar') && !thumbnail.includes('icon')) {
+                        break;
+                    }
+                    thumbnail = "";
+                }
+            }
+            
+            if (!thumbnail) {
+                thumbnail = `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
+            }
+            if (thumbnail.startsWith('//')) {
+                thumbnail = 'https:' + thumbnail;
+            } else if (thumbnail && thumbnail.startsWith('/') && !thumbnail.startsWith('//')) {
+                thumbnail = CONFIG.EXTERNAL_URL_BASE + thumbnail;
+            }
             
             const durationMatch = innerHtml.match(/<span[^>]*class="[^"]*(?:l|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i) ||
                                  innerHtml.match(/>(\d+:\d+(?::\d+)?)</);
@@ -2180,18 +2291,70 @@ function extractVideoLinksFromHtml(html) {
         const playlistId = match[1];
         const videoId = match[2];
         const playlistSlug = match[3];
-        const title = match[4] ? cleanVideoTitle(match[4]) : playlistSlug.replace(/[+_-]/g, ' ');
+        const titleFromAttr = match[4];
         
         if (seenIds.has(videoId)) continue;
         seenIds.add(videoId);
         
-        // Look for thumbnail near this link
-        const contextStart = Math.max(0, match.index - 300);
-        const contextEnd = Math.min(html.length, match.index + 300);
+        // Get context for better title extraction
+        const contextStart = Math.max(0, match.index - 400);
+        const contextEnd = Math.min(html.length, match.index + 400);
         const context = html.substring(contextStart, contextEnd);
         
-        const thumbMatch = context.match(/(?:data-src|src)="([^"]+)"/i);
-        let thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
+        // Try to find the actual video title
+        let title = null;
+        if (titleFromAttr && titleFromAttr.trim().length > 0) {
+            title = titleFromAttr;
+        } else {
+            // Look for title in nearby context
+            const titlePatterns = [
+                /title="([^"]+)"/i,
+                /alt="([^"]+)"/i,
+                /<span[^>]*class="[^"]*(?:title|name|n)[^"]*"[^>]*>([^<]+)<\/span>/i,
+                /<p[^>]*class="[^"]*n[^"]*"[^>]*>([^<]+)<\/p>/i
+            ];
+            
+            for (const pattern of titlePatterns) {
+                const titleMatch = context.match(pattern);
+                if (titleMatch && titleMatch[1] && titleMatch[1].trim().length > 0) {
+                    const candidate = titleMatch[1].trim();
+                    // Avoid using playlist name as video title
+                    if (candidate.toLowerCase() !== playlistSlug.toLowerCase().replace(/[+_-]/g, ' ')) {
+                        title = candidate;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if (!title) {
+            title = `Video ${videoId}`;
+        }
+        title = cleanVideoTitle(title);
+        
+        // Look for thumbnail near this link
+        const thumbPatterns = [
+            /(?:data-src)="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i,
+            /(?:src)="(https?:\/\/[^"]*(?:tbi\.sb-cd\.com|cdn[0-9]?\.spankbang\.com)[^"]+)"/i,
+            /(?:data-src|src)="(https?:\/\/[^"]+)"/i
+        ];
+        
+        let thumbnail = "";
+        for (const thumbPattern of thumbPatterns) {
+            const thumbMatch = context.match(thumbPattern);
+            if (thumbMatch && thumbMatch[1]) {
+                thumbnail = thumbMatch[1];
+                if (!thumbnail.includes('avatar') && !thumbnail.includes('icon')) {
+                    break;
+                }
+                thumbnail = "";
+            }
+        }
+        
+        if (!thumbnail) {
+            thumbnail = `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
+        }
+        
         if (thumbnail.startsWith('//')) {
             thumbnail = 'https:' + thumbnail;
         } else if (thumbnail && thumbnail.startsWith('/') && !thumbnail.startsWith('//')) {
@@ -2221,10 +2384,26 @@ function extractVideoLinksFromHtml(html) {
     while ((match = standardVideoLinks.exec(html)) !== null) {
         const videoId = match[1];
         const videoSlug = match[2];
-        const title = match[3] ? cleanVideoTitle(match[3]) : videoSlug.replace(/[_-]/g, ' ');
+        let title = match[3];
         
         if (seenIds.has(videoId)) continue;
         seenIds.add(videoId);
+        
+        // Try to get better title if not in attribute
+        if (!title) {
+            const contextStart = Math.max(0, match.index - 200);
+            const contextEnd = Math.min(html.length, match.index + 200);
+            const context = html.substring(contextStart, contextEnd);
+            
+            const titleMatch = context.match(/title="([^"]+)"/i) || context.match(/alt="([^"]+)"/i);
+            if (titleMatch && titleMatch[1]) {
+                title = titleMatch[1];
+            } else {
+                title = videoSlug.replace(/[_-]/g, ' ');
+            }
+        }
+        
+        title = cleanVideoTitle(title);
         
         videos.push({
             id: videoId,
