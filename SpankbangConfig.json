@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 51,
+  "version": 45,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -51,67 +51,6 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
-    "51": [
-      "CRITICAL FIX: Playlists now properly load videos using correct URL format",
-      "Fixed playlist video URL parsing - now recognizes /{playlistId}-{videoId}/playlist/{slug} format",
-      "Added playlistVideo and relativePlaylistVideo regex patterns",
-      "Updated parsePlaylistVideos() with 3-tier fallback system for playlist videos",
-      "Updated extractVideoLinksFromHtml() to extract both playlist and standard video URLs",
-      "Fixed channel 404 errors with better error handling and profile URL fallbacks",
-      "Channel requests now try alternative URLs if first attempt returns 404",
-      "Improved error messages for channel content failures",
-      "Added better logging for playlist video extraction debugging",
-      "Playlists no longer show 0 videos - videos now load correctly"
-    ],
-    "50": [
-      "Major playlist search improvements - now supports searching by URL or keyword",
-      "Added support for user playlist page URLs (https://spankbang.com/users/playlists)",
-      "Added support for profile playlist URLs (https://spankbang.com/profile/xxx/playlists)",
-      "When pasting a playlist URL, now fetches actual video count and thumbnail",
-      "Added parseUserPlaylistsPageEnhanced() for better user playlist parsing",
-      "Added parsePlaylistVideos() for dedicated playlist video extraction",
-      "Added extractPlaylistLinksFromHtml() and extractVideoLinksFromHtml() fallbacks",
-      "Added fetchPlaylistInfo() to get playlist details when searching by URL",
-      "Added SpankBangPlaylistVideosPager for playlist video pagination",
-      "Enhanced getPlaylist() with multi-tier video extraction fallbacks",
-      "Improved SpankBangPlaylistPager to support pagination",
-      "Fixed issue where imported playlists showed 0 videos",
-      "Added regex patterns for userPlaylistsPage, userPlaylistsSubsPage, profilePlaylistsPage"
-    ],
-    "49": [
-      "Enhanced playlist video count extraction with 10+ new patterns",
-      "Added support for various HTML structures: <span class='len'>, <p>, <div> elements",
-      "Improved regex patterns to match 'X videos', 'X vids', and standalone numbers",
-      "Added comprehensive diagnostic logging for playlists with 0 videos",
-      "Enhanced parsePlaylistsPage() to log HTML structure for debugging",
-      "Better handling of video counts in different contexts (search, import, user playlists)"
-    ],
-    "48": [
-      "Fixed 404 errors on channel contents pagination",
-      "Added trailing slashes to all channel/profile URLs for consistency",
-      "Improved error handling in getChannelContents() with detailed logging",
-      "404 on pagination pages now returns empty results instead of throwing error",
-      "Added makeRequestNoThrow usage for better error diagnostics"
-    ],
-    "47": [
-      "Added playlist search functionality - now supports both URL and keyword search",
-      "Added regex patterns for external playlist URLs (playlistExternal and playlistSimple)",
-      "Updated searchPlaylists() to detect and handle direct playlist URLs",
-      "Updated search() to redirect playlist URLs to searchPlaylists()",
-      "Updated isPlaylistUrl() to recognize external playlist URLs",
-      "Updated getPlaylist() to convert external URLs to internal format",
-      "Users can now paste playlist URLs directly in search (e.g., https://spankbang.com/dqcr2/playlist/feet+joi/)",
-      "Users can also search playlists by keyword/name"
-    ],
-    "46": [
-      "Fixed playlist import to use cookies directly via http.GET with authenticated client (same as subscriptions)",
-      "Fixed history import to use cookies directly without isLoggedIn() check which was failing",
-      "Fixed syncRemoteWatchHistory to use cookies directly for better reliability",
-      "Enhanced parseHistoryPage with SpankBang-specific <a class='thumb'> pattern for better thumbnail/duration extraction",
-      "Added improved fallback patterns for history page parsing",
-      "Fixed history thumbnails showing black - now properly extracts from data-src attributes",
-      "Fixed history duration showing 0:00 - now extracts from <span class='l'> elements"
-    ],
     "45": [
       "Fixed playlist video count parsing to correctly extract from <span class='len'> elements",
       "Added specific regex pattern to match SpankBang's playlist-item anchor tags",
