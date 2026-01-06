@@ -3556,12 +3556,24 @@ function parseHistoryPage(html) {
         // Extract thumbnail - try data-src first, then src, check inner content
         let thumbnail = "";
         const thumbPatterns = [
+            // Try data-src with image extensions first (most reliable)
             /data-src="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i,
+            // Try CDN URLs specifically  
+            /data-src="(https?:\/\/[^"]*tbi\.sb-cd\.com[^"]+)"/i,
+            /data-src="(https?:\/\/[^"]*sb-cd\.com[^"]+)"/i,
+            // Try src with CDN
             /src="(https?:\/\/[^"]*tbi\.sb-cd\.com[^"]+)"/i,
             /src="(https?:\/\/[^"]*sb-cd\.com[^"]+)"/i,
-            /data-src="([^"]+)"/i,
+            // Try lazy-src attribute
+            /lazy-src="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i,
+            // Generic data-src
+            /data-src="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i,
+            // Generic src with image extensions
             /src="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i,
-            /style="[^"]*background[^:]*:\s*url\(['"]?(https?:\/\/[^'")\s]+)['"]?\)/i
+            // Background image style
+            /style="[^"]*background[^:]*:\s*url\(['"]?(https?:\/\/[^'")\s]+)['"]?\)/i,
+            // Catch any data-src as last resort
+            /data-src="([^"]+)"/i
         ];
         
         for (const thumbPattern of thumbPatterns) {
@@ -3586,10 +3598,19 @@ function parseHistoryPage(html) {
         // Extract duration from <span class="l">...</span> inside the anchor or nearby
         let duration = 0;
         const durationPatterns = [
-            /<span[^>]*class="[^"]*l[^"]*"[^>]*>([^<]+)<\/span>/i,
-            /<span[^>]*class="[^"]*(?:length|duration|time)[^"]*"[^>]*>([^<]+)<\/span>/i,
-            /<div[^>]*class="[^"]*(?:l|length|duration|time)[^"]*"[^>]*>([^<]+)<\/div>/i,
+            // Primary pattern - SpankBang uses class="l" for duration
+            /<span[^>]*class="[^"]*\bl\b[^"]*"[^>]*>([^<]+)<\/span>/i,
+            // Alternative class names for duration
+            /<span[^>]*class="[^"]*(?:length|duration|time|dur)[^"]*"[^>]*>([^<]+)<\/span>/i,
+            // Div with duration class
+            /<div[^>]*class="[^"]*(?:l|length|duration|time|dur)[^"]*"[^>]*>([^<]+)<\/div>/i,
+            // Data attribute with duration
+            /data-duration="([^"]+)"/i,
+            // Generic span with time format
+            /<span[^>]*>(\d{1,3}:\d{2}(?::\d{2})?)<\/span>/i,
+            // Direct time format match
             />(\d{1,3}:\d{2}(?::\d{2})?)</,
+            // Any time format in content
             /(\d{1,3}:\d{2}(?::\d{2})?)/
         ];
         
@@ -3604,9 +3625,31 @@ function parseHistoryPage(html) {
             }
         }
         
-        // Extract views if available
-        const viewsMatch = fullContext.match(/<span[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/span>/i);
-        const views = viewsMatch ? parseViewCount(viewsMatch[1].trim()) : 0;
+        // Extract views if available - enhanced patterns
+        let views = 0;
+        const viewsPatterns = [
+            // Primary pattern - class="v" or "views"
+            /<span[^>]*class="[^"]*\bv\b[^"]*"[^>]*>([^<]+)<\/span>/i,
+            /<span[^>]*class="[^"]*views[^"]*"[^>]*>([^<]+)<\/span>/i,
+            // Div with views
+            /<div[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/div>/i,
+            // Data attribute
+            /data-views="([^"]+)"/i,
+            // Views text pattern
+            /(\d+(?:[,.]\d+)?[KMB]?)\s*views?/i,
+            // Generic number with K/M/B suffix
+            />([0-9,.]+[KMB]?)\s*<\/span>/i
+        ];
+        for (const viewPattern of viewsPatterns) {
+            const viewsMatch = fullContext.match(viewPattern);
+            if (viewsMatch && viewsMatch[1]) {
+                views = parseViewCount(viewsMatch[1].trim());
+                if (views > 0) break;
+            }
+        }
+        
+        // Extract uploader information from the context
+        const uploader = extractUploaderFromSearchResult(fullContext);
         
         videos.push({
             id: videoId,
@@ -3615,7 +3658,7 @@ function parseHistoryPage(html) {
             duration: duration,
             views: views,
             url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
-            uploader: { name: "", url: "", avatar: "" }
+            uploader: uploader
         });
     }
     
@@ -3644,11 +3687,16 @@ function parseHistoryPage(html) {
                                   block.match(/<span[^>]*class="[^"]*(?:title|name|n)[^"]*"[^>]*>([^<]+)<\/span>/i);
                 let title = titleMatch ? cleanVideoTitle(titleMatch[1]) : videoSlug.replace(/[_+-]/g, ' ');
                 
+                // Enhanced thumbnail patterns
                 const thumbPatterns = [
                     /data-src="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i,
+                    /data-src="(https?:\/\/[^"]*tbi\.sb-cd\.com[^"]+)"/i,
+                    /data-src="(https?:\/\/[^"]*sb-cd\.com[^"]+)"/i,
                     /src="(https?:\/\/[^"]*tbi\.sb-cd\.com[^"]+)"/i,
                     /src="(https?:\/\/[^"]*sb-cd\.com[^"]+)"/i,
                     /src="(https?:\/\/[^"]*spankbang[^"]*\/t\/[^"]+)"/i,
+                    /lazy-src="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i,
+                    /data-src="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i,
                     /src="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i,
                     /data-src="([^"]+)"/i,
                     /style="[^"]*background[^:]*:\s*url\(['"]?(https?:\/\/[^'")\s]+)['"]?\)/i
@@ -3671,13 +3719,15 @@ function parseHistoryPage(html) {
                     thumbnail = 'https:' + thumbnail;
                 }
                 
+                // Enhanced duration patterns
                 const durationPatterns = [
-                    /<span[^>]*class="[^"]*l[^"]*"[^>]*>([^<]+)<\/span>/i,
-                    /<span[^>]*class="[^"]*(?:length|duration|time)[^"]*"[^>]*>([^<]+)<\/span>/i,
-                    /<div[^>]*class="[^"]*(?:l|length|duration|time)[^"]*"[^>]*>([^<]+)<\/div>/i,
+                    /<span[^>]*class="[^"]*\bl\b[^"]*"[^>]*>([^<]+)<\/span>/i,
+                    /<span[^>]*class="[^"]*(?:length|duration|time|dur)[^"]*"[^>]*>([^<]+)<\/span>/i,
+                    /<div[^>]*class="[^"]*(?:l|length|duration|time|dur)[^"]*"[^>]*>([^<]+)<\/div>/i,
+                    /data-duration="([^"]+)"/i,
+                    /<span[^>]*>(\d{1,3}:\d{2}(?::\d{2})?)<\/span>/i,
                     />(\d{1,3}:\d{2}(?::\d{2})?)</,
                     /duration[^>]*>([^<]+)</i,
-                    /<span[^>]*>(\d{1,3}:\d{2}(?::\d{2})?)<\/span>/i,
                     /(\d{1,3}:\d{2}(?::\d{2})?)/
                 ];
                 let duration = 0;
@@ -3692,8 +3742,26 @@ function parseHistoryPage(html) {
                     }
                 }
                 
-                const viewsMatch = block.match(/<span[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/span>/i);
-                const views = viewsMatch ? parseViewCount(viewsMatch[1].trim()) : 0;
+                // Extract views with enhanced patterns
+                let views = 0;
+                const viewsPatterns = [
+                    /<span[^>]*class="[^"]*\bv\b[^"]*"[^>]*>([^<]+)<\/span>/i,
+                    /<span[^>]*class="[^"]*views[^"]*"[^>]*>([^<]+)<\/span>/i,
+                    /<div[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/div>/i,
+                    /data-views="([^"]+)"/i,
+                    /(\d+(?:[,.]\d+)?[KMB]?)\s*views?/i,
+                    />([0-9,.]+[KMB]?)\s*<\/span>/i
+                ];
+                for (const viewPattern of viewsPatterns) {
+                    const viewsMatch = block.match(viewPattern);
+                    if (viewsMatch && viewsMatch[1]) {
+                        views = parseViewCount(viewsMatch[1].trim());
+                        if (views > 0) break;
+                    }
+                }
+                
+                // Extract uploader information
+                const uploader = extractUploaderFromSearchResult(block);
                 
                 videos.push({
                     id: videoId,
@@ -3702,7 +3770,7 @@ function parseHistoryPage(html) {
                     duration: duration,
                     views: views,
                     url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
-                    uploader: { name: "", url: "", avatar: "" }
+                    uploader: uploader
                 });
             }
             if (videos.length > 0) break;
@@ -3734,12 +3802,18 @@ function parseHistoryPage(html) {
                 const titleMatch = context.match(/title="([^"]+)"/i) || context.match(/alt="([^"]+)"/i);
                 let title = titleMatch ? cleanVideoTitle(titleMatch[1]) : videoSlug.replace(/[_+-]/g, ' ');
                 
+                // Enhanced thumbnail patterns for fallback
                 const thumbPatterns = [
                     /data-src="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i,
+                    /data-src="(https?:\/\/[^"]*tbi\.sb-cd\.com[^"]+)"/i,
+                    /data-src="(https?:\/\/[^"]*sb-cd\.com[^"]+)"/i,
                     /src="(https?:\/\/[^"]*tbi\.sb-cd\.com[^"]+)"/i,
                     /src="(https?:\/\/[^"]*sb-cd\.com[^"]+)"/i,
                     /src="(https?:\/\/[^"]*spankbang[^"]*\/t\/[^"]+)"/i,
+                    /lazy-src="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i,
+                    /data-src="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i,
                     /src="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i,
+                    /data-src="([^"]+)"/i,
                     /style="[^"]*background[^:]*:\s*url\(['"]?(https?:\/\/[^'")\s]+)['"]?\)/i
                 ];
                 let thumbnail = "";
@@ -3760,11 +3834,14 @@ function parseHistoryPage(html) {
                     thumbnail = 'https:' + thumbnail;
                 }
                 
+                // Enhanced duration patterns for fallback
                 const durationPatterns = [
-                    /<span[^>]*class="[^"]*l[^"]*"[^>]*>([^<]+)<\/span>/i,
-                    /<span[^>]*class="[^"]*(?:length|duration|time)[^"]*"[^>]*>([^<]+)<\/span>/i,
-                    />(\d{1,3}:\d{2}(?::\d{2})?)</,
+                    /<span[^>]*class="[^"]*\bl\b[^"]*"[^>]*>([^<]+)<\/span>/i,
+                    /<span[^>]*class="[^"]*(?:length|duration|time|dur)[^"]*"[^>]*>([^<]+)<\/span>/i,
+                    /<div[^>]*class="[^"]*(?:l|length|duration|time|dur)[^"]*"[^>]*>([^<]+)<\/div>/i,
+                    /data-duration="([^"]+)"/i,
                     /<span[^>]*>(\d{1,3}:\d{2}(?::\d{2})?)<\/span>/i,
+                    />(\d{1,3}:\d{2}(?::\d{2})?)</,
                     /(\d{1,3}:\d{2}(?::\d{2})?)/
                 ];
                 let duration = 0;
@@ -3779,14 +3856,34 @@ function parseHistoryPage(html) {
                     }
                 }
                 
+                // Extract views and uploader information with enhanced patterns
+                let views = 0;
+                const viewsPatterns = [
+                    /<span[^>]*class="[^"]*\bv\b[^"]*"[^>]*>([^<]+)<\/span>/i,
+                    /<span[^>]*class="[^"]*views[^"]*"[^>]*>([^<]+)<\/span>/i,
+                    /<div[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/div>/i,
+                    /data-views="([^"]+)"/i,
+                    /(\d+(?:[,.]\d+)?[KMB]?)\s*views?/i,
+                    />([0-9,.]+[KMB]?)\s*<\/span>/i
+                ];
+                for (const viewPattern of viewsPatterns) {
+                    const viewsMatch = context.match(viewPattern);
+                    if (viewsMatch && viewsMatch[1]) {
+                        views = parseViewCount(viewsMatch[1].trim());
+                        if (views > 0) break;
+                    }
+                }
+                
+                const uploader = extractUploaderFromSearchResult(context);
+                
                 videos.push({
                     id: videoId,
                     title: title,
                     thumbnail: thumbnail,
                     duration: duration,
-                    views: 0,
+                    views: views,
                     url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
-                    uploader: { name: "", url: "", avatar: "" }
+                    uploader: uploader
                 });
             }
         }

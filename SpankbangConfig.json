@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 56,
+  "version": 57,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -51,6 +51,18 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "57": [
+      "CRITICAL FIX: History page videos now show correct thumbnails instead of black placeholders",
+      "CRITICAL FIX: History page videos now display actual duration (e.g., 12:34) instead of 0:00",
+      "CRITICAL FIX: History page videos now show uploader/channel names with clickable links",
+      "CRITICAL FIX: History page videos now display view counts",
+      "Enhanced thumbnail extraction with 10+ fallback patterns (data-src, src, lazy-src, CDN URLs)",
+      "Enhanced duration extraction with 7+ patterns including data-duration attribute support",
+      "Enhanced view count extraction with 6+ patterns for more reliable parsing",
+      "Improved parseHistoryPage() with uploader information extraction across all fallback patterns",
+      "Better pattern matching with word boundary detection for class='l' (duration) and class='v' (views)",
+      "All history videos now include complete metadata: thumbnail, duration, views, and uploader info"
+    ],
     "56": [
       "CRITICAL FIX: All user playlists now import correctly (previously only 1 playlist shown, now shows all ~60+ playlists)",
       "CRITICAL FIX: Playlist videos now show channel/uploader name instead of being empty",
