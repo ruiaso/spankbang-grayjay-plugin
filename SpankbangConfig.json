@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 52,
+  "version": 53,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -51,6 +51,23 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "53": [
+      "MAJOR FIX: Profile users now correctly detected as video uploaders",
+      "Fixed uploader priority: profiles checked FIRST, then channels, then pornstars",
+      "Removed 'Featuring' section from uploader detection to prevent pornstar confusion",
+      "Fixed issue where pornstars from 'Featuring' section shown as uploaders instead of actual profile users",
+      "Added profile-specific uploader section detection for more accurate extraction",
+      "Enhanced extractUploaderFromVideoToolbar with proper section isolation",
+      "Enhanced extractUploaderFromSearchResult to prioritize profile users",
+      "FEATURE: Profile users now searchable as creators in channel search",
+      "Added parseProfileUsersFromSearch() to extract profile users from search results",
+      "Added parseChannelsFromSearch() to extract channels from search results",
+      "searchChannels now returns profiles, channels, and pornstars",
+      "Profile users like 'soleman666', 'sdpr102' now properly appear as creators",
+      "Fixed 'No author url present' errors by ensuring profile links work correctly",
+      "Improved name validation to filter out video count text (e.g., '446 videos')",
+      "All uploader types now correctly distinguished and displayed"
+    ],
     "52": [
       "CRITICAL FIX: Video uploader now correctly extracted from video toolbar section only",
       "Fixed bug where commenters were shown as video uploaders instead of actual creators",
