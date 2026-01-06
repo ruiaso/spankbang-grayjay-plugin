@@ -11,8 +11,7 @@ var state = {
     isAuthenticated: false,
     authCookies: "",
     username: "",
-    userId: "",
-    cookieExpiry: 0
+    userId: ""
 };
 
 const CONFIG = {
@@ -61,51 +60,8 @@ function getAuthHeaders() {
     const headers = { ...API_HEADERS };
     if (state.authCookies && state.authCookies.length > 0) {
         headers["Cookie"] = state.authCookies;
-        log("Using auth cookies for request");
     }
     return headers;
-}
-
-function validateCookies() {
-    if (!state.authCookies || state.authCookies.length === 0) {
-        return { valid: false, message: "No cookies set. Please configure your SpankBang cookies in plugin settings." };
-    }
-    
-    // Check if cookies have expired (if expiry was set)
-    if (state.cookieExpiry > 0 && Date.now() > state.cookieExpiry) {
-        return { valid: false, message: "Cookies have expired. Please update your SpankBang cookies." };
-    }
-    
-    return { valid: true, message: "Cookies are valid" };
-}
-
-function setCookies(cookieString) {
-    if (!cookieString || cookieString.trim().length === 0) {
-        throw new ScriptException("Cookie string cannot be empty");
-    }
-    
-    state.authCookies = cookieString.trim();
-    // Set expiry to 30 days from now (typical cookie lifetime)
-    state.cookieExpiry = Date.now() + (30 * 24 * 60 * 60 * 1000);
-    state.isAuthenticated = true;
-    
-    // Try to extract username from cookies if present
-    const usernameMatch = cookieString.match(/username=([^;]+)/);
-    if (usernameMatch) {
-        state.username = decodeURIComponent(usernameMatch[1]);
-    }
-    
-    log("Cookies set successfully. Authentication enabled.");
-    return true;
-}
-
-function clearCookies() {
-    state.authCookies = "";
-    state.isAuthenticated = false;
-    state.cookieExpiry = 0;
-    state.username = "";
-    state.userId = "";
-    log("Cookies cleared");
 }
 
 function makeRequest(url, headers = null, context = 'request') {
@@ -909,62 +865,16 @@ function parseChannelPage(html, channelUrl) {
 source.enable = function(conf, settings, savedState) {
     config = conf ?? {};
     
-    // Check if authentication cookies are available from Grayjay's auth system
-    if (config.authentication && config.authentication.cookies) {
-        try {
-            // Grayjay provides cookies as an object or array
-            let cookieString = "";
-            
-            if (typeof config.authentication.cookies === 'string') {
-                cookieString = config.authentication.cookies;
-            } else if (Array.isArray(config.authentication.cookies)) {
-                cookieString = config.authentication.cookies.join('; ');
-            } else if (typeof config.authentication.cookies === 'object') {
-                // Convert cookie object to string format
-                cookieString = Object.entries(config.authentication.cookies)
-                    .map(([key, value]) => `${key}=${value}`)
-                    .join('; ');
-            }
-            
-            if (cookieString && cookieString.trim().length > 0) {
-                setCookies(cookieString);
-                log("Authentication cookies loaded from Grayjay authentication");
-            }
-        } catch (e) {
-            log("Failed to load cookies from authentication: " + e.message);
-        }
-    }
-    
-    // Fallback: Load settings (for backward compatibility if any custom settings exist)
-    if (!state.authCookies && settings && settings.authCookies) {
-        try {
-            const cookieValue = typeof settings.authCookies === 'string' 
-                ? settings.authCookies 
-                : settings.authCookies;
-            
-            if (cookieValue && cookieValue.trim().length > 0) {
-                setCookies(cookieValue);
-                log("Authentication cookies loaded from settings");
-            }
-        } catch (e) {
-            log("Failed to load cookies from settings: " + e.message);
-        }
-    }
-    
-    // Restore previous state if available
-    if (!state.authCookies && savedState) {
+    if (savedState) {
         try {
             const parsed = JSON.parse(savedState);
-            if (parsed.authCookies) {
-                state = { ...state, ...parsed };
-                log("Authentication state restored from saved state");
-            }
+            state = { ...state, ...parsed };
         } catch (e) {
             log("Failed to parse saved state: " + e.message);
         }
     }
     
-    log("Spankbang plugin enabled. Authenticated: " + state.isAuthenticated);
+    log("Spankbang plugin enabled");
     return true;
 };
 
@@ -1054,19 +964,37 @@ source.searchChannels = function(query) {
 };
 
 source.isContentDetailsUrl = function(url) {
-    return url.includes('/videos/');
+    // Only accept Spankbang URLs
+    if (!url || typeof url !== 'string') return false;
+    return url.includes('spankbang.com/') && url.includes('/videos/');
 };
 
 source.getContentDetails = function(url) {
     log("Getting video details for: " + url);
     
-    const html = makeRequest(url, API_HEADERS, 'video details');
-    const videoData = parseVideoPage(html);
+    // Validate that this is a Spankbang URL
+    if (!url.includes('spankbang.com')) {
+        throw new ScriptException("Invalid URL: Only Spankbang URLs are supported. Received: " + url);
+    }
     
-    const idMatch = url.match(/-(\d+)$/) || url.match(/\/videos\/([^\/-]+)/);
-    videoData.id = idMatch ? idMatch[1] : "";
-    
-    return createVideoDetails(videoData, url);
+    try {
+        const html = makeRequest(url, API_HEADERS, 'video details');
+        const videoData = parseVideoPage(html);
+        
+        const idMatch = url.match(/-(\d+)$/) || url.match(/\/videos\/([^\/-]+)/);
+        videoData.id = idMatch ? idMatch[1] : "";
+        
+        if (!videoData.sources || Object.keys(videoData.sources).length === 0) {
+            log("No video sources found for: " + url);
+            throw new ScriptException("No playable video sources found. This video may be unavailable or restricted.");
+        }
+        
+        log("Found " + Object.keys(videoData.sources).length + " video sources");
+        return createVideoDetails(videoData, url);
+    } catch (error) {
+        log("Error getting video details: " + error.message);
+        throw error;
+    }
 };
 
 source.getContentRecommendations = function(url) {
@@ -1084,7 +1012,9 @@ source.getContentRecommendations = function(url) {
 };
 
 source.isChannelUrl = function(url) {
-    return url.includes('/profile/') || url.includes('/pornstar/') || url.includes('/creators/') ||
+    // Only accept Spankbang URLs
+    if (!url || typeof url !== 'string') return false;
+    return (url.includes('spankbang.com/') && (url.includes('/profile/') || url.includes('/pornstar/') || url.includes('/creators/'))) ||
            url.includes('spankbang://profile/') || url.includes('spankbang://channel/');
 };
 
@@ -1212,24 +1142,37 @@ function parseSubscriptionsPage(html) {
     const subscriptions = [];
     const seenIds = new Set();
 
-    // Parse user subscriptions from /users/subscriptions
+    // Multiple parsing strategies to catch all subscription formats
+    
+    // Strategy 1: Parse user subscriptions with profile links
     const userSubPatterns = [
-        /<a[^>]*href="\/profile\/([^"\/\?]+)"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[^>]*alt="([^"]+)"/gi,
-        /<div[^>]*class="[^"]*profile[^"]*"[^>]*>[\s\S]*?<a[^>]*href="\/profile\/([^"\/]+)"[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?([^<]+)<\/a>/gi
+        /<a[^>]*href="\/profile\/([^"\/\?]+)"[^>]*>[\s\S]{0,500}?<img[^>]*(?:data-src|src)="([^"]+)"[^>]*(?:alt="([^"]+)")?/gi,
+        /<div[^>]*class="[^"]*(?:profile|subscription|user-item)[^"]*"[^>]*>[\s\S]{0,800}?<a[^>]*href="\/profile\/([^"\/]+)"[\s\S]{0,300}?<img[^>]*(?:data-src|src)="([^"]+)"/gi,
+        /<div[^>]*data-user="([^"]+)"[^>]*>[\s\S]{0,500}?href="\/profile\/([^"\/]+)"[\s\S]{0,300}?(?:data-src|src)="([^"]+)"/gi
     ];
 
     for (const pattern of userSubPatterns) {
         let match;
+        pattern.lastIndex = 0; // Reset regex
         while ((match = pattern.exec(html)) !== null) {
-            const profileSlug = match[1].replace(/\/$/, '');
-            if (seenIds.has(profileSlug)) continue;
+            let profileSlug, avatar, name;
+            
+            // Handle different capture group orders
+            if (match[1] && match[1].includes('/profile/')) {
+                continue; // Skip malformed matches
+            }
+            
+            profileSlug = (match[1] || match[2] || "").replace(/\/$/, '');
+            avatar = match[2] || match[3] || "";
+            name = match[3] || match[1] || profileSlug;
+            
+            if (!profileSlug || seenIds.has(profileSlug)) continue;
             seenIds.add(profileSlug);
 
-            let avatar = match[2] || "";
             if (avatar.startsWith('//')) avatar = 'https:' + avatar;
-            else if (!avatar.startsWith('http') && avatar) avatar = 'https://spankbang.com' + avatar;
+            else if (avatar && !avatar.startsWith('http')) avatar = 'https://spankbang.com' + avatar;
 
-            const name = (match[3] || profileSlug.replace(/-/g, ' ')).trim();
+            name = (name || profileSlug.replace(/-/g, ' ')).trim();
 
             subscriptions.push({
                 id: profileSlug,
@@ -1240,6 +1183,47 @@ function parseSubscriptionsPage(html) {
             });
         }
     }
+    
+    // Strategy 2: Find all profile links and extract from surrounding context
+    const allProfileLinks = /href="\/profile\/([^"\/\?]+)"/gi;
+    let linkMatch;
+    while ((linkMatch = allProfileLinks.exec(html)) !== null) {
+        const profileSlug = linkMatch[1].replace(/\/$/, '');
+        if (seenIds.has(profileSlug)) continue;
+        
+        // Extract context around the link
+        const contextStart = Math.max(0, linkMatch.index - 400);
+        const contextEnd = Math.min(html.length, linkMatch.index + 400);
+        const context = html.substring(contextStart, contextEnd);
+        
+        // Look for avatar in context
+        let avatar = "";
+        const avatarMatch = context.match(/(?:data-src|src)="([^"]+\.(?:jpg|jpeg|png|webp|gif)[^"]*)"/i);
+        if (avatarMatch && avatarMatch[1]) {
+            avatar = avatarMatch[1];
+            if (avatar.startsWith('//')) avatar = 'https:' + avatar;
+            else if (!avatar.startsWith('http')) avatar = 'https://spankbang.com' + avatar;
+        }
+        
+        // Look for name in context
+        let name = profileSlug.replace(/-/g, ' ');
+        const nameMatch = context.match(/alt="([^"]+)"|title="([^"]+)"|>([^<]{3,30})</);
+        if (nameMatch && (nameMatch[1] || nameMatch[2] || nameMatch[3])) {
+            const foundName = (nameMatch[1] || nameMatch[2] || nameMatch[3]).trim();
+            if (foundName.length > 2 && foundName.length < 50) {
+                name = foundName;
+            }
+        }
+        
+        seenIds.add(profileSlug);
+        subscriptions.push({
+            id: profileSlug,
+            name: name,
+            url: `spankbang://profile/${profileSlug}`,
+            avatar: avatar,
+            type: 'user'
+        });
+    }
 
     return subscriptions;
 }
@@ -1248,22 +1232,23 @@ function parsePornstarSubscriptionsPage(html) {
     const subscriptions = [];
     const seenIds = new Set();
 
-    // Parse pornstar subscriptions from /users/subscriptions_pornstars
+    // Multiple parsing strategies for pornstar subscriptions
     const pornstarSubPatterns = [
-        /<a[^>]*href="\/pornstar\/([^"\/\?]+)"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[^>]*alt="([^"]+)"/gi,
-        /<div[^>]*class="[^"]*pornstar[^"]*"[^>]*>[\s\S]*?<a[^>]*href="\/pornstar\/([^"\/]+)"[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?<\/div>/gi
+        /<a[^>]*href="\/pornstar\/([^"\/\?]+)"[^>]*>[\s\S]{0,500}?<img[^>]*(?:data-src|src)="([^"]+)"[^>]*(?:alt="([^"]+)")?/gi,
+        /<div[^>]*class="[^"]*(?:pornstar|model)[^"]*"[^>]*>[\s\S]{0,800}?<a[^>]*href="\/pornstar\/([^"\/]+)"[\s\S]{0,300}?<img[^>]*(?:data-src|src)="([^"]+)"/gi
     ];
 
     for (const pattern of pornstarSubPatterns) {
         let match;
+        pattern.lastIndex = 0;
         while ((match = pattern.exec(html)) !== null) {
-            const pornstarSlug = match[1].replace(/\/$/, '');
-            if (seenIds.has(`pornstar:${pornstarSlug}`)) continue;
+            const pornstarSlug = (match[1] || "").replace(/\/$/, '');
+            if (!pornstarSlug || seenIds.has(`pornstar:${pornstarSlug}`)) continue;
             seenIds.add(`pornstar:${pornstarSlug}`);
 
             let avatar = match[2] || "";
             if (avatar.startsWith('//')) avatar = 'https:' + avatar;
-            else if (!avatar.startsWith('http') && avatar) avatar = 'https://spankbang.com' + avatar;
+            else if (avatar && !avatar.startsWith('http')) avatar = 'https://spankbang.com' + avatar;
 
             let name = match[3] || pornstarSlug.replace(/-/g, ' ');
             name = name.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
@@ -1277,6 +1262,46 @@ function parsePornstarSubscriptionsPage(html) {
             });
         }
     }
+    
+    // Strategy 2: Find all pornstar links
+    const allPornstarLinks = /href="\/pornstar\/([^"\/\?]+)"/gi;
+    let linkMatch;
+    while ((linkMatch = allPornstarLinks.exec(html)) !== null) {
+        const pornstarSlug = linkMatch[1].replace(/\/$/, '');
+        if (seenIds.has(`pornstar:${pornstarSlug}`)) continue;
+        
+        const contextStart = Math.max(0, linkMatch.index - 400);
+        const contextEnd = Math.min(html.length, linkMatch.index + 400);
+        const context = html.substring(contextStart, contextEnd);
+        
+        let avatar = "";
+        const avatarMatch = context.match(/(?:data-src|src)="([^"]+\.(?:jpg|jpeg|png|webp|gif)[^"]*)"/i);
+        if (avatarMatch && avatarMatch[1]) {
+            avatar = avatarMatch[1];
+            if (avatar.startsWith('//')) avatar = 'https:' + avatar;
+            else if (!avatar.startsWith('http')) avatar = 'https://spankbang.com' + avatar;
+        }
+        
+        let name = pornstarSlug.replace(/-/g, ' ');
+        name = name.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+        
+        const nameMatch = context.match(/alt="([^"]+)"|title="([^"]+)"/);
+        if (nameMatch && (nameMatch[1] || nameMatch[2])) {
+            const foundName = (nameMatch[1] || nameMatch[2]).trim();
+            if (foundName.length > 2 && foundName.length < 50) {
+                name = foundName;
+            }
+        }
+        
+        seenIds.add(`pornstar:${pornstarSlug}`);
+        subscriptions.push({
+            id: `pornstar:${pornstarSlug}`,
+            name: name,
+            url: `spankbang://profile/pornstar:${pornstarSlug}`,
+            avatar: avatar,
+            type: 'pornstar'
+        });
+    }
 
     return subscriptions;
 }
@@ -1285,20 +1310,22 @@ function parsePlaylistsPage(html) {
     const playlists = [];
     const seenIds = new Set();
 
-    // Parse playlists from /users/playlists
+    // Multiple parsing strategies for playlists
     const playlistPatterns = [
-        /<a[^>]*href="\/playlist\/([^"\/\?]+)"[^>]*>[\s\S]*?<[^>]*>([^<]+)<\/[^>]*>/gi,
-        /<div[^>]*class="[^"]*playlist[^"]*"[^>]*>[\s\S]*?<a[^>]*href="\/playlist\/([^"\/]+)"[^>]*title="([^"]+)"/gi
+        /<a[^>]*href="\/playlist\/([^"\/\?]+)"[^>]*(?:title="([^"]+)")?[^>]*>[\s\S]{0,200}?(?:<[^>]*>)?([^<]{0,100})</gi,
+        /<div[^>]*class="[^"]*playlist[^"]*"[^>]*>[\s\S]{0,500}?<a[^>]*href="\/playlist\/([^"\/]+)"[^>]*(?:title="([^"]+)")?/gi
     ];
 
     for (const pattern of playlistPatterns) {
         let match;
+        pattern.lastIndex = 0;
         while ((match = pattern.exec(html)) !== null) {
-            const playlistId = match[1].replace(/\/$/, '');
-            if (seenIds.has(playlistId)) continue;
+            const playlistId = (match[1] || match[4] || "").replace(/\/$/, '');
+            if (!playlistId || seenIds.has(playlistId)) continue;
             seenIds.add(playlistId);
 
-            const name = (match[2] || playlistId.replace(/-/g, ' ')).trim();
+            let name = (match[2] || match[3] || match[5] || playlistId.replace(/-/g, ' ')).trim();
+            if (name.length < 2) name = playlistId.replace(/-/g, ' ');
 
             playlists.push({
                 id: playlistId,
@@ -1307,146 +1334,71 @@ function parsePlaylistsPage(html) {
             });
         }
     }
+    
+    // Strategy 2: Find all playlist links
+    const allPlaylistLinks = /href="\/playlist\/([^"\/\?]+)"/gi;
+    let linkMatch;
+    while ((linkMatch = allPlaylistLinks.exec(html)) !== null) {
+        const playlistId = linkMatch[1].replace(/\/$/, '');
+        if (seenIds.has(playlistId)) continue;
+        
+        const contextStart = Math.max(0, linkMatch.index - 300);
+        const contextEnd = Math.min(html.length, linkMatch.index + 300);
+        const context = html.substring(contextStart, contextEnd);
+        
+        let name = playlistId.replace(/-/g, ' ');
+        const nameMatch = context.match(/title="([^"]+)"|alt="([^"]+)"|>([^<]{3,50})</);
+        if (nameMatch && (nameMatch[1] || nameMatch[2] || nameMatch[3])) {
+            const foundName = (nameMatch[1] || nameMatch[2] || nameMatch[3]).trim();
+            if (foundName.length > 2 && foundName.length < 100) {
+                name = foundName;
+            }
+        }
+        
+        seenIds.add(playlistId);
+        playlists.push({
+            id: playlistId,
+            name: name,
+            url: `${BASE_URL}/playlist/${playlistId}`
+        });
+    }
 
     return playlists;
-}
-
-function parseHistoryPage(html) {
-    const historyVideos = [];
-    const seenIds = new Set();
-
-    // Parse history videos from /users/history
-    const videoPatterns = [
-        /<div[^>]*class="[^"]*video-item[^"]*"[^>]*>[\s\S]*?href="([^"]+)"[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?<[^>]*class="[^"]*(?:title|name)[^"]*"[^>]*>([^<]+)<[\s\S]*?<span[^>]*class="[^"]*(?:duration|time)[^"]*"[^>]*>([^<]+)</gi,
-        /<a[^>]*href="(\/[^"]+\/video\/[^"]+)"[^>]*>[\s\S]{0,500}?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]{0,300}?(?:<[^>]*>)*([^<]{5,100})<[\s\S]{0,200}?<span[^>]*>([^<]+)<\/span>/gi
-    ];
-
-    for (const pattern of videoPatterns) {
-        let match;
-        while ((match = pattern.exec(html)) !== null) {
-            let videoUrl = match[1];
-            if (!videoUrl.startsWith('http')) {
-                videoUrl = BASE_URL + videoUrl;
-            }
-
-            const idMatch = videoUrl.match(/-(\d+)$/) || videoUrl.match(/\/([^\/\?-]+)\/video/);
-            const videoId = idMatch ? idMatch[1] : generateVideoId();
-
-            if (seenIds.has(videoId)) continue;
-            seenIds.add(videoId);
-
-            let thumbnail = match[2] || "";
-            if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
-            else if (!thumbnail.startsWith('http') && thumbnail) thumbnail = BASE_URL + thumbnail;
-
-            const title = cleanVideoTitle(match[3] || "Unknown");
-            const durationStr = match[4] || "0:00";
-            const duration = parseDuration(durationStr);
-
-            historyVideos.push({
-                id: videoId,
-                title: title,
-                thumbnail: thumbnail,
-                duration: duration,
-                views: 0,
-                uploadDate: 0,
-                url: videoUrl,
-                uploader: { name: "", url: "", avatar: "" }
-            });
-        }
-    }
-
-    // If no videos found with detailed patterns, try simpler pattern
-    if (historyVideos.length === 0) {
-        const simplePattern = /href="([^"]*\/[^"]+\/video\/[^"]+)"/gi;
-        let match;
-        while ((match = simplePattern.exec(html)) !== null) {
-            let videoUrl = match[1];
-            if (!videoUrl.startsWith('http')) {
-                videoUrl = BASE_URL + videoUrl;
-            }
-
-            const idMatch = videoUrl.match(/-(\d+)$/) || videoUrl.match(/\/([^\/\?-]+)\/video/);
-            const videoId = idMatch ? idMatch[1] : generateVideoId();
-
-            if (seenIds.has(videoId)) continue;
-            seenIds.add(videoId);
-
-            // Try to find thumbnail near the link
-            const contextIdx = html.indexOf(match[0]);
-            let thumbnail = "";
-            let title = "Unknown";
-            let duration = 0;
-
-            if (contextIdx > 0) {
-                const context = html.substring(Math.max(0, contextIdx - 500), Math.min(html.length, contextIdx + 300));
-                
-                const thumbMatch = context.match(/(?:data-src|src)="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/);
-                if (thumbMatch) {
-                    thumbnail = thumbMatch[1];
-                    if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
-                }
-
-                const titleMatch = context.match(/title="([^"]+)"/);
-                if (titleMatch) {
-                    title = cleanVideoTitle(titleMatch[1]);
-                }
-
-                const durationMatch = context.match(/<span[^>]*class="[^"]*(?:duration|time)[^"]*"[^>]*>([^<]+)<\/span>/);
-                if (durationMatch) {
-                    duration = parseDuration(durationMatch[1]);
-                }
-            }
-
-            historyVideos.push({
-                id: videoId,
-                title: title,
-                thumbnail: thumbnail,
-                duration: duration,
-                views: 0,
-                uploadDate: 0,
-                url: videoUrl,
-                uploader: { name: "", url: "", avatar: "" }
-            });
-        }
-    }
-
-    return historyVideos;
 }
 
 source.getUserSubscriptions = function() {
     log("Getting user subscriptions");
     
-    // Validate cookies first
-    const cookieValidation = validateCookies();
-    if (!cookieValidation.valid) {
-        log("Cookie validation failed: " + cookieValidation.message);
-        throw new ScriptException(cookieValidation.message);
-    }
-    
     const subscriptions = [];
     
     try {
-        // Fetch user subscriptions using authenticated headers
+        // Fetch user subscriptions using authenticated client
         log("Fetching user subscriptions from /users/subscriptions");
-        const userSubsHtml = makeRequest(`${BASE_URL}/users/subscriptions`, getAuthHeaders(), 'user subscriptions');
+        const userSubsHtml = http.GET(`${BASE_URL}/users/subscriptions`, API_HEADERS, true);
         
-        const userSubs = parseSubscriptionsPage(userSubsHtml);
+        if (!userSubsHtml.isOk) {
+            log("Failed to fetch user subscriptions, user may not be logged in");
+            return [];
+        }
+        
+        const userSubs = parseSubscriptionsPage(userSubsHtml.body);
         subscriptions.push(...userSubs);
         log(`Found ${userSubs.length} user subscriptions`);
     } catch (error) {
         log("Failed to fetch user subscriptions: " + error.message);
-        if (error.message.includes("401") || error.message.includes("403")) {
-            throw new ScriptException("Authentication failed. Please update your cookies in plugin settings.");
-        }
     }
     
     try {
-        // Fetch pornstar subscriptions using authenticated headers
+        // Fetch pornstar subscriptions using authenticated client
         log("Fetching pornstar subscriptions from /users/subscriptions_pornstars");
-        const pornstarSubsHtml = makeRequest(`${BASE_URL}/users/subscriptions_pornstars`, getAuthHeaders(), 'pornstar subscriptions');
+        const pornstarSubsHtml = http.GET(`${BASE_URL}/users/subscriptions_pornstars`, API_HEADERS, true);
         
-        const pornstarSubs = parsePornstarSubscriptionsPage(pornstarSubsHtml);
+        if (!pornstarSubsHtml.isOk) {
+            log("Failed to fetch pornstar subscriptions");
+            return subscriptions.map(sub => sub.url);
+        }
+        
+        const pornstarSubs = parsePornstarSubscriptionsPage(pornstarSubsHtml.body);
         subscriptions.push(...pornstarSubs);
         log(`Found ${pornstarSubs.length} pornstar subscriptions`);
     } catch (error) {
@@ -1460,61 +1412,73 @@ source.getUserSubscriptions = function() {
 source.getUserPlaylists = function() {
     log("Getting user playlists");
 
-    // Validate cookies first
-    const cookieValidation = validateCookies();
-    if (!cookieValidation.valid) {
-        log("Cookie validation failed: " + cookieValidation.message);
-        throw new ScriptException(cookieValidation.message);
-    }
-
     try {
-        // Fetch playlists using authenticated headers
+        // Fetch playlists using authenticated client
         log("Fetching playlists from /users/playlists");
-        const playlistsHtml = makeRequest(`${BASE_URL}/users/playlists`, getAuthHeaders(), 'user playlists');
+        const playlistsResp = http.GET(`${BASE_URL}/users/playlists`, API_HEADERS, true);
         
-        const playlists = parsePlaylistsPage(playlistsHtml);
+        if (!playlistsResp.isOk) {
+            log("Failed to fetch playlists, user may not be logged in");
+            return [];
+        }
+        
+        const playlists = parsePlaylistsPage(playlistsResp.body);
         log(`Found ${playlists.length} playlists`);
         return playlists.map(pl => pl.url);
     } catch (error) {
         log("Failed to fetch playlists: " + error.message);
-        if (error.message.includes("401") || error.message.includes("403")) {
-            throw new ScriptException("Authentication failed. Please update your cookies in plugin settings.");
-        }
-        return [];
-    }
-};
-
-source.getUserHistory = function() {
-    log("Getting user watch history");
-
-    // Validate cookies first
-    const cookieValidation = validateCookies();
-    if (!cookieValidation.valid) {
-        log("Cookie validation failed: " + cookieValidation.message);
-        throw new ScriptException(cookieValidation.message);
-    }
-
-    try {
-        // Fetch watch history using authenticated headers
-        log("Fetching history from /users/history");
-        const historyHtml = makeRequest(`${BASE_URL}/users/history`, getAuthHeaders(), 'user history');
-        
-        const historyVideos = parseHistoryPage(historyHtml);
-        log(`Found ${historyVideos.length} history videos`);
-        
-        // Return as PlatformVideo objects
-        return historyVideos.map(v => createPlatformVideo(v));
-    } catch (error) {
-        log("Failed to fetch history: " + error.message);
-        if (error.message.includes("401") || error.message.includes("403")) {
-            throw new ScriptException("Authentication failed. Please update your cookies in plugin settings.");
-        }
         return [];
     }
 };
 
 source.getPlaylist = function(url) {
-    throw new ScriptException("Playlists not implemented");
+    log("Getting playlist: " + url);
+    
+    try {
+        const html = makeRequest(url, getAuthHeaders(), 'playlist');
+        
+        // Extract playlist info
+        const playlistData = {
+            id: "",
+            name: "Unknown Playlist",
+            thumbnail: "",
+            videoCount: 0
+        };
+        
+        // Parse playlist name
+        const nameMatch = html.match(/<h1[^>]*class="[^"]*playlist[^"]*"[^>]*>([^<]+)<\/h1>/i) ||
+                         html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
+        if (nameMatch && nameMatch[1]) {
+            playlistData.name = nameMatch[1].trim();
+        }
+        
+        // Extract playlist ID from URL
+        const idMatch = url.match(/\/playlist\/([^\/\?]+)/);
+        if (idMatch && idMatch[1]) {
+            playlistData.id = idMatch[1];
+        }
+        
+        // Parse videos in playlist
+        const videos = parseSearchResults(html);
+        playlistData.videoCount = videos.length;
+        
+        // Get thumbnail from first video
+        if (videos.length > 0 && videos[0].thumbnail) {
+            playlistData.thumbnail = videos[0].thumbnail;
+        }
+        
+        return new PlatformPlaylistDetails({
+            id: new PlatformID(PLATFORM, playlistData.id, plugin.config.id),
+            name: playlistData.name,
+            thumbnail: playlistData.thumbnail,
+            videoCount: playlistData.videoCount,
+            url: url,
+            contents: new VideoPager(videos.map(v => createPlatformVideo(v)))
+        });
+    } catch (error) {
+        log("Failed to get playlist: " + error.message);
+        throw new ScriptException("Failed to load playlist: " + error.message);
+    }
 };
 
 source.canDownload = function(video) {
@@ -1560,6 +1524,78 @@ source.getDownloadables = function(video) {
         return downloads;
     } catch (error) {
         log("Failed to get downloadables: " + error.message);
+        return [];
+    }
+};
+
+function parseHistoryPage(html) {
+    const historyVideos = [];
+    const seenIds = new Set();
+    
+    // Parse videos from history page
+    const videoPattern = /<a[^>]*href="([^"]*\/videos\/[^"]+)"[^>]*>/gi;
+    let match;
+    
+    while ((match = videoPattern.exec(html)) !== null) {
+        const videoUrl = match[1].startsWith('http') ? match[1] : BASE_URL + match[1];
+        const idMatch = videoUrl.match(/-(\d+)$/) || videoUrl.match(/\/videos\/([^\/\?]+)/);
+        const videoId = idMatch ? idMatch[1] : generateVideoId();
+        
+        if (seenIds.has(videoId)) continue;
+        seenIds.add(videoId);
+        
+        // Extract title
+        let title = "Unknown";
+        const contextStart = Math.max(0, match.index - 300);
+        const contextEnd = Math.min(html.length, match.index + 300);
+        const context = html.substring(contextStart, contextEnd);
+        
+        const titleMatch = context.match(/title="([^"]+)"|alt="([^"]+)"/);
+        if (titleMatch && (titleMatch[1] || titleMatch[2])) {
+            title = cleanVideoTitle(titleMatch[1] || titleMatch[2]);
+        }
+        
+        // Extract thumbnail
+        let thumbnail = "";
+        const thumbMatch = context.match(/(?:data-src|src)="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/);
+        if (thumbMatch && thumbMatch[1]) {
+            thumbnail = thumbMatch[1];
+            if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
+        }
+        
+        historyVideos.push({
+            id: videoId,
+            title: title,
+            thumbnail: thumbnail,
+            duration: 0,
+            views: 0,
+            uploadDate: 0,
+            url: videoUrl,
+            uploader: { name: "", url: "", avatar: "" }
+        });
+    }
+    
+    return historyVideos;
+}
+
+source.getUserHistory = function() {
+    log("Getting user history");
+    
+    try {
+        log("Fetching history from /users/history");
+        const historyResp = http.GET(`${BASE_URL}/users/history`, getAuthHeaders(), true);
+        
+        if (!historyResp.isOk) {
+            log("Failed to fetch history, user may not be logged in");
+            return [];
+        }
+        
+        const historyVideos = parseHistoryPage(historyResp.body);
+        log(`Found ${historyVideos.length} videos in history`);
+        
+        return historyVideos.map(v => createPlatformVideo(v));
+    } catch (error) {
+        log("Failed to fetch history: " + error.message);
         return [];
     }
 };
