@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 57,
+  "version": 58,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -51,6 +51,20 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "58": [
+      "CRITICAL FIX: Grayjay local history now displays thumbnails correctly (was showing black thumbnails)",
+      "CRITICAL FIX: Grayjay local history now displays video durations correctly (was showing 0:00)",
+      "Enhanced createThumbnails() to generate CDN fallback URLs when thumbnail extraction fails",
+      "Added videoId parameter to createThumbnails() for proper CDN URL generation",
+      "Enhanced ALL fallback parsing patterns to extract duration from HTML context",
+      "Fixed parseSearchResults() fallback patterns (3 patterns) to extract duration",
+      "Fixed parseRelatedVideos() fallback pattern to extract duration",
+      "Fixed extractVideoLinksFromHtml() patterns (2 patterns) to extract duration",
+      "Fixed parseFavoritesPage() pattern to extract duration",
+      "Every video object now guaranteed to have thumbnail (extracted or CDN fallback)",
+      "Duration extraction now attempts multiple regex patterns before defaulting to 0:00",
+      "Consistent video metadata across all sections: home, search, history, playlists, favorites"
+    ],
     "57": [
       "CRITICAL FIX: History page videos now show correct thumbnails instead of black placeholders",
       "CRITICAL FIX: History page videos now display actual duration (e.g., 12:34) instead of 0:00",
