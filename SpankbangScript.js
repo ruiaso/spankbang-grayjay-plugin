@@ -539,24 +539,6 @@ function extractUploaderFromVideoToolbar(html) {
     // Look for specific uploader/user container
     const uploaderSectionMatch = videoMetadataHtml.match(/<li[^>]*class="[^"]*(?:user|uploader|author|by)[^"]*"[^>]*>([\s\S]*?)<\/li>/i);
     const uploaderSectionHtml = uploaderSectionMatch ? uploaderSectionMatch[1] : "";
-    
-    // NEW: Also try to find uploader in specific "by" or "uploader" labeled sections
-    const byLabelMatch = videoMetadataHtml.match(/(?:by|uploader|uploaded\s+by)[:\s]*<a[^>]*href="\/profile\/([^"\/]+)\/?\"[^>]*>([^<]+)<\/a>/i);
-    if (byLabelMatch && byLabelMatch[1]) {
-        const profileName = byLabelMatch[1];
-        const name = byLabelMatch[2].replace(/<[^>]*>/g, '').trim();
-        
-        // Validate it's not a tag
-        if (name && name.length > 0 && name.length < 100 && 
-            !name.match(/^\d+\s*videos?$/i) &&
-            !name.match(/^(big\s+tits?|anal|milf|teen|asian|blonde|brunette|amateur|hd|new|top|trending|popular)$/i)) {
-            uploader.name = name;
-            uploader.url = `spankbang://profile/${profileName}`;
-            uploader.avatar = extractAvatarFromHtml(videoMetadataHtml);
-            log(`Found profile uploader from 'by' label: ${name} (profile/${profileName})`);
-            return uploader;
-        }
-    }
 
     // PRIORITY 1: Check profile users FIRST (actual uploaders) in specific uploader sections
     const profilePatterns = [
@@ -600,12 +582,7 @@ function extractUploaderFromVideoToolbar(html) {
                     avatar = `https://spankbang.com${avatar}`;
                 }
                 
-                // Additional validation: name should not be a common tag or category
-                const invalidNames = /^(big\s+tits?|anal|milf|teen|asian|blonde|brunette|amateur|hd|new|top|trending|popular)$/i;
-                
-                if (name && name.length > 0 && name.length < 100 && 
-                    !name.match(/^\d+\s*videos?$/i) && 
-                    !invalidNames.test(name)) {
+                if (name && name.length > 0 && name.length < 100 && !name.match(/^\d+\s*videos?$/i)) {
                     uploader.name = name;
                     uploader.url = `spankbang://profile/${match[1]}`;
                     uploader.avatar = avatar;
@@ -703,15 +680,6 @@ function extractUploaderFromVideoToolbar(html) {
                 }
             }
         }
-    }
-
-    // CRITICAL: Before returning empty, make absolutely sure we haven't picked up a tag link
-    // Tag links look like /s/tag-name/ and should NEVER be uploaders
-    if (uploader.url && uploader.url.includes('/s/')) {
-        log("REJECTED: Found tag/category link instead of uploader, clearing");
-        uploader.name = "";
-        uploader.url = "";
-        uploader.avatar = "";
     }
 
     log("No uploader found in video toolbar/info sections");
@@ -4734,12 +4702,12 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
                 profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${shortId}/channel/${channelName}/`;
             }
         } else {
-            // For user profiles, MUST use /videos/ suffix to get their uploaded videos
-            // /profile/xxx/ alone shows the profile page, not the videos
+            // For user profiles, try /profile/xxx/ first (without /videos/)
+            // The /videos/ suffix may not exist for all profiles
             if (page > 1) {
-                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos/${page}/`;
+                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/${page}/`;
             } else {
-                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos/`;
+                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/`;
             }
         }
 
@@ -4756,21 +4724,21 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
         
         // If first request fails with 404 for profile type, try alternative URL formats
         if (!response.isOk && response.code === 404 && result.type === 'profile') {
-            log("Profile videos URL failed, trying alternative formats...");
+            log("Profile URL failed, trying alternative formats...");
             
-            // Try without /videos/ suffix (just profile page)
+            // Try with /videos/ suffix
             const altUrl1 = page > 1 
-                ? `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/${page}/`
-                : `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/`;
+                ? `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos/${page}/`
+                : `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos/`;
             log("Trying alternative URL: " + altUrl1);
             response = makeRequestNoThrow(altUrl1, API_HEADERS, 'channel contents alt1', false);
             
-            // If still fails, try /likes/ URL format
+            // If still fails, try /s/ URL format (search-style profile)
             if (!response.isOk && response.code === 404) {
                 const altUrl2 = page > 1
-                    ? `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/likes/${page}/`
-                    : `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/likes/`;
-                log("Trying /likes/ URL: " + altUrl2);
+                    ? `${CONFIG.EXTERNAL_URL_BASE}/s/${result.id}/${page}/`
+                    : `${CONFIG.EXTERNAL_URL_BASE}/s/${result.id}/`;
+                log("Trying /s/ URL: " + altUrl2);
                 response = makeRequestNoThrow(altUrl2, API_HEADERS, 'channel contents alt2', false);
             }
         }
