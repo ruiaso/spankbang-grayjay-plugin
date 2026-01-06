@@ -81,11 +81,14 @@ const REGEX_PATTERNS = {
         videoStandard: /^https?:\/\/(?:www\.)?spankbang\.com\/([a-zA-Z0-9]+)\/video\/.+$/,
         videoAlternative: /^https?:\/\/(?:www\.)?spankbang\.com\/([a-zA-Z0-9]+)\/embed\/.+$/,
         videoShort: /^https?:\/\/(?:www\.)?spankbang\.com\/([a-zA-Z0-9]+)\/.*$/,
+        // Video in playlist format: /PLAYLISTID-VIDEOID/playlist/slug - this is a VIDEO, not a playlist!
+        videoInPlaylist: /^https?:\/\/(?:www\.)?spankbang\.com\/([a-z0-9]+)-([a-z0-9]+)\/playlist\/([^\/\?]+)/,
         channelProfile: /^https?:\/\/(?:www\.)?spankbang\.com\/profile\/([^\/\?]+)/,
         channelOfficial: /^https?:\/\/(?:www\.)?spankbang\.com\/([a-z0-9]+)\/channel\/([^\/\?]+)/,
         channelS: /^https?:\/\/(?:www\.)?spankbang\.com\/s\/([^\/\?]+)/,
         pornstar: /^https?:\/\/(?:www\.)?spankbang\.com\/([a-z0-9]+)\/pornstar\/([^\/\?]+)/,
         pornstarSimple: /^https?:\/\/(?:www\.)?spankbang\.com\/pornstar\/([^\/\?]+)/,
+        // Playlist URL - note: must NOT have hyphen in first segment (that would be video-in-playlist)
         playlistExternal: /^https?:\/\/(?:www\.)?spankbang\.com\/([a-z0-9]+)\/playlist\/([^\/\?]+)/,
         playlistSimple: /^https?:\/\/(?:www\.)?spankbang\.com\/playlist\/([^\/\?]+)/,
         playlistInternal: /^spankbang:\/\/playlist\/(.+)$/,
@@ -233,6 +236,15 @@ function resolvePornstarShortId(slug) {
 function extractVideoId(url) {
     if (!url || typeof url !== 'string') {
         throw new ScriptException("Invalid URL provided for video ID extraction");
+    }
+
+    // Check for video-in-playlist URL format FIRST
+    // e.g., https://spankbang.com/dqd68-svhe7y/playlist/asmr+joi
+    // The video ID is the SECOND part after the hyphen (svhe7y)
+    const videoInPlaylistMatch = url.match(REGEX_PATTERNS.urls.videoInPlaylist);
+    if (videoInPlaylistMatch && videoInPlaylistMatch[2]) {
+        log("Extracted video ID from video-in-playlist URL: " + videoInPlaylistMatch[2]);
+        return videoInPlaylistMatch[2];
     }
 
     const patterns = [
@@ -4228,10 +4240,12 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
                 profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${shortId}/channel/${channelName}/`;
             }
         } else {
+            // For user profiles, try /profile/xxx/ first (without /videos/)
+            // The /videos/ suffix may not exist for all profiles
             if (page > 1) {
-                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos/${page}/`;
+                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/${page}/`;
             } else {
-                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos/`;
+                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/`;
             }
         }
 
@@ -4244,7 +4258,28 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
         log("Fetching channel contents from: " + profileUrl);
         
         // Use makeRequestNoThrow to get more details about failures
-        const response = makeRequestNoThrow(profileUrl, API_HEADERS, 'channel contents', false);
+        let response = makeRequestNoThrow(profileUrl, API_HEADERS, 'channel contents', false);
+        
+        // If first request fails with 404 for profile type, try alternative URL formats
+        if (!response.isOk && response.code === 404 && result.type === 'profile') {
+            log("Profile URL failed, trying alternative formats...");
+            
+            // Try with /videos/ suffix
+            const altUrl1 = page > 1 
+                ? `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos/${page}/`
+                : `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos/`;
+            log("Trying alternative URL: " + altUrl1);
+            response = makeRequestNoThrow(altUrl1, API_HEADERS, 'channel contents alt1', false);
+            
+            // If still fails, try /s/ URL format (search-style profile)
+            if (!response.isOk && response.code === 404) {
+                const altUrl2 = page > 1
+                    ? `${CONFIG.EXTERNAL_URL_BASE}/s/${result.id}/${page}/`
+                    : `${CONFIG.EXTERNAL_URL_BASE}/s/${result.id}/`;
+                log("Trying /s/ URL: " + altUrl2);
+                response = makeRequestNoThrow(altUrl2, API_HEADERS, 'channel contents alt2', false);
+            }
+        }
         
         if (!response.isOk) {
             log("Channel contents request failed with status: " + response.code);
@@ -4294,6 +4329,11 @@ source.getChannelVideos = function(url, continuationToken) {
 source.isContentDetailsUrl = function(url) {
     if (!url || typeof url !== 'string') return false;
 
+    // Check for video-in-playlist format FIRST (before playlist check would catch it)
+    if (REGEX_PATTERNS.urls.videoInPlaylist.test(url)) {
+        return true;
+    }
+
     return REGEX_PATTERNS.urls.videoStandard.test(url) ||
            REGEX_PATTERNS.urls.videoAlternative.test(url) ||
            REGEX_PATTERNS.urls.videoShort.test(url);
@@ -4301,6 +4341,19 @@ source.isContentDetailsUrl = function(url) {
 
 source.getContentDetails = function(url) {
     try {
+        log("getContentDetails called with URL: " + url);
+        
+        // Handle video-in-playlist URLs - convert to standard video URL
+        // e.g., https://spankbang.com/dqd68-svhe7y/playlist/asmr+joi -> https://spankbang.com/svhe7y/video/...
+        const videoInPlaylistMatch = url.match(REGEX_PATTERNS.urls.videoInPlaylist);
+        if (videoInPlaylistMatch) {
+            const videoId = videoInPlaylistMatch[2]; // Second part after hyphen is the video ID
+            const playlistSlug = videoInPlaylistMatch[3];
+            // We can use the playlist URL as-is since SpankBang serves video details
+            // Or convert to standard video URL format
+            log("Detected video-in-playlist URL, video ID: " + videoId);
+        }
+        
         const html = makeRequest(url, API_HEADERS, 'video details');
         const videoData = parseVideoPage(html, url);
         return createVideoDetails(videoData, url);
@@ -4378,6 +4431,12 @@ source.getSubComments = function(comment) {
 
 source.isPlaylistUrl = function(url) {
     if (!url || typeof url !== 'string') return false;
+
+    // IMPORTANT: Video-in-playlist URLs should NOT be treated as playlists
+    // e.g., https://spankbang.com/dqd68-svhe7y/playlist/asmr+joi is a VIDEO, not a playlist
+    if (REGEX_PATTERNS.urls.videoInPlaylist.test(url)) {
+        return false;
+    }
 
     return REGEX_PATTERNS.urls.playlistInternal.test(url) ||
            REGEX_PATTERNS.urls.categoryInternal.test(url) ||
