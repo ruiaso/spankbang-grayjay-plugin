@@ -19,19 +19,23 @@ What's working:
     Channel info fetch (description, about, its videos)
     Channel subscribe/unsubscribe
     Profile Search
-    Channel names on video thumbnails
     Reccommended videos
     Video quality selection
     Fetching video comments with like/dislike, avatar, etc. (only non-nested ones)
     Search filters
     Profile Banners
     Per-channel video search
+    Account login
+    Playlist search
+    Channels search
+    Subscriptions Import
+    Playlists Import
+    
 
 What's not working: 
    
     Channel name's profile picture on videos
-    Playlist search
-    Channels search
-    Account login
+    Channel names on video thumbnails
+    Account History Sync
     ...all the rest
 
