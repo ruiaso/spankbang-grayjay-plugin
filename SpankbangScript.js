@@ -81,8 +81,6 @@ const REGEX_PATTERNS = {
         videoStandard: /^https?:\/\/(?:www\.)?spankbang\.com\/([a-zA-Z0-9]+)\/video\/.+$/,
         videoAlternative: /^https?:\/\/(?:www\.)?spankbang\.com\/([a-zA-Z0-9]+)\/embed\/.+$/,
         videoShort: /^https?:\/\/(?:www\.)?spankbang\.com\/([a-zA-Z0-9]+)\/.*$/,
-        // Playlist video URLs: /{playlistId}-{videoId}/playlist/{slug}
-        playlistVideo: /^https?:\/\/(?:www\.)?spankbang\.com\/([a-z0-9]+)-([a-z0-9]+)\/playlist\/([^\/\?]+)/,
         channelProfile: /^https?:\/\/(?:www\.)?spankbang\.com\/profile\/([^\/\?]+)/,
         channelOfficial: /^https?:\/\/(?:www\.)?spankbang\.com\/([a-z0-9]+)\/channel\/([^\/\?]+)/,
         channelS: /^https?:\/\/(?:www\.)?spankbang\.com\/s\/([^\/\?]+)/,
@@ -99,8 +97,6 @@ const REGEX_PATTERNS = {
         relativeS: /^\/s\/([^\/\?]+)/,
         relativePornstar: /^\/([a-z0-9]+)\/pornstar\/([^\/\?]+)/,
         relativePornstarSimple: /^\/pornstar\/([^\/\?]+)/,
-        // Relative playlist video URLs
-        relativePlaylistVideo: /^\/([a-z0-9]+)-([a-z0-9]+)\/playlist\/([^\/\?]+)/,
         // User playlists page URL patterns
         userPlaylistsPage: /^https?:\/\/(?:www\.)?spankbang\.com\/users\/playlists\/?$/,
         userPlaylistsSubsPage: /^https?:\/\/(?:www\.)?spankbang\.com\/users\/playlists_subs\/?$/,
@@ -1981,16 +1977,15 @@ function parsePlaylistVideos(html) {
     
     log("parsePlaylistVideos: Starting to parse...");
     
-    // Pattern 1: Playlist video URLs with format /{playlistId}-{videoId}/playlist/{slug}
-    // This is the PRIMARY format for playlist videos on SpankBang
-    const playlistVideoPattern = /<a[^>]*href="\/([a-z0-9]+)-([a-z0-9]+)\/playlist\/([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+    // Pattern 1: Look for video items in playlist context
+    // SpankBang playlists often have <a class="thumb"> elements for videos
+    const thumbLinkPattern = /<a[^>]*class="[^"]*thumb[^"]*"[^>]*href="\/([a-zA-Z0-9]+)\/video\/([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
     
     let match;
-    while ((match = playlistVideoPattern.exec(html)) !== null) {
-        const playlistId = match[1];
-        const videoId = match[2];
-        const slug = match[3];
-        const innerHtml = match[4] || "";
+    while ((match = thumbLinkPattern.exec(html)) !== null) {
+        const videoId = match[1];
+        const videoSlug = match[2];
+        const innerHtml = match[3] || "";
         const fullMatch = match[0];
         
         if (seenIds.has(videoId)) continue;
@@ -1999,7 +1994,7 @@ function parsePlaylistVideos(html) {
         // Extract title
         const titleMatch = fullMatch.match(/title="([^"]+)"/i) || 
                           innerHtml.match(/<span[^>]*class="[^"]*(?:title|name|n)[^"]*"[^>]*>([^<]+)<\/span>/i);
-        let title = titleMatch ? titleMatch[1].trim() : slug.replace(/[+_-]/g, ' ');
+        let title = titleMatch ? titleMatch[1].trim() : videoSlug.replace(/[_-]/g, ' ');
         title = cleanVideoTitle(title);
         
         // Extract thumbnail
@@ -2013,97 +2008,37 @@ function parsePlaylistVideos(html) {
                              innerHtml.match(/>(\d+:\d+(?::\d+)?)</);
         const duration = durationMatch ? parseDuration(durationMatch[1].trim()) : 0;
         
-        // Extract views
-        const viewsMatch = innerHtml.match(/<span[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/span>/i);
-        const views = viewsMatch ? parseViewCount(viewsMatch[1].trim()) : 0;
-        
         videos.push({
             id: videoId,
             title: title,
             thumbnail: thumbnail,
             duration: duration,
-            views: views,
+            views: 0,
             uploadDate: 0,
-            url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${slug}`,
+            url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
             uploader: { name: "", url: "", avatar: "" }
         });
     }
     
-    log(`parsePlaylistVideos: Pattern 1 (playlist video URLs) found ${videos.length} videos`);
-    
-    // Pattern 2: Standard video URLs (fallback)
+    // Pattern 2: Look for video-item divs
     if (videos.length === 0) {
-        log("parsePlaylistVideos: Pattern 1 found 0, trying standard video URLs...");
-        const thumbLinkPattern = /<a[^>]*class="[^"]*thumb[^"]*"[^>]*href="\/([a-zA-Z0-9]+)\/video\/([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
-        
-        while ((match = thumbLinkPattern.exec(html)) !== null) {
-            const videoId = match[1];
-            const videoSlug = match[2];
-            const innerHtml = match[3] || "";
-            const fullMatch = match[0];
-            
-            if (seenIds.has(videoId)) continue;
-            seenIds.add(videoId);
-            
-            const titleMatch = fullMatch.match(/title="([^"]+)"/i) || 
-                              innerHtml.match(/<span[^>]*class="[^"]*(?:title|name|n)[^"]*"[^>]*>([^<]+)<\/span>/i);
-            let title = titleMatch ? titleMatch[1].trim() : videoSlug.replace(/[_-]/g, ' ');
-            title = cleanVideoTitle(title);
-            
-            const thumbMatch = innerHtml.match(/(?:data-src|src)="([^"]+)"/i) ||
-                              fullMatch.match(/(?:data-src|src)="([^"]+)"/i);
-            let thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
-            if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
-            
-            const durationMatch = innerHtml.match(/<span[^>]*class="[^"]*(?:l|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i) ||
-                                 innerHtml.match(/>(\d+:\d+(?::\d+)?)</);
-            const duration = durationMatch ? parseDuration(durationMatch[1].trim()) : 0;
-            
-            videos.push({
-                id: videoId,
-                title: title,
-                thumbnail: thumbnail,
-                duration: duration,
-                views: 0,
-                uploadDate: 0,
-                url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
-                uploader: { name: "", url: "", avatar: "" }
-            });
-        }
-        
-        log(`parsePlaylistVideos: Pattern 2 (standard video URLs) found ${videos.length} videos`);
-    }
-    
-    // Pattern 3: Look for video-item divs (broadest fallback)
-    if (videos.length === 0) {
-        log("parsePlaylistVideos: Pattern 2 found 0, trying video-item divs...");
+        log("parsePlaylistVideos: Pattern 1 found 0, trying video-item divs...");
         const videoItemPattern = /<div[^>]*class="[^"]*(?:video-item|item|video)[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/gi;
         
         while ((match = videoItemPattern.exec(html)) !== null) {
             const block = match[0];
             
-            // First try playlist video format
-            let linkMatch = block.match(/href="\/([a-z0-9]+)-([a-z0-9]+)\/playlist\/([^"]+)"/);
-            let isPlaylistVideo = false;
-            let videoId, videoSlug;
+            const linkMatch = block.match(/href="\/([a-zA-Z0-9]+)\/video\/([^"]+)"/);
+            if (!linkMatch) continue;
             
-            if (linkMatch) {
-                isPlaylistVideo = true;
-                videoId = linkMatch[2];
-                videoSlug = linkMatch[3];
-            } else {
-                // Try standard video format
-                linkMatch = block.match(/href="\/([a-zA-Z0-9]+)\/video\/([^"]+)"/);
-                if (!linkMatch) continue;
-                videoId = linkMatch[1];
-                videoSlug = linkMatch[2];
-            }
+            const videoId = linkMatch[1];
+            const videoSlug = linkMatch[2];
             
             if (seenIds.has(videoId)) continue;
             seenIds.add(videoId);
             
             const titleMatch = block.match(/title="([^"]+)"/i);
-            let title = titleMatch ? cleanVideoTitle(titleMatch[1]) : videoSlug.replace(/[+_-]/g, ' ');
+            let title = titleMatch ? cleanVideoTitle(titleMatch[1]) : videoSlug.replace(/[_-]/g, ' ');
             
             const thumbMatch = block.match(/(?:data-src|src)="([^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i);
             let thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
@@ -2123,11 +2058,9 @@ function parsePlaylistVideos(html) {
                 uploader: { name: "", url: "", avatar: "" }
             });
         }
-        
-        log(`parsePlaylistVideos: Pattern 3 (video-item divs) found ${videos.length} videos`);
     }
     
-    log(`parsePlaylistVideos: Total found ${videos.length} videos`);
+    log(`parsePlaylistVideos: Found ${videos.length} videos`);
     return videos;
 }
 
@@ -2138,54 +2071,9 @@ function extractVideoLinksFromHtml(html) {
     
     log("extractVideoLinksFromHtml: Extracting all video links...");
     
-    // Pattern 1: Playlist video URLs: /{playlistId}-{videoId}/playlist/{slug}
-    const playlistVideoPattern = /href="\/([a-z0-9]+)-([a-z0-9]+)\/playlist\/([^"\/\?]+)\/?"/gi;
-    let match;
-    
-    while ((match = playlistVideoPattern.exec(html)) !== null) {
-        const playlistId = match[1];
-        const videoId = match[2];
-        const slug = match[3];
-        
-        if (seenIds.has(videoId)) continue;
-        seenIds.add(videoId);
-        
-        // Look for title in surrounding context
-        const matchIndex = match.index;
-        const contextStart = Math.max(0, matchIndex - 200);
-        const contextEnd = Math.min(html.length, matchIndex + 400);
-        const context = html.substring(contextStart, contextEnd);
-        
-        const titleMatch = context.match(/title="([^"]+)"/i);
-        let title = titleMatch ? cleanVideoTitle(titleMatch[1]) : slug.replace(/[+_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-        
-        // Look for thumbnail
-        const thumbMatch = context.match(/(?:data-src|src)="([^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i);
-        let thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
-        if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
-        else if (thumbnail && !thumbnail.startsWith('http')) thumbnail = CONFIG.EXTERNAL_URL_BASE + thumbnail;
-        
-        // Look for duration
-        const durationMatch = context.match(/<span[^>]*class="[^"]*(?:l|len|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i) ||
-                             context.match(/>(\d+:\d+(?::\d+)?)</);
-        const duration = durationMatch ? parseDuration(durationMatch[1].trim()) : 0;
-        
-        videos.push({
-            id: videoId,
-            title: title,
-            thumbnail: thumbnail,
-            duration: duration,
-            views: 0,
-            uploadDate: 0,
-            url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${slug}`,
-            uploader: { name: "", url: "", avatar: "" }
-        });
-    }
-    
-    log(`extractVideoLinksFromHtml: Pattern 1 (playlist videos) found ${videos.length} videos`);
-    
-    // Pattern 2: Standard video URLs (fallback)
+    // Find all video links
     const videoLinkPattern = /href="\/([a-zA-Z0-9]+)\/video\/([^"\/]+)\/?"/gi;
+    let match;
     
     while ((match = videoLinkPattern.exec(html)) !== null) {
         const videoId = match[1];
@@ -2226,7 +2114,7 @@ function extractVideoLinksFromHtml(html) {
         });
     }
     
-    log(`extractVideoLinksFromHtml: Total found ${videos.length} videos (${seenIds.size} unique)`);
+    log(`extractVideoLinksFromHtml: Found ${videos.length} videos`);
     return videos;
 }
 
@@ -4340,7 +4228,6 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
                 profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${shortId}/channel/${channelName}/`;
             }
         } else {
-            // Profile type - try both with and without /videos/ path
             if (page > 1) {
                 profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos/${page}/`;
             } else {
@@ -4357,22 +4244,11 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
         log("Fetching channel contents from: " + profileUrl);
         
         // Use makeRequestNoThrow to get more details about failures
-        let response = makeRequestNoThrow(profileUrl, API_HEADERS, 'channel contents', false);
-        
-        // If profile/xxx/videos/ gives 404, try profile/xxx/ directly
-        if (!response.isOk && response.code === 404 && result.type === 'profile' && profileUrl.includes('/videos/')) {
-            const fallbackUrl = profileUrl.replace('/videos/', '/');
-            log("404 on /videos/ path, trying without /videos/: " + fallbackUrl);
-            response = makeRequestNoThrow(fallbackUrl, API_HEADERS, 'channel contents fallback', false);
-            if (response.isOk) {
-                profileUrl = fallbackUrl; // Update for pagination
-            }
-        }
+        const response = makeRequestNoThrow(profileUrl, API_HEADERS, 'channel contents', false);
         
         if (!response.isOk) {
             log("Channel contents request failed with status: " + response.code);
             log("Error details: " + (response.error || "No error message"));
-            log("URL tried: " + profileUrl);
             
             // If page > 1 and we get 404, it might mean no more content
             if (response.code === 404 && page > 1) {
@@ -4386,20 +4262,7 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
                 });
             }
             
-            // For page 1, return empty result instead of throwing error
-            // This prevents crashes when a channel doesn't exist or has no videos
-            if (page === 1) {
-                log("404 on page 1 - channel might not exist or has no public videos");
-                return new SpankBangChannelContentPager([], false, {
-                    url: url,
-                    type: type,
-                    order: order,
-                    filters: filters,
-                    continuationToken: null
-                });
-            }
-            
-            throw new ScriptException(`Failed to fetch channel contents: channel contents failed with status ${response.code} (${response.code === 404 ? 'Not Found' : 'Error'})`);
+            throw new ScriptException(`Failed to fetch channel contents: channel contents failed with status ${response.code}`);
         }
         
         const html = response.body;
