@@ -551,6 +551,10 @@ function extractUploaderFromVideoToolbar(html) {
             type: 'profile'
         },
         {
+            pattern: /<a[^>]*class="[^"]*n[^"]*"[^>]*href="\/profile\/([^"\/]+)\/?\"[^>]*>([^<]+)<\/a>/i,
+            type: 'profile'
+        },
+        {
             pattern: /<a[^>]*href="\/profile\/([^"\/]+)\/?\"[^>]*>([^<]+)<\/a>/i,
             type: 'profile'
         }
@@ -593,7 +597,7 @@ function extractUploaderFromVideoToolbar(html) {
         }
     }
 
-    // PRIORITY 2: Check for channels
+    // PRIORITY 2: Check for channels (but NOT /s/ tag URLs)
     const channelPatterns = [
         {
             pattern: /<a[^>]*href="\/([a-z0-9]+)\/channel\/([^"\/]+)\/?\"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?<span[^>]*>([^<]+)<\/span>/i,
@@ -682,6 +686,8 @@ function extractUploaderFromVideoToolbar(html) {
         }
     }
 
+    // CRITICAL: DO NOT fallback to /s/ tag URLs - these are tags, not uploaders!
+    // If we reach here with no uploader, return empty rather than picking up tag links
     log("No uploader found in video toolbar/info sections");
     return uploader;
 }
@@ -4675,6 +4681,8 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
         }
 
         let profileUrl;
+        let likesUrl = null;  // For profile users, we'll also fetch likes
+        
         if (result.type === 'pornstar') {
             let resolvedShortId = result.shortId;
             if (!resolvedShortId) {
@@ -4702,19 +4710,23 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
                 profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${shortId}/channel/${channelName}/`;
             }
         } else {
-            // For user profiles, try /profile/xxx/ first (without /videos/)
-            // The /videos/ suffix may not exist for all profiles
+            // For user profiles, fetch both uploaded videos AND liked videos
+            // Try /profile/xxx/videos first for uploaded videos
             if (page > 1) {
-                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/${page}/`;
+                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos/${page}/`;
+                likesUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/likes/${page}/`;
             } else {
-                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/`;
+                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos/`;
+                likesUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/likes/`;
             }
         }
 
         if (order === Type.Order.Views) {
             profileUrl += (profileUrl.includes('?') ? '&' : '?') + 'o=4';
+            if (likesUrl) likesUrl += (likesUrl.includes('?') ? '&' : '?') + 'o=4';
         } else if (order === Type.Order.Rating) {
             profileUrl += (profileUrl.includes('?') ? '&' : '?') + 'o=5';
+            if (likesUrl) likesUrl += (likesUrl.includes('?') ? '&' : '?') + 'o=5';
         }
 
         log("Fetching channel contents from: " + profileUrl);
@@ -4724,23 +4736,14 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
         
         // If first request fails with 404 for profile type, try alternative URL formats
         if (!response.isOk && response.code === 404 && result.type === 'profile') {
-            log("Profile URL failed, trying alternative formats...");
+            log("Profile URL failed, trying base profile URL...");
             
-            // Try with /videos/ suffix
+            // Try base profile URL (home page)
             const altUrl1 = page > 1 
-                ? `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos/${page}/`
-                : `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos/`;
+                ? `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/${page}/`
+                : `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/`;
             log("Trying alternative URL: " + altUrl1);
             response = makeRequestNoThrow(altUrl1, API_HEADERS, 'channel contents alt1', false);
-            
-            // If still fails, try /s/ URL format (search-style profile)
-            if (!response.isOk && response.code === 404) {
-                const altUrl2 = page > 1
-                    ? `${CONFIG.EXTERNAL_URL_BASE}/s/${result.id}/${page}/`
-                    : `${CONFIG.EXTERNAL_URL_BASE}/s/${result.id}/`;
-                log("Trying /s/ URL: " + altUrl2);
-                response = makeRequestNoThrow(altUrl2, API_HEADERS, 'channel contents alt2', false);
-            }
         }
         
         if (!response.isOk) {
@@ -4763,8 +4766,31 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
         }
         
         const html = response.body;
-        const videos = parseSearchResults(html);
-        log("Parsed " + videos.length + " videos from channel contents");
+        let videos = parseSearchResults(html);
+        log("Parsed " + videos.length + " videos from uploaded videos");
+        
+        // For profile users, also fetch liked videos and combine them
+        if (result.type === 'profile' && likesUrl && page === 1) {
+            log("Fetching liked videos from: " + likesUrl);
+            const likesResponse = makeRequestNoThrow(likesUrl, API_HEADERS, 'profile likes', false);
+            
+            if (likesResponse.isOk && likesResponse.body) {
+                const likedVideos = parseSearchResults(likesResponse.body);
+                log("Parsed " + likedVideos.length + " liked videos");
+                
+                // Combine videos, avoiding duplicates
+                const videoIds = new Set(videos.map(v => v.id));
+                for (const likedVideo of likedVideos) {
+                    if (!videoIds.has(likedVideo.id)) {
+                        videos.push(likedVideo);
+                        videoIds.add(likedVideo.id);
+                    }
+                }
+                log("Combined total: " + videos.length + " videos (uploaded + liked)");
+            } else {
+                log("Failed to fetch liked videos or no likes available");
+            }
+        }
         
         const platformVideos = videos.map(v => createPlatformVideo(v));
 

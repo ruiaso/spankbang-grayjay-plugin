@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 53,
+  "version": 54,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -51,6 +51,22 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "54": [
+      "CRITICAL FIX: Tags no longer shown as video uploaders (e.g., 'Big Tits' tag no longer appears as uploader)",
+      "Fixed uploader detection to NEVER use /s/ tag URLs - only actual profile/channel/pornstar pages",
+      "Profile users now correctly appear as uploaders instead of tags",
+      "Fixed blank subscribe button area - now shows actual uploader name with clickable link",
+      "MAJOR FEATURE: Profile videos now combine BOTH uploaded videos AND liked videos",
+      "Profile pages now fetch from /profile/xxx/videos AND /profile/xxx/likes simultaneously",
+      "Combined video feed shows all content from profile users (uploaded + likes merged)",
+      "Fixed profile-specific content - no longer shows generic search results",
+      "Enhanced profile video URL handling with /videos/ and /likes/ endpoints",
+      "All profile users like 'hokkainomazyu' now correctly identified as uploaders",
+      "Fixed video-in-playlist uploader detection (priority: profile → channel → pornstar)",
+      "Improved uploader extraction with stricter pattern matching to avoid false positives",
+      "Added detailed logging for combined video counts (uploaded + liked)",
+      "Better fallback handling for profile URLs that may not have /videos/ endpoint"
+    ],
     "53": [
       "MAJOR FIX: Profile users now correctly detected as video uploaders",
       "Fixed uploader priority: profiles checked FIRST, then channels, then pornstars",
