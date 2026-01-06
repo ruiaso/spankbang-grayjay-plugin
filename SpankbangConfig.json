@@ -51,6 +51,20 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "56": [
+      "CRITICAL FIX: All user playlists now import correctly (previously only 1 playlist shown, now shows all ~60+ playlists)",
+      "CRITICAL FIX: Playlist videos now show channel/uploader name instead of being empty",
+      "CRITICAL FIX: Playlist videos now show view counts instead of 0 views",
+      "CRITICAL FIX: Pornstar links in video descriptions now clickable with full web URLs",
+      "Simplified getUserPlaylists() to use reliable parsePlaylistsPage() directly (branch 5 approach)",
+      "Enhanced parsePlaylistVideos() with multi-source uploader extraction (context → full match → inner HTML)",
+      "Enhanced view count extraction with multiple fallback patterns across all contexts",
+      "Added comprehensive fallback in extractUploaderFromSearchResult() to find ANY uploader link",
+      "Improved uploader extraction in home and search feeds with better pattern matching",
+      "Fixed missing profile pictures for channels/uploaders across the app",
+      "Pornstar description links now use web URLs (https://spankbang.com/{shortId}/pornstar/{slug})",
+      "Better handling of channels, pornstars, and user profiles in all video listings"
+    ],
     "54": [
       "CRITICAL FIX: Video titles in playlists now show actual video names instead of playlist name",
       "CRITICAL FIX: Video thumbnails now properly extracted and displayed in playlists",
