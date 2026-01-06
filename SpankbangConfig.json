@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 51,
+  "version": 50,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -51,21 +51,6 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
-    "51": [
-      "MAJOR FIX: Playlist creator/owner now properly extracted instead of showing 'SpankBang'",
-      "Fixed playlist owner to show actual creator (e.g., 'd4r4g0r0n') with clickable profile link",
-      "Enhanced playlist creator subscription support - click creator to view their profile",
-      "Improved video count extraction in fetchPlaylistInfo() with authenticated requests",
-      "Added multiple video counting patterns for better accuracy (regex + parsers)",
-      "Enhanced author extraction in parsePlaylistsPage() for all playlist listings",
-      "Enhanced author extraction in parseUserPlaylistsPageEnhanced() for user playlists",
-      "Enhanced author extraction in extractPlaylistLinksFromHtml() fallback",
-      "Fixed author URL mapping in searchPlaylists() - creators now have proper profile URLs",
-      "Applied author URL fixes to all playlist search branches (user, profile, URL, keyword)",
-      "Better creator avatar extraction in getPlaylist()",
-      "Improved thumbnail extraction patterns in fetchPlaylistInfo()",
-      "All playlist creators now clickable and lead to their profile/playlists"
-    ],
     "50": [
       "Major playlist search improvements - now supports searching by URL or keyword",
       "Added support for user playlist page URLs (https://spankbang.com/users/playlists)",
