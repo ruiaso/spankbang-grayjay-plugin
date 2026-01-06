@@ -1137,11 +1137,19 @@ function parseRelatedPlaylists(html) {
             if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
             else if (thumbnail && !thumbnail.startsWith('http')) thumbnail = CONFIG.EXTERNAL_URL_BASE + thumbnail;
             
+            // Generate full external URL for playlist links in descriptions
+            let fullPlaylistUrl;
+            if (shortId) {
+                fullPlaylistUrl = `${CONFIG.EXTERNAL_URL_BASE}/${shortId}/playlist/${slug}/`;
+            } else {
+                fullPlaylistUrl = `${CONFIG.EXTERNAL_URL_BASE}/playlist/${slug}/`;
+            }
+            
             playlists.push({
                 id: playlistId,
                 name: name,
                 thumbnail: thumbnail,
-                url: `spankbang://playlist/${playlistId}`,
+                url: fullPlaylistUrl,
                 videoCount: 0
             });
         }
@@ -4681,7 +4689,6 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
         }
 
         let profileUrl;
-        let likesUrl = null;  // For profile users, we'll also fetch likes
         
         if (result.type === 'pornstar') {
             let resolvedShortId = result.shortId;
@@ -4710,23 +4717,18 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
                 profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${shortId}/channel/${channelName}/`;
             }
         } else {
-            // For user profiles, fetch both uploaded videos AND liked videos
-            // Try /profile/xxx/videos first for uploaded videos
+            // For user profiles, fetch only uploaded videos from /profile/xxx/videos/
             if (page > 1) {
                 profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos/${page}/`;
-                likesUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/likes/${page}/`;
             } else {
                 profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos/`;
-                likesUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/likes/`;
             }
         }
 
         if (order === Type.Order.Views) {
             profileUrl += (profileUrl.includes('?') ? '&' : '?') + 'o=4';
-            if (likesUrl) likesUrl += (likesUrl.includes('?') ? '&' : '?') + 'o=4';
         } else if (order === Type.Order.Rating) {
             profileUrl += (profileUrl.includes('?') ? '&' : '?') + 'o=5';
-            if (likesUrl) likesUrl += (likesUrl.includes('?') ? '&' : '?') + 'o=5';
         }
 
         log("Fetching channel contents from: " + profileUrl);
@@ -4767,30 +4769,7 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
         
         const html = response.body;
         let videos = parseSearchResults(html);
-        log("Parsed " + videos.length + " videos from uploaded videos");
-        
-        // For profile users, also fetch liked videos and combine them
-        if (result.type === 'profile' && likesUrl && page === 1) {
-            log("Fetching liked videos from: " + likesUrl);
-            const likesResponse = makeRequestNoThrow(likesUrl, API_HEADERS, 'profile likes', false);
-            
-            if (likesResponse.isOk && likesResponse.body) {
-                const likedVideos = parseSearchResults(likesResponse.body);
-                log("Parsed " + likedVideos.length + " liked videos");
-                
-                // Combine videos, avoiding duplicates
-                const videoIds = new Set(videos.map(v => v.id));
-                for (const likedVideo of likedVideos) {
-                    if (!videoIds.has(likedVideo.id)) {
-                        videos.push(likedVideo);
-                        videoIds.add(likedVideo.id);
-                    }
-                }
-                log("Combined total: " + videos.length + " videos (uploaded + liked)");
-            } else {
-                log("Failed to fetch liked videos or no likes available");
-            }
-        }
+        log("Parsed " + videos.length + " videos from profile");
         
         const platformVideos = videos.map(v => createPlatformVideo(v));
 

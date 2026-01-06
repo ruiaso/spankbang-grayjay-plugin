@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 54,
+  "version": 55,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -51,6 +51,18 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "55": [
+      "CRITICAL FIX: Playlist URLs in video descriptions now use full URLs instead of shortened internal links",
+      "Fixed playlist links in 'Related Playlists' section to use https://spankbang.com/xxx/playlist/xxx/ format",
+      "Users can now properly click and search playlist links from video descriptions",
+      "MAJOR FIX: Profile pages now show ONLY uploaded videos (removed liked videos combination)",
+      "Profile video tab now exclusively shows content uploaded by the profile user",
+      "Playlists tab continues to work properly for viewing profile playlists",
+      "Improved profile page clarity - separate Videos and Playlists tabs",
+      "Fixed issue where profiles were combining uploaded + liked videos causing confusion",
+      "Enhanced playlist URL handling for better compatibility with search",
+      "All playlist links in descriptions are now clickable and searchable"
+    ],
     "54": [
       "CRITICAL FIX: Tags no longer shown as video uploaders (e.g., 'Big Tits' tag no longer appears as uploader)",
       "Fixed uploader detection to NEVER use /s/ tag URLs - only actual profile/channel/pornstar pages",
