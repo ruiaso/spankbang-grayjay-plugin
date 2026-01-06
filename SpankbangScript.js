@@ -829,6 +829,60 @@ function extractUploaderFromSearchResult(block) {
             }
         }
     }
+    
+    // Final fallback: try to find ANY uploader link even without name
+    if (!uploader.name || uploader.name.length === 0) {
+        // Look for any channel/pornstar/profile link
+        const anyLinkMatch = block.match(/href="\/([a-z0-9]+)\/(channel|pornstar)\/([^"\/]+)\/?"/i) || 
+                            block.match(/href="\/profile\/([^"\/]+)\/?"/i);
+        if (anyLinkMatch) {
+            if (anyLinkMatch[2]) {
+                // Has type (channel or pornstar)
+                const type = anyLinkMatch[2];
+                const slug = anyLinkMatch[3];
+                // Try to extract name from nearby text
+                const contextStart = Math.max(0, block.indexOf(anyLinkMatch[0]) - 200);
+                const contextEnd = Math.min(block.length, block.indexOf(anyLinkMatch[0]) + anyLinkMatch[0].length + 200);
+                const nearContext = block.substring(contextStart, contextEnd);
+                
+                const namePatterns = [
+                    /title="([^"]+)"/i,
+                    /<span[^>]*>([^<]{2,50})<\/span>/i,
+                    />([^<]{2,50})</
+                ];
+                
+                for (const namePattern of namePatterns) {
+                    const nameMatch = nearContext.match(namePattern);
+                    if (nameMatch && nameMatch[1]) {
+                        const candidateName = nameMatch[1].replace(/<[^>]*>/g, '').trim();
+                        if (candidateName.length > 1 && candidateName.length < 100 && 
+                            !candidateName.match(/^\d+:\d+$/) && // Not a duration
+                            !candidateName.match(/^\d+[KMB]?\s*views?$/i)) { // Not view count
+                            uploader.name = candidateName;
+                            break;
+                        }
+                    }
+                }
+                
+                if (!uploader.name) {
+                    uploader.name = slug.replace(/[+_-]/g, ' ');
+                }
+                
+                if (type === 'channel') {
+                    uploader.url = `spankbang://channel/${anyLinkMatch[1]}:${slug}`;
+                } else {
+                    uploader.url = `spankbang://profile/pornstar:${slug}`;
+                }
+                return uploader;
+            } else {
+                // Profile link
+                const slug = anyLinkMatch[1];
+                uploader.name = slug.replace(/[+_-]/g, ' ');
+                uploader.url = `spankbang://profile/${slug}`;
+                return uploader;
+            }
+        }
+    }
 
     return uploader;
 }
@@ -2109,13 +2163,23 @@ function parsePlaylistVideos(html) {
                              innerHtml.match(/>(\d+:\d+(?::\d+)?)</);
         const duration = durationMatch ? parseDuration(durationMatch[1].trim()) : 0;
         
-        // Extract views - improved patterns
+        // Extract views - improved patterns with more flexibility
         const viewsMatch = context.match(/<span[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/span>/i) ||
-                          context.match(/([0-9,.]+[KMB]?)\s*(?:views?|plays?)/i);
+                          context.match(/([0-9,.]+[KMB]?)\s*(?:views?|plays?)/i) ||
+                          fullMatch.match(/<span[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/span>/i) ||
+                          innerHtml.match(/([0-9,.]+[KMB]?)\s*(?:views?|plays?)/i);
         const views = viewsMatch ? parseViewCount(viewsMatch[1].trim()) : 0;
         
-        // Extract uploader info from the video block
-        const uploader = extractUploaderFromSearchResult(context);
+        // Extract uploader info from the video block - try multiple sources
+        let uploader = extractUploaderFromSearchResult(context);
+        // If not found in context, try the full match
+        if (!uploader.name || uploader.name.length === 0) {
+            uploader = extractUploaderFromSearchResult(fullMatch);
+        }
+        // If still not found, try inner HTML
+        if (!uploader.name || uploader.name.length === 0) {
+            uploader = extractUploaderFromSearchResult(innerHtml);
+        }
         
         // CRITICAL FIX: Keep playlist context URL format {playlistId}-{videoId}/playlist/{playlistSlug}
         // This matches the actual SpankBang URL structure for videos in playlists
@@ -2206,13 +2270,23 @@ function parsePlaylistVideos(html) {
                                  innerHtml.match(/>(\d+:\d+(?::\d+)?)</);
             const duration = durationMatch ? parseDuration(durationMatch[1].trim()) : 0;
             
-            // Extract views - improved patterns
+            // Extract views - improved patterns with more flexibility
             const viewsMatch = context.match(/<span[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/span>/i) ||
-                              context.match(/([0-9,.]+[KMB]?)\s*(?:views?|plays?)/i);
+                              context.match(/([0-9,.]+[KMB]?)\s*(?:views?|plays?)/i) ||
+                              fullMatch.match(/<span[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/span>/i) ||
+                              innerHtml.match(/([0-9,.]+[KMB]?)\s*(?:views?|plays?)/i);
             const views = viewsMatch ? parseViewCount(viewsMatch[1].trim()) : 0;
             
-            // Extract uploader info from the video block
-            const uploader = extractUploaderFromSearchResult(context);
+            // Extract uploader info from the video block - try multiple sources
+            let uploader = extractUploaderFromSearchResult(context);
+            // If not found in context, try the full match
+            if (!uploader.name || uploader.name.length === 0) {
+                uploader = extractUploaderFromSearchResult(fullMatch);
+            }
+            // If still not found, try inner HTML
+            if (!uploader.name || uploader.name.length === 0) {
+                uploader = extractUploaderFromSearchResult(innerHtml);
+            }
             
             videos.push({
                 id: videoId,
@@ -2274,13 +2348,36 @@ function parsePlaylistVideos(html) {
             const durationMatch = block.match(/<span[^>]*class="[^"]*(?:l|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i);
             const duration = durationMatch ? parseDuration(durationMatch[1].trim()) : 0;
             
-            // Extract views - improved patterns
+            // Extract views - improved patterns with more flexibility
             const viewsMatch = block.match(/<span[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/span>/i) ||
                               block.match(/([0-9,.]+[KMB]?)\s*(?:views?|plays?)/i);
             const views = viewsMatch ? parseViewCount(viewsMatch[1].trim()) : 0;
             
-            // Extract uploader info from the video block
-            const uploader = extractUploaderFromSearchResult(block);
+            // Extract uploader info from the video block - enhanced extraction
+            let uploader = extractUploaderFromSearchResult(block);
+            // If empty, try a fallback with broader context
+            if (!uploader.name || uploader.name.length === 0) {
+                // Look for uploader info anywhere in the block
+                const uploaderFallback = { name: "", url: "", avatar: "" };
+                
+                // Try to find any user/channel link
+                const anyUploaderMatch = block.match(/href="\/([a-z0-9]+)\/(channel|pornstar|profile)\/([^"]+)"[^>]*(?:title="([^"]+)"|>([^<]+)<)/i);
+                if (anyUploaderMatch) {
+                    const type = anyUploaderMatch[2];
+                    const slug = anyUploaderMatch[3];
+                    const name = anyUploaderMatch[4] || anyUploaderMatch[5] || slug;
+                    
+                    uploaderFallback.name = name.replace(/<[^>]*>/g, '').trim();
+                    if (type === 'channel') {
+                        uploaderFallback.url = `spankbang://channel/${anyUploaderMatch[1]}:${slug}`;
+                    } else if (type === 'pornstar') {
+                        uploaderFallback.url = `spankbang://profile/pornstar:${slug}`;
+                    } else {
+                        uploaderFallback.url = `spankbang://profile/${slug}`;
+                    }
+                }
+                uploader = uploaderFallback;
+            }
             
             // CRITICAL FIX: Keep playlist context if available
             let videoUrl;
