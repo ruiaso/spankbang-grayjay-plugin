@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 57,
+  "version": 58,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -51,6 +51,16 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "58": [
+      "MAJOR FIX: History page thumbnails now properly extracted from <img src='tbi.sb-cd.com'> elements",
+      "MAJOR FIX: History page duration now correctly parsed from <span class='video-badge l'> (formats: 48m, 7m, etc.)",
+      "Enhanced parseHistoryPage() with improved thumbnail extraction prioritizing direct CDN URLs",
+      "Enhanced duration parsing to handle both '48m' format and '12:34' time format",
+      "Improved title extraction from <img alt=''> and surrounding <span> elements",
+      "Better URL slug handling with '+' character replacement for proper video URLs",
+      "Uploader and view count extraction improved with enhanced pattern matching",
+      "History sync now properly extracts all video metadata on SpankBang history page structure"
+    ],
     "57": [
       "CRITICAL FIX: History page videos now show correct thumbnails instead of black placeholders",
       "CRITICAL FIX: History page videos now display actual duration (e.g., 12:34) instead of 0:00",

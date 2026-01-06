@@ -3532,62 +3532,60 @@ function parseHistoryPage(html) {
     let thumbMatch;
     while ((thumbMatch = thumbAnchorPattern.exec(html)) !== null && videos.length < 200) {
         const videoId = thumbMatch[1];
-        const videoSlug = thumbMatch[2].replace(/["']/g, '');
+        const videoSlug = thumbMatch[2].replace(/["']/g, '').replace(/\+/g, ' ');
         const innerContent = thumbMatch[3] || "";
         
         if (seenIds.has(videoId)) continue;
         if (videoId === 'users' || videoId === 'search' || videoId === 'playlists') continue;
         seenIds.add(videoId);
         
-        // Get title from nearby context
+        // Get title from nearby context (look both inside and after the thumb anchor)
         const fullMatch = thumbMatch[0];
         const matchIndex = thumbMatch.index;
         const contextStart = Math.max(0, matchIndex - 200);
-        const contextEnd = Math.min(html.length, matchIndex + fullMatch.length + 300);
+        const contextEnd = Math.min(html.length, matchIndex + fullMatch.length + 400);
         const fullContext = html.substring(contextStart, contextEnd);
         
-        const titleMatch = fullMatch.match(/title="([^"]+)"/i) || 
-                          fullMatch.match(/alt="([^"]+)"/i) ||
-                          fullContext.match(/title="([^"]+)"/i) ||
-                          fullContext.match(/<span[^>]*class="[^"]*(?:title|name|n)[^"]*"[^>]*>([^<]+)<\/span>/i) ||
-                          fullContext.match(/<p[^>]*class="[^"]*n[^"]*"[^>]*>([^<]+)<\/p>/i);
+        // Try to find title - look in <img alt="...">, title="..." attributes, and surrounding spans
+        const titleMatch = innerContent.match(/<img[^>]*alt="([^"]+)"/i) ||
+                          innerContent.match(/alt="([^"]+)"/i) ||
+                          innerContent.match(/title="([^"]+)"/i) ||
+                          fullContext.match(/<span[^>]*class="[^"]*(?:text-secondary|text-body-md|title|name)[^"]*"[^>]*>([^<]+)<\/span>/i) ||
+                          fullContext.match(/<a[^>]*title="([^"]+)"[^>]*>/i) ||
+                          fullMatch.match(/title="([^"]+)"/i);
         let title = titleMatch ? cleanVideoTitle(titleMatch[1]) : videoSlug.replace(/[_+-]/g, ' ');
         
-        // Extract thumbnail - try data-src first, then src, check inner content
+        // Extract thumbnail - SpankBang history page uses <img src="..."> with tbi.sb-cd.com CDN
         let thumbnail = "";
         const thumbPatterns = [
-            // Try data-src with image extensions first (most reliable)
-            /data-src="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i,
-            // Try CDN URLs specifically  
-            /data-src="(https?:\/\/[^"]*tbi\.sb-cd\.com[^"]+)"/i,
-            /data-src="(https?:\/\/[^"]*sb-cd\.com[^"]+)"/i,
-            // Try src with CDN
-            /src="(https?:\/\/[^"]*tbi\.sb-cd\.com[^"]+)"/i,
-            /src="(https?:\/\/[^"]*sb-cd\.com[^"]+)"/i,
-            // Try lazy-src attribute
-            /lazy-src="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i,
-            // Generic data-src
-            /data-src="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i,
-            // Generic src with image extensions
-            /src="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i,
-            // Background image style
-            /style="[^"]*background[^:]*:\s*url\(['"]?(https?:\/\/[^'")\s]+)['"]?\)/i,
-            // Catch any data-src as last resort
-            /data-src="([^"]+)"/i
+            // Direct src with tbi.sb-cd.com (most common for history page)
+            /<img[^>]*src="(https?:\/\/tbi\.sb-cd\.com[^"]+)"/i,
+            /<img[^>]*src="(https?:\/\/[^"]*sb-cd\.com[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i,
+            // Try data-src with CDN URLs
+            /<img[^>]*data-src="(https?:\/\/tbi\.sb-cd\.com[^"]+)"/i,
+            /<img[^>]*data-src="(https?:\/\/[^"]*sb-cd\.com[^"]+)"/i,
+            // Generic patterns with image extensions
+            /<img[^>]*src="(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i,
+            /<img[^>]*data-src="(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i,
+            // Without img tag
+            /src="(https?:\/\/tbi\.sb-cd\.com[^"]+)"/i,
+            /data-src="(https?:\/\/tbi\.sb-cd\.com[^"]+)"/i,
+            /src="(https?:\/\/[^"]*sb-cd\.com[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i
         ];
         
         for (const thumbPattern of thumbPatterns) {
             const tMatch = innerContent.match(thumbPattern) || fullMatch.match(thumbPattern);
             if (tMatch && tMatch[1]) {
                 thumbnail = tMatch[1];
-                if (!thumbnail.includes('avatar') && !thumbnail.includes('icon') && !thumbnail.includes('pornstarimg')) {
+                // Skip if it's an avatar or icon, keep looking
+                if (!thumbnail.includes('avatar') && !thumbnail.includes('icon') && !thumbnail.includes('pornstarimg') && !thumbnail.includes('/blank.')) {
                     break;
                 }
                 thumbnail = "";
             }
         }
         
-        // Fallback to default CDN thumbnail
+        // Fallback to default CDN thumbnail if not found
         if (!thumbnail || thumbnail.length < 10) {
             thumbnail = `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
         }
@@ -3595,30 +3593,31 @@ function parseHistoryPage(html) {
             thumbnail = 'https:' + thumbnail;
         }
         
-        // Extract duration from <span class="l">...</span> inside the anchor or nearby
+        // Extract duration from <span class="video-badge l">...</span> or similar
         let duration = 0;
         const durationPatterns = [
-            // Primary pattern - SpankBang uses class="l" for duration
+            // SpankBang history uses class="video-badge l" with data-testid="video-item-length"
+            /<span[^>]*class="[^"]*video-badge[^"]*l[^"]*"[^>]*>([^<]+)<\/span>/i,
+            /<span[^>]*data-testid="video-item-length"[^>]*>([^<]+)<\/span>/i,
+            // Generic patterns for class="l" (word boundary important)
             /<span[^>]*class="[^"]*\bl\b[^"]*"[^>]*>([^<]+)<\/span>/i,
-            // Alternative class names for duration
-            /<span[^>]*class="[^"]*(?:length|duration|time|dur)[^"]*"[^>]*>([^<]+)<\/span>/i,
-            // Div with duration class
-            /<div[^>]*class="[^"]*(?:l|length|duration|time|dur)[^"]*"[^>]*>([^<]+)<\/div>/i,
-            // Data attribute with duration
+            // Alternative class names
+            /<span[^>]*class="[^"]*(?:length|duration|time)[^"]*"[^>]*>([^<]+)<\/span>/i,
+            /<div[^>]*class="[^"]*(?:length|duration|time)[^"]*"[^>]*>([^<]+)<\/div>/i,
+            // Data attribute
             /data-duration="([^"]+)"/i,
-            // Generic span with time format
-            /<span[^>]*>(\d{1,3}:\d{2}(?::\d{2})?)<\/span>/i,
-            // Direct time format match
-            />(\d{1,3}:\d{2}(?::\d{2})?)</,
-            // Any time format in content
-            /(\d{1,3}:\d{2}(?::\d{2})?)/
+            // Generic time format in span
+            /<span[^>]*>(\d{1,3}m|\d{1,2}:\d{2}(?::\d{2})?)<\/span>/i,
+            // Direct time format
+            />(\d{1,3}m|\d{1,2}:\d{2}(?::\d{2})?)</
         ];
         
         for (const durPattern of durationPatterns) {
             const dMatch = innerContent.match(durPattern) || fullMatch.match(durPattern) || fullContext.match(durPattern);
             if (dMatch && dMatch[1]) {
                 const durStr = dMatch[1].trim();
-                if (durStr.match(/^\d{1,3}:\d{2}(?::\d{2})?$/)) {
+                // Parse formats like "48m", "7m", "24m" or "1:23:45", "12:34"
+                if (durStr.match(/^\d{1,3}m$/) || durStr.match(/^\d{1,3}:\d{2}(?::\d{2})?$/)) {
                     duration = parseDuration(durStr);
                     if (duration > 0) break;
                 }
@@ -3628,17 +3627,16 @@ function parseHistoryPage(html) {
         // Extract views if available - enhanced patterns
         let views = 0;
         const viewsPatterns = [
-            // Primary pattern - class="v" or "views"
+            // Primary pattern - class="v" or "views" with word boundaries
             /<span[^>]*class="[^"]*\bv\b[^"]*"[^>]*>([^<]+)<\/span>/i,
             /<span[^>]*class="[^"]*views[^"]*"[^>]*>([^<]+)<\/span>/i,
-            // Div with views
             /<div[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/div>/i,
             // Data attribute
             /data-views="([^"]+)"/i,
-            // Views text pattern
-            /(\d+(?:[,.]\d+)?[KMB]?)\s*views?/i,
-            // Generic number with K/M/B suffix
-            />([0-9,.]+[KMB]?)\s*<\/span>/i
+            // Views text pattern with word boundary
+            /\b(\d+(?:[,.]\d+)?[KMB]?)\s*views?\b/i,
+            // Generic number with K/M/B suffix near "view"
+            />([0-9,.]+[KMB]?)<\/span>[^<]*views?/i
         ];
         for (const viewPattern of viewsPatterns) {
             const viewsMatch = fullContext.match(viewPattern);
