@@ -1973,6 +1973,268 @@ function extractPlaylistLinksFromHtml(html) {
     return playlists;
 }
 
+// Parse videos from a playlist page - handles playlist-specific video URL formats
+function parsePlaylistVideos(html) {
+    const videos = [];
+    const seenIds = new Set();
+    
+    log("parsePlaylistVideos: Starting to parse...");
+    
+    // Pattern 1: Playlist video URLs with format /{playlistId}-{videoId}/playlist/{playlistSlug}
+    // CRITICAL FIX: Extract video title and convert to slug for proper URL construction
+    const playlistVideoPattern = /<a[^>]*href="\/([a-z0-9]+)-([a-z0-9]+)\/playlist\/([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+    
+    let match;
+    while ((match = playlistVideoPattern.exec(html)) !== null) {
+        const playlistId = match[1];
+        const videoId = match[2];
+        const playlistSlug = match[3];  // This is the PLAYLIST slug, not video slug!
+        const innerHtml = match[4] || "";
+        const fullMatch = match[0];
+        
+        if (seenIds.has(videoId)) continue;
+        seenIds.add(videoId);
+        
+        // Extract title from HTML
+        const titleMatch = fullMatch.match(/title="([^"]+)"/i) || 
+                          innerHtml.match(/<span[^>]*class="[^"]*(?:title|name|n)[^"]*"[^>]*>([^<]+)<\/span>/i);
+        let title = titleMatch ? titleMatch[1].trim() : "";
+        
+        // CRITICAL FIX: Convert title to slug for URL construction
+        // The video URL needs the VIDEO's slug, not the playlist's slug!
+        let videoSlug = playlistSlug;  // Fallback to playlist slug if no title
+        if (title && title.length > 0) {
+            title = cleanVideoTitle(title);
+            // Convert title to URL slug format (lowercase, replace spaces with +)
+            videoSlug = title.toLowerCase()
+                .replace(/[^\w\s+]/g, '')  // Remove special chars except spaces and +
+                .replace(/\s+/g, '+')      // Replace spaces with +
+                .replace(/\++/g, '+')      // Collapse multiple + into one
+                .trim();
+        } else {
+            title = playlistSlug.replace(/[+_-]/g, ' ');
+        }
+        
+        // Extract thumbnail
+        const thumbMatch = innerHtml.match(/(?:data-src|src)="([^"]+)"/i) ||
+                          fullMatch.match(/(?:data-src|src)="([^"]+)"/i);
+        let thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
+        if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
+        
+        // Extract duration
+        const durationMatch = innerHtml.match(/<span[^>]*class="[^"]*(?:l|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i) ||
+                             innerHtml.match(/>(\d+:\d+(?::\d+)?)</);
+        const duration = durationMatch ? parseDuration(durationMatch[1].trim()) : 0;
+        
+        // Extract views
+        const viewsMatch = innerHtml.match(/<span[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/span>/i);
+        const views = viewsMatch ? parseViewCount(viewsMatch[1].trim()) : 0;
+        
+        // FIXED: Use videoSlug (derived from title) instead of playlistSlug
+        videos.push({
+            id: videoId,
+            title: title,
+            thumbnail: thumbnail,
+            duration: duration,
+            views: views,
+            uploadDate: 0,
+            url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
+            uploader: { name: "", url: "", avatar: "" }
+        });
+    }
+    
+    log(`parsePlaylistVideos: Pattern 1 (playlist video URLs) found ${videos.length} videos`);
+    
+    // Pattern 2: Standard video URLs (fallback)
+    if (videos.length === 0) {
+        log("parsePlaylistVideos: Pattern 1 found 0, trying standard video URLs...");
+        const thumbLinkPattern = /<a[^>]*class="[^"]*thumb[^"]*"[^>]*href="\/([a-zA-Z0-9]+)\/video\/([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+        
+        while ((match = thumbLinkPattern.exec(html)) !== null) {
+            const videoId = match[1];
+            const videoSlug = match[2];
+            const innerHtml = match[3] || "";
+            const fullMatch = match[0];
+            
+            if (seenIds.has(videoId)) continue;
+            seenIds.add(videoId);
+            
+            const titleMatch = fullMatch.match(/title="([^"]+)"/i) || 
+                              innerHtml.match(/<span[^>]*class="[^"]*(?:title|name|n)[^"]*"[^>]*>([^<]+)<\/span>/i);
+            let title = titleMatch ? titleMatch[1].trim() : videoSlug.replace(/[_-]/g, ' ');
+            title = cleanVideoTitle(title);
+            
+            const thumbMatch = innerHtml.match(/(?:data-src|src)="([^"]+)"/i) ||
+                              fullMatch.match(/(?:data-src|src)="([^"]+)"/i);
+            let thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
+            if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
+            
+            const durationMatch = innerHtml.match(/<span[^>]*class="[^"]*(?:l|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i) ||
+                                 innerHtml.match(/>(\d+:\d+(?::\d+)?)</);
+            const duration = durationMatch ? parseDuration(durationMatch[1].trim()) : 0;
+            
+            videos.push({
+                id: videoId,
+                title: title,
+                thumbnail: thumbnail,
+                duration: duration,
+                views: 0,
+                uploadDate: 0,
+                url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
+                uploader: { name: "", url: "", avatar: "" }
+            });
+        }
+        
+        log(`parsePlaylistVideos: Pattern 2 (standard video URLs) found ${videos.length} videos`);
+    }
+    
+    // Pattern 3: Look for video-item divs (broadest fallback)
+    if (videos.length === 0) {
+        log("parsePlaylistVideos: Pattern 2 found 0, trying video-item divs...");
+        const videoItemPattern = /<div[^>]*class="[^"]*(?:video-item|item|video)[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/gi;
+        
+        while ((match = videoItemPattern.exec(html)) !== null) {
+            const block = match[0];
+            
+            // First try playlist video format
+            let linkMatch = block.match(/href="\/([a-z0-9]+)-([a-z0-9]+)\/playlist\/([^"]+)"/);
+            let isPlaylistVideo = false;
+            let videoId, videoSlug;
+            
+            if (linkMatch) {
+                isPlaylistVideo = true;
+                videoId = linkMatch[2];
+                const playlistSlug = linkMatch[3];
+                
+                // Extract title and convert to video slug
+                const titleMatch = block.match(/title="([^"]+)"/i);
+                if (titleMatch && titleMatch[1]) {
+                    const title = cleanVideoTitle(titleMatch[1]);
+                    videoSlug = title.toLowerCase()
+                        .replace(/[^\w\s+]/g, '')
+                        .replace(/\s+/g, '+')
+                        .replace(/\++/g, '+')
+                        .trim();
+                } else {
+                    videoSlug = playlistSlug;
+                }
+            } else {
+                // Try standard video format
+                linkMatch = block.match(/href="\/([a-zA-Z0-9]+)\/video\/([^"]+)"/);
+                if (!linkMatch) continue;
+                videoId = linkMatch[1];
+                videoSlug = linkMatch[2];
+            }
+            
+            if (seenIds.has(videoId)) continue;
+            seenIds.add(videoId);
+            
+            const titleMatch = block.match(/title="([^"]+)"/i);
+            let title = titleMatch ? cleanVideoTitle(titleMatch[1]) : videoSlug.replace(/[+_-]/g, ' ');
+            
+            const thumbMatch = block.match(/(?:data-src|src)="([^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i);
+            let thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
+            if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
+            
+            const durationMatch = block.match(/<span[^>]*class="[^"]*(?:l|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i);
+            const duration = durationMatch ? parseDuration(durationMatch[1].trim()) : 0;
+            
+            videos.push({
+                id: videoId,
+                title: title,
+                thumbnail: thumbnail,
+                duration: duration,
+                views: 0,
+                uploadDate: 0,
+                url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
+                uploader: { name: "", url: "", avatar: "" }
+            });
+        }
+        
+        log(`parsePlaylistVideos: Pattern 3 (video-item divs) found ${videos.length} videos`);
+    }
+    
+    log(`parsePlaylistVideos: Total found ${videos.length} videos`);
+    return videos;
+}
+
+// Direct video link extraction as ultimate fallback
+function extractVideoLinksFromHtml(html) {
+    const videos = [];
+    const seenIds = new Set();
+    
+    log("extractVideoLinksFromHtml: Extracting all video links...");
+    
+    // Pattern 1: Playlist video links with proper title extraction
+    const playlistVideoLinks = /<a[^>]*href="\/([a-z0-9]+)-([a-z0-9]+)\/playlist\/([^"]+)"[^>]*(?:title="([^"]+)")?/gi;
+    
+    let match;
+    while ((match = playlistVideoLinks.exec(html)) !== null) {
+        const playlistId = match[1];
+        const videoId = match[2];
+        const playlistSlug = match[3];
+        const title = match[4] ? cleanVideoTitle(match[4]) : playlistSlug.replace(/[+_-]/g, ' ');
+        
+        if (seenIds.has(videoId)) continue;
+        seenIds.add(videoId);
+        
+        // Convert title to slug
+        const videoSlug = title.toLowerCase()
+            .replace(/[^\w\s+]/g, '')
+            .replace(/\s+/g, '+')
+            .replace(/\++/g, '+')
+            .trim() || playlistSlug;
+        
+        // Look for thumbnail near this link
+        const contextStart = Math.max(0, match.index - 300);
+        const contextEnd = Math.min(html.length, match.index + 300);
+        const context = html.substring(contextStart, contextEnd);
+        
+        const thumbMatch = context.match(/(?:data-src|src)="([^"]+)"/i);
+        const thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
+        
+        videos.push({
+            id: videoId,
+            title: title,
+            thumbnail: thumbnail,
+            duration: 0,
+            views: 0,
+            uploadDate: 0,
+            url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
+            uploader: { name: "", url: "", avatar: "" }
+        });
+    }
+    
+    log(`extractVideoLinksFromHtml: Pattern 1 (playlist videos) found ${videos.length} videos`);
+    
+    // Pattern 2: Standard video links
+    const standardVideoLinks = /href="\/([a-zA-Z0-9]+)\/video\/([^"]+)"(?:[^>]*title="([^"]+)")?/gi;
+    
+    while ((match = standardVideoLinks.exec(html)) !== null) {
+        const videoId = match[1];
+        const videoSlug = match[2];
+        const title = match[3] ? cleanVideoTitle(match[3]) : videoSlug.replace(/[_-]/g, ' ');
+        
+        if (seenIds.has(videoId)) continue;
+        seenIds.add(videoId);
+        
+        videos.push({
+            id: videoId,
+            title: title,
+            thumbnail: `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`,
+            duration: 0,
+            views: 0,
+            uploadDate: 0,
+            url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
+            uploader: { name: "", url: "", avatar: "" }
+        });
+    }
+    
+    log(`extractVideoLinksFromHtml: Total found ${videos.length} videos (${seenIds.size} unique)`);
+    return videos;
+}
+
+
 // Fetch playlist info (name, thumbnail, video count) from a playlist URL
 function fetchPlaylistInfo(playlistUrl, playlistId, slug) {
     const result = {

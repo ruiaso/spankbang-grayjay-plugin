@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 51,
+  "version": 52,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -51,6 +51,17 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "52": [
+      "CRITICAL FIX: Fixed playlist video URL generation - videos now use correct video slugs instead of playlist names",
+      "Fixed issue where imported playlist videos had URLs like '/video/feet' instead of '/video/actual-video-title'",
+      "Added parsePlaylistVideos() function with proper title-to-slug conversion for playlist video URLs",
+      "Added extractVideoLinksFromHtml() function for comprehensive video link extraction fallback",
+      "Enhanced playlist video import to correctly handle /{playlistId}-{videoId}/playlist/{slug} URL format",
+      "Video titles now properly extracted and converted to slugs for accurate video URL construction",
+      "Improved playlist video parsing with 3-tier fallback system for maximum compatibility",
+      "All playlist videos now playable with correct URLs that match actual video pages",
+      "Combined best features from branches 5 and 10 for optimal playlist functionality"
+    ],
     "51": [
       "MAJOR FIX: Playlist creator/owner now properly extracted instead of showing 'SpankBang'",
       "Fixed playlist owner to show actual creator (e.g., 'd4r4g0r0n') with clickable profile link",
