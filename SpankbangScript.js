@@ -1,5 +1,5 @@
-const BASE_URL = "https://xhamster.com";
-const PLATFORM = "xHamster";
+const BASE_URL = "https://spankbang.com";
+const PLATFORM = "Spankbang";
 const PLATFORM_CLAIMTYPE = 3;
 
 var config = {};
@@ -11,7 +11,8 @@ var state = {
     isAuthenticated: false,
     authCookies: "",
     username: "",
-    userId: ""
+    userId: "",
+    cookieExpiry: 0
 };
 
 const CONFIG = {
@@ -25,9 +26,9 @@ const CONFIG = {
         "2160": { name: "4K", width: 3840, height: 2160 },
         "4k": { name: "4K", width: 3840, height: 2160 }
     },
-    INTERNAL_URL_SCHEME: "xhamster://",
-    EXTERNAL_URL_BASE: "https://xhamster.com",
-    THUMB_BASE: "https://thumb-p3.xhcdn.com"
+    INTERNAL_URL_SCHEME: "spankbang://",
+    EXTERNAL_URL_BASE: "https://spankbang.com",
+    THUMB_BASE: "https://tbi.sb-cd.com"
 };
 
 const API_HEADERS = {
@@ -38,17 +39,17 @@ const API_HEADERS = {
 
 const REGEX_PATTERNS = {
     urls: {
-        videoStandard: /^https?:\/\/(?:www\.)?xhamster[0-9]*\.com\/videos\/([^\/\?]+)-(\d+)$/,
-        videoAlt: /^https?:\/\/(?:www\.)?xhamster[0-9]*\.com\/videos\/([^\/\?]+)$/,
-        channelUser: /^https?:\/\/(?:www\.)?xhamster[0-9]*\.com\/users\/([^\/\?]+)/,
-        channelCreator: /^https?:\/\/(?:www\.)?xhamster[0-9]*\.com\/creators\/([^\/\?]+)/,
-        pornstar: /^https?:\/\/(?:www\.)?xhamster[0-9]*\.com\/pornstars\/([^\/\?]+)/,
-        channelInternal: /^xhamster:\/\/channel\/(.+)$/,
-        profileInternal: /^xhamster:\/\/profile\/(.+)$/
+        videoStandard: /^https?:\/\/(?:www\.)?spankbang\.com\/([^\/\?]+)\/video\/([^\/\?]+)$/,
+        videoAlt: /^https?:\/\/(?:www\.)?spankbang\.com\/([^\/\?]+)\/video\//,
+        channelUser: /^https?:\/\/(?:www\.)?spankbang\.com\/profile\/([^\/\?]+)/,
+        channelCreator: /^https?:\/\/(?:www\.)?spankbang\.com\/creators\/([^\/\?]+)/,
+        pornstar: /^https?:\/\/(?:www\.)?spankbang\.com\/pornstar\/([^\/\?]+)/,
+        channelInternal: /^spankbang:\/\/channel\/(.+)$/,
+        profileInternal: /^spankbang:\/\/profile\/(.+)$/
     },
     extraction: {
-        videoId: /videos\/[^\/]+-(\d+)/,
-        videoIdAlt: /videos\/(\d+)/,
+        videoId: /\/([^\/]+)\/video\//,
+        videoIdAlt: /video\/(\d+)/,
         streamUrl: /"(https?:\/\/[^"]+\.mp4[^"]*)"/g,
         title: /<h1[^>]*>([^<]+)<\/h1>/,
         duration: /"duration"\s*:\s*"?(\d+)"?/,
@@ -60,8 +61,51 @@ function getAuthHeaders() {
     const headers = { ...API_HEADERS };
     if (state.authCookies && state.authCookies.length > 0) {
         headers["Cookie"] = state.authCookies;
+        log("Using auth cookies for request");
     }
     return headers;
+}
+
+function validateCookies() {
+    if (!state.authCookies || state.authCookies.length === 0) {
+        return { valid: false, message: "No cookies set. Please configure your SpankBang cookies in plugin settings." };
+    }
+    
+    // Check if cookies have expired (if expiry was set)
+    if (state.cookieExpiry > 0 && Date.now() > state.cookieExpiry) {
+        return { valid: false, message: "Cookies have expired. Please update your SpankBang cookies." };
+    }
+    
+    return { valid: true, message: "Cookies are valid" };
+}
+
+function setCookies(cookieString) {
+    if (!cookieString || cookieString.trim().length === 0) {
+        throw new ScriptException("Cookie string cannot be empty");
+    }
+    
+    state.authCookies = cookieString.trim();
+    // Set expiry to 30 days from now (typical cookie lifetime)
+    state.cookieExpiry = Date.now() + (30 * 24 * 60 * 60 * 1000);
+    state.isAuthenticated = true;
+    
+    // Try to extract username from cookies if present
+    const usernameMatch = cookieString.match(/username=([^;]+)/);
+    if (usernameMatch) {
+        state.username = decodeURIComponent(usernameMatch[1]);
+    }
+    
+    log("Cookies set successfully. Authentication enabled.");
+    return true;
+}
+
+function clearCookies() {
+    state.authCookies = "";
+    state.isAuthenticated = false;
+    state.cookieExpiry = 0;
+    state.username = "";
+    state.userId = "";
+    log("Cookies cleared");
 }
 
 function makeRequest(url, headers = null, context = 'request') {
@@ -146,12 +190,12 @@ function extractChannelId(url) {
         return { type: 'pornstar', id: pornstarMatch[1] };
     }
 
-    const usersMatch = url.match(/\/users\/([^\/\?]+)/);
-    if (usersMatch && usersMatch[1]) {
-        return { type: 'user', id: usersMatch[1] };
+    const profilesMatch = url.match(/\/profile\/([^\/\?]+)/);
+    if (profilesMatch && profilesMatch[1]) {
+        return { type: 'user', id: profilesMatch[1] };
     }
 
-    const pornstarsMatch = url.match(/\/pornstars\/([^\/\?]+)/);
+    const pornstarsMatch = url.match(/\/pornstar\/([^\/\?]+)/);
     if (pornstarsMatch && pornstarsMatch[1]) {
         return { type: 'pornstar', id: pornstarsMatch[1] };
     }
@@ -259,9 +303,9 @@ function parseRelativeDate(dateStr) {
 function cleanVideoTitle(title) {
     if (!title) return "Unknown";
     return title
-        .replace(/\s*-\s*xHamster\.com\s*$/i, '')
-        .replace(/\s*\|\s*xHamster\s*$/i, '')
-        .replace(/\s*-\s*xHamster\s*$/i, '')
+        .replace(/\s*-\s*Spankbang\.com\s*$/i, '')
+        .replace(/\s*\|\s*Spankbang\s*$/i, '')
+        .replace(/\s*-\s*Spankbang\s*$/i, '')
         .trim();
 }
 
@@ -534,8 +578,8 @@ function parseVideoPage(html) {
     }
 
     const uploaderPatterns = [
-        /<a[^>]*href="\/users\/([^"\/]+)"[^>]*class="[^"]*user[^"]*"[^>]*>[\s\S]*?(?:<img[^>]*src="([^"]+)")?[\s\S]*?([^<]+)<\/a>/i,
-        /<a[^>]*href="\/pornstars\/([^"\/]+)"[^>]*>[\s\S]*?(?:<img[^>]*src="([^"]+)")?[\s\S]*?<span[^>]*>([^<]+)<\/span>/i,
+        /<a[^>]*href="\/profile\/([^"\/]+)"[^>]*class="[^"]*user[^"]*"[^>]*>[\s\S]*?(?:<img[^>]*src="([^"]+)")?[\s\S]*?([^<]+)<\/a>/i,
+        /<a[^>]*href="\/pornstar\/([^"\/]+)"[^>]*>[\s\S]*?(?:<img[^>]*src="([^"]+)")?[\s\S]*?<span[^>]*>([^<]+)<\/span>/i,
         /<a[^>]*class="[^"]*uploader[^"]*"[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a>/i,
         /"author"\s*:\s*\{[^}]*"name"\s*:\s*"([^"]+)"[^}]*"url"\s*:\s*"([^"]+)"/
     ];
@@ -546,13 +590,13 @@ function parseVideoPage(html) {
             if (pattern.source.includes('author')) {
                 videoData.uploader.name = match[1] || "";
                 videoData.uploader.url = match[2] || "";
-            } else if (match[0].includes('/users/')) {
+            } else if (match[0].includes('/profile/')) {
                 videoData.uploader.name = (match[3] || match[1] || "").trim();
-                videoData.uploader.url = `xhamster://profile/${match[1]}`;
+                videoData.uploader.url = `spankbang://profile/${match[1]}`;
                 videoData.uploader.avatar = match[2] || "";
-            } else if (match[0].includes('/pornstars/')) {
+            } else if (match[0].includes('/pornstar/')) {
                 videoData.uploader.name = (match[3] || match[1] || "").trim();
-                videoData.uploader.url = `xhamster://profile/pornstar:${match[1]}`;
+                videoData.uploader.url = `spankbang://profile/pornstar:${match[1]}`;
                 videoData.uploader.avatar = match[2] || "";
             } else {
                 videoData.uploader.name = (match[2] || "").trim();
@@ -736,8 +780,8 @@ function parsePornstarsPage(html) {
     const pornstars = [];
 
     const pornstarPatterns = [
-        /<a[^>]*href="\/pornstars\/([^"\/]+)"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?<\/a>/gi,
-        /<div[^>]*class="[^"]*pornstar[^"]*"[^>]*>[\s\S]*?<a[^>]*href="\/pornstars\/([^"\/]+)"[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?<\/div>/gi
+        /<a[^>]*href="\/pornstar\/([^"\/]+)"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?<\/a>/gi,
+        /<div[^>]*class="[^"]*pornstar[^"]*"[^>]*>[\s\S]*?<a[^>]*href="\/pornstar\/([^"\/]+)"[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?<\/div>/gi
     ];
 
     for (const pattern of pornstarPatterns) {
@@ -749,7 +793,7 @@ function parsePornstarsPage(html) {
             if (avatar.startsWith('//')) {
                 avatar = `https:${avatar}`;
             } else if (!avatar.startsWith('http')) {
-                avatar = `https://xhamster.com${avatar}`;
+                avatar = `https://spankbang.com${avatar}`;
             }
 
             let name = pornstarSlug.replace(/-/g, ' ');
@@ -761,7 +805,7 @@ function parsePornstarsPage(html) {
                     id: `pornstar:${pornstarSlug}`,
                     name: name,
                     avatar: avatar,
-                    url: `${CONFIG.EXTERNAL_URL_BASE}/pornstars/${pornstarSlug}`,
+                    url: `${CONFIG.EXTERNAL_URL_BASE}/pornstar/${pornstarSlug}`,
                     subscribers: 0,
                     videoCount: 0
                 });
@@ -865,21 +909,42 @@ function parseChannelPage(html, channelUrl) {
 source.enable = function(conf, settings, savedState) {
     config = conf ?? {};
     
+    // Load settings (including auth cookies from user settings)
+    if (settings && settings.authCookies) {
+        try {
+            const cookieValue = typeof settings.authCookies === 'string' 
+                ? settings.authCookies 
+                : settings.authCookies;
+            
+            if (cookieValue && cookieValue.trim().length > 0) {
+                setCookies(cookieValue);
+                log("Authentication cookies loaded from settings");
+            }
+        } catch (e) {
+            log("Failed to load cookies from settings: " + e.message);
+        }
+    }
+    
+    // Restore previous state if available
     if (savedState) {
         try {
             const parsed = JSON.parse(savedState);
-            state = { ...state, ...parsed };
+            // Restore cookies from saved state if not in settings
+            if (!state.authCookies && parsed.authCookies) {
+                state = { ...state, ...parsed };
+                log("Authentication state restored from saved state");
+            }
         } catch (e) {
             log("Failed to parse saved state: " + e.message);
         }
     }
     
-    log("xHamster plugin enabled");
+    log("Spankbang plugin enabled. Authenticated: " + state.isAuthenticated);
     return true;
 };
 
 source.disable = function() {
-    log("xHamster plugin disabled");
+    log("Spankbang plugin disabled");
 };
 
 source.saveState = function() {
@@ -994,8 +1059,8 @@ source.getContentRecommendations = function(url) {
 };
 
 source.isChannelUrl = function(url) {
-    return url.includes('/users/') || url.includes('/pornstars/') || url.includes('/creators/') ||
-           url.includes('xhamster://profile/') || url.includes('xhamster://channel/');
+    return url.includes('/profile/') || url.includes('/pornstar/') || url.includes('/creators/') ||
+           url.includes('spankbang://profile/') || url.includes('spankbang://channel/');
 };
 
 source.getChannel = function(url) {
@@ -1003,12 +1068,12 @@ source.getChannel = function(url) {
     
     let channelUrl = url;
     
-    if (url.startsWith('xhamster://')) {
+    if (url.startsWith('spankbang://')) {
         const channelInfo = extractChannelId(url);
         if (channelInfo.type === 'pornstar') {
-            channelUrl = `${BASE_URL}/pornstars/${channelInfo.id}`;
+            channelUrl = `${BASE_URL}/pornstar/${channelInfo.id}`;
         } else if (channelInfo.type === 'user') {
-            channelUrl = `${BASE_URL}/users/${channelInfo.id}`;
+            channelUrl = `${BASE_URL}/profile/${channelInfo.id}`;
         } else if (channelInfo.type === 'creator') {
             channelUrl = `${BASE_URL}/creators/${channelInfo.id}`;
         }
@@ -1039,14 +1104,14 @@ source.getChannelContents = function(url, type, order, filters) {
 function getChannelVideos(url, page) {
     let channelUrl = url;
     
-    if (url.startsWith('xhamster://')) {
+    if (url.startsWith('spankbang://')) {
         const channelInfo = extractChannelId(url);
         if (channelInfo.type === 'pornstar') {
-            channelUrl = `${BASE_URL}/pornstars/${channelInfo.id}/videos`;
+            channelUrl = `${BASE_URL}/pornstar/${channelInfo.id}`;
         } else if (channelInfo.type === 'user') {
-            channelUrl = `${BASE_URL}/users/${channelInfo.id}/videos`;
+            channelUrl = `${BASE_URL}/profile/${channelInfo.id}`;
         } else if (channelInfo.type === 'creator') {
-            channelUrl = `${BASE_URL}/creators/${channelInfo.id}/videos`;
+            channelUrl = `${BASE_URL}/creators/${channelInfo.id}`;
         }
     } else if (!url.includes('/videos')) {
         channelUrl = url.replace(/\/$/, '') + '/videos';
@@ -1085,8 +1150,8 @@ source.getCreators = function(query, options) {
 function getCreatorResults(query, page) {
     const encodedQuery = encodeURIComponent(query);
     const url = page > 1
-        ? `${BASE_URL}/pornstars/search/${encodedQuery}?page=${page}`
-        : `${BASE_URL}/pornstars/search/${encodedQuery}`;
+        ? `${BASE_URL}/pornstar/search/${encodedQuery}?page=${page}`
+        : `${BASE_URL}/pornstar/search/${encodedQuery}`;
     
     log("Searching creators: " + url);
     
@@ -1097,7 +1162,7 @@ function getCreatorResults(query, page) {
         return new PlatformAuthorLink(
             new PlatformID(PLATFORM, p.id, plugin.config.id),
             p.name,
-            `xhamster://profile/pornstar:${p.id.replace('pornstar:', '')}`,
+            `spankbang://profile/pornstar:${p.id.replace('pornstar:', '')}`,
             p.avatar,
             p.subscribers
         );
@@ -1118,12 +1183,309 @@ source.getSubComments = function(comment) {
     return new CommentPager([], false, {});
 };
 
+function parseSubscriptionsPage(html) {
+    const subscriptions = [];
+    const seenIds = new Set();
+
+    // Parse user subscriptions from /users/subscriptions
+    const userSubPatterns = [
+        /<a[^>]*href="\/profile\/([^"\/\?]+)"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[^>]*alt="([^"]+)"/gi,
+        /<div[^>]*class="[^"]*profile[^"]*"[^>]*>[\s\S]*?<a[^>]*href="\/profile\/([^"\/]+)"[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?([^<]+)<\/a>/gi
+    ];
+
+    for (const pattern of userSubPatterns) {
+        let match;
+        while ((match = pattern.exec(html)) !== null) {
+            const profileSlug = match[1].replace(/\/$/, '');
+            if (seenIds.has(profileSlug)) continue;
+            seenIds.add(profileSlug);
+
+            let avatar = match[2] || "";
+            if (avatar.startsWith('//')) avatar = 'https:' + avatar;
+            else if (!avatar.startsWith('http') && avatar) avatar = 'https://spankbang.com' + avatar;
+
+            const name = (match[3] || profileSlug.replace(/-/g, ' ')).trim();
+
+            subscriptions.push({
+                id: profileSlug,
+                name: name,
+                url: `spankbang://profile/${profileSlug}`,
+                avatar: avatar,
+                type: 'user'
+            });
+        }
+    }
+
+    return subscriptions;
+}
+
+function parsePornstarSubscriptionsPage(html) {
+    const subscriptions = [];
+    const seenIds = new Set();
+
+    // Parse pornstar subscriptions from /users/subscriptions_pornstars
+    const pornstarSubPatterns = [
+        /<a[^>]*href="\/pornstar\/([^"\/\?]+)"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[^>]*alt="([^"]+)"/gi,
+        /<div[^>]*class="[^"]*pornstar[^"]*"[^>]*>[\s\S]*?<a[^>]*href="\/pornstar\/([^"\/]+)"[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?<\/div>/gi
+    ];
+
+    for (const pattern of pornstarSubPatterns) {
+        let match;
+        while ((match = pattern.exec(html)) !== null) {
+            const pornstarSlug = match[1].replace(/\/$/, '');
+            if (seenIds.has(`pornstar:${pornstarSlug}`)) continue;
+            seenIds.add(`pornstar:${pornstarSlug}`);
+
+            let avatar = match[2] || "";
+            if (avatar.startsWith('//')) avatar = 'https:' + avatar;
+            else if (!avatar.startsWith('http') && avatar) avatar = 'https://spankbang.com' + avatar;
+
+            let name = match[3] || pornstarSlug.replace(/-/g, ' ');
+            name = name.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+
+            subscriptions.push({
+                id: `pornstar:${pornstarSlug}`,
+                name: name,
+                url: `spankbang://profile/pornstar:${pornstarSlug}`,
+                avatar: avatar,
+                type: 'pornstar'
+            });
+        }
+    }
+
+    return subscriptions;
+}
+
+function parsePlaylistsPage(html) {
+    const playlists = [];
+    const seenIds = new Set();
+
+    // Parse playlists from /users/playlists
+    const playlistPatterns = [
+        /<a[^>]*href="\/playlist\/([^"\/\?]+)"[^>]*>[\s\S]*?<[^>]*>([^<]+)<\/[^>]*>/gi,
+        /<div[^>]*class="[^"]*playlist[^"]*"[^>]*>[\s\S]*?<a[^>]*href="\/playlist\/([^"\/]+)"[^>]*title="([^"]+)"/gi
+    ];
+
+    for (const pattern of playlistPatterns) {
+        let match;
+        while ((match = pattern.exec(html)) !== null) {
+            const playlistId = match[1].replace(/\/$/, '');
+            if (seenIds.has(playlistId)) continue;
+            seenIds.add(playlistId);
+
+            const name = (match[2] || playlistId.replace(/-/g, ' ')).trim();
+
+            playlists.push({
+                id: playlistId,
+                name: name,
+                url: `${BASE_URL}/playlist/${playlistId}`
+            });
+        }
+    }
+
+    return playlists;
+}
+
+function parseHistoryPage(html) {
+    const historyVideos = [];
+    const seenIds = new Set();
+
+    // Parse history videos from /users/history
+    const videoPatterns = [
+        /<div[^>]*class="[^"]*video-item[^"]*"[^>]*>[\s\S]*?href="([^"]+)"[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?<[^>]*class="[^"]*(?:title|name)[^"]*"[^>]*>([^<]+)<[\s\S]*?<span[^>]*class="[^"]*(?:duration|time)[^"]*"[^>]*>([^<]+)</gi,
+        /<a[^>]*href="(\/[^"]+\/video\/[^"]+)"[^>]*>[\s\S]{0,500}?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]{0,300}?(?:<[^>]*>)*([^<]{5,100})<[\s\S]{0,200}?<span[^>]*>([^<]+)<\/span>/gi
+    ];
+
+    for (const pattern of videoPatterns) {
+        let match;
+        while ((match = pattern.exec(html)) !== null) {
+            let videoUrl = match[1];
+            if (!videoUrl.startsWith('http')) {
+                videoUrl = BASE_URL + videoUrl;
+            }
+
+            const idMatch = videoUrl.match(/-(\d+)$/) || videoUrl.match(/\/([^\/\?-]+)\/video/);
+            const videoId = idMatch ? idMatch[1] : generateVideoId();
+
+            if (seenIds.has(videoId)) continue;
+            seenIds.add(videoId);
+
+            let thumbnail = match[2] || "";
+            if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
+            else if (!thumbnail.startsWith('http') && thumbnail) thumbnail = BASE_URL + thumbnail;
+
+            const title = cleanVideoTitle(match[3] || "Unknown");
+            const durationStr = match[4] || "0:00";
+            const duration = parseDuration(durationStr);
+
+            historyVideos.push({
+                id: videoId,
+                title: title,
+                thumbnail: thumbnail,
+                duration: duration,
+                views: 0,
+                uploadDate: 0,
+                url: videoUrl,
+                uploader: { name: "", url: "", avatar: "" }
+            });
+        }
+    }
+
+    // If no videos found with detailed patterns, try simpler pattern
+    if (historyVideos.length === 0) {
+        const simplePattern = /href="([^"]*\/[^"]+\/video\/[^"]+)"/gi;
+        let match;
+        while ((match = simplePattern.exec(html)) !== null) {
+            let videoUrl = match[1];
+            if (!videoUrl.startsWith('http')) {
+                videoUrl = BASE_URL + videoUrl;
+            }
+
+            const idMatch = videoUrl.match(/-(\d+)$/) || videoUrl.match(/\/([^\/\?-]+)\/video/);
+            const videoId = idMatch ? idMatch[1] : generateVideoId();
+
+            if (seenIds.has(videoId)) continue;
+            seenIds.add(videoId);
+
+            // Try to find thumbnail near the link
+            const contextIdx = html.indexOf(match[0]);
+            let thumbnail = "";
+            let title = "Unknown";
+            let duration = 0;
+
+            if (contextIdx > 0) {
+                const context = html.substring(Math.max(0, contextIdx - 500), Math.min(html.length, contextIdx + 300));
+                
+                const thumbMatch = context.match(/(?:data-src|src)="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/);
+                if (thumbMatch) {
+                    thumbnail = thumbMatch[1];
+                    if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
+                }
+
+                const titleMatch = context.match(/title="([^"]+)"/);
+                if (titleMatch) {
+                    title = cleanVideoTitle(titleMatch[1]);
+                }
+
+                const durationMatch = context.match(/<span[^>]*class="[^"]*(?:duration|time)[^"]*"[^>]*>([^<]+)<\/span>/);
+                if (durationMatch) {
+                    duration = parseDuration(durationMatch[1]);
+                }
+            }
+
+            historyVideos.push({
+                id: videoId,
+                title: title,
+                thumbnail: thumbnail,
+                duration: duration,
+                views: 0,
+                uploadDate: 0,
+                url: videoUrl,
+                uploader: { name: "", url: "", avatar: "" }
+            });
+        }
+    }
+
+    return historyVideos;
+}
+
 source.getUserSubscriptions = function() {
-    return [];
+    log("Getting user subscriptions");
+    
+    // Validate cookies first
+    const cookieValidation = validateCookies();
+    if (!cookieValidation.valid) {
+        log("Cookie validation failed: " + cookieValidation.message);
+        throw new ScriptException(cookieValidation.message);
+    }
+    
+    const subscriptions = [];
+    
+    try {
+        // Fetch user subscriptions using authenticated headers
+        log("Fetching user subscriptions from /users/subscriptions");
+        const userSubsHtml = makeRequest(`${BASE_URL}/users/subscriptions`, getAuthHeaders(), 'user subscriptions');
+        
+        const userSubs = parseSubscriptionsPage(userSubsHtml);
+        subscriptions.push(...userSubs);
+        log(`Found ${userSubs.length} user subscriptions`);
+    } catch (error) {
+        log("Failed to fetch user subscriptions: " + error.message);
+        if (error.message.includes("401") || error.message.includes("403")) {
+            throw new ScriptException("Authentication failed. Please update your cookies in plugin settings.");
+        }
+    }
+    
+    try {
+        // Fetch pornstar subscriptions using authenticated headers
+        log("Fetching pornstar subscriptions from /users/subscriptions_pornstars");
+        const pornstarSubsHtml = makeRequest(`${BASE_URL}/users/subscriptions_pornstars`, getAuthHeaders(), 'pornstar subscriptions');
+        
+        const pornstarSubs = parsePornstarSubscriptionsPage(pornstarSubsHtml);
+        subscriptions.push(...pornstarSubs);
+        log(`Found ${pornstarSubs.length} pornstar subscriptions`);
+    } catch (error) {
+        log("Failed to fetch pornstar subscriptions: " + error.message);
+    }
+    
+    log(`Total subscriptions found: ${subscriptions.length}`);
+    return subscriptions.map(sub => sub.url);
 };
 
 source.getUserPlaylists = function() {
-    return [];
+    log("Getting user playlists");
+
+    // Validate cookies first
+    const cookieValidation = validateCookies();
+    if (!cookieValidation.valid) {
+        log("Cookie validation failed: " + cookieValidation.message);
+        throw new ScriptException(cookieValidation.message);
+    }
+
+    try {
+        // Fetch playlists using authenticated headers
+        log("Fetching playlists from /users/playlists");
+        const playlistsHtml = makeRequest(`${BASE_URL}/users/playlists`, getAuthHeaders(), 'user playlists');
+        
+        const playlists = parsePlaylistsPage(playlistsHtml);
+        log(`Found ${playlists.length} playlists`);
+        return playlists.map(pl => pl.url);
+    } catch (error) {
+        log("Failed to fetch playlists: " + error.message);
+        if (error.message.includes("401") || error.message.includes("403")) {
+            throw new ScriptException("Authentication failed. Please update your cookies in plugin settings.");
+        }
+        return [];
+    }
+};
+
+source.getUserHistory = function() {
+    log("Getting user watch history");
+
+    // Validate cookies first
+    const cookieValidation = validateCookies();
+    if (!cookieValidation.valid) {
+        log("Cookie validation failed: " + cookieValidation.message);
+        throw new ScriptException(cookieValidation.message);
+    }
+
+    try {
+        // Fetch watch history using authenticated headers
+        log("Fetching history from /users/history");
+        const historyHtml = makeRequest(`${BASE_URL}/users/history`, getAuthHeaders(), 'user history');
+        
+        const historyVideos = parseHistoryPage(historyHtml);
+        log(`Found ${historyVideos.length} history videos`);
+        
+        // Return as PlatformVideo objects
+        return historyVideos.map(v => createPlatformVideo(v));
+    } catch (error) {
+        log("Failed to fetch history: " + error.message);
+        if (error.message.includes("401") || error.message.includes("403")) {
+            throw new ScriptException("Authentication failed. Please update your cookies in plugin settings.");
+        }
+        return [];
+    }
 };
 
 source.getPlaylist = function(url) {
@@ -1177,4 +1539,4 @@ source.getDownloadables = function(video) {
     }
 };
 
-log("xHamster plugin loaded");
+log("Spankbang plugin loaded");
