@@ -86,8 +86,6 @@ const REGEX_PATTERNS = {
         channelS: /^https?:\/\/(?:www\.)?spankbang\.com\/s\/([^\/\?]+)/,
         pornstar: /^https?:\/\/(?:www\.)?spankbang\.com\/([a-z0-9]+)\/pornstar\/([^\/\?]+)/,
         pornstarSimple: /^https?:\/\/(?:www\.)?spankbang\.com\/pornstar\/([^\/\?]+)/,
-        playlistExternal: /^https?:\/\/(?:www\.)?spankbang\.com\/([a-z0-9]+)\/playlist\/([^\/\?]+)/,
-        playlistSimple: /^https?:\/\/(?:www\.)?spankbang\.com\/playlist\/([^\/\?]+)/,
         playlistInternal: /^spankbang:\/\/playlist\/(.+)$/,
         categoryInternal: /^spankbang:\/\/category\/(.+)$/,
         channelInternal: /^spankbang:\/\/channel\/(.+)$/,
@@ -1564,8 +1562,6 @@ function parsePornstarsPage(html) {
 function parsePlaylistsPage(html) {
     const playlists = [];
     
-    log("parsePlaylistsPage: Starting to parse HTML (length: " + html.length + ")");
-    
     // Enhanced patterns to match SpankBang's playlist structure
     // Added pattern for <a> tags with class="playlist-item"
     const playlistBlockPatterns = [
@@ -1609,15 +1605,11 @@ function parsePlaylistsPage(html) {
                 // Added specific pattern for <span class="len">
                 const countPatterns = [
                     /<span[^>]*class="[^"]*len[^"]*"[^>]*>\s*(\d+)\s*videos?/i,
-                    /<span[^>]*class="[^"]*len[^"]*"[^>]*>\s*(\d+)\s*/i,
                     /(\d+)\s*videos?/i,
-                    /<span[^>]*class="[^"]*(?:count|videos|video-count|vid|length)[^"]*"[^>]*>\s*(\d+)\s*(?:videos?)?/i,
-                    /<div[^>]*class="[^"]*(?:count|videos|video-count|vid|length)[^"]*"[^>]*>\s*(\d+)\s*(?:videos?)?/i,
-                    /<p[^>]*class="[^"]*(?:count|videos|video-count|vid|length)[^"]*"[^>]*>\s*(\d+)\s*(?:videos?)?/i,
-                    />\s*(\d+)\s*(?:videos?|vids?)\s*</i,
+                    /<span[^>]*class="[^"]*(?:count|videos|video-count|vid)[^"]*"[^>]*>(\d+)<\/span>/i,
+                    /<div[^>]*class="[^"]*(?:count|videos|video-count|vid)[^"]*"[^>]*>(\d+)<\/div>/i,
                     />\s*(\d+)\s*<\/span>/i,
-                    />\s*(\d+)\s*<\/div>/i,
-                    />\s*(\d+)\s*<\/p>/i
+                    />\s*(\d+)\s*<\/div>/i
                 ];
                 
                 let videoCount = 0;
@@ -1646,12 +1638,7 @@ function parsePlaylistsPage(html) {
                 }
                 
                 if (!playlists.find(p => p.id === playlistId) && name.length > 0) {
-                    if (videoCount === 0) {
-                        log(`WARNING: Found playlist with 0 videos: ${name} (ID: ${playlistId})`);
-                        log(`  Block sample (first 300 chars): ${block.substring(0, 300)}`);
-                    } else {
-                        log(`Found playlist: ${name} (ID: ${playlistId}) with ${videoCount} videos`);
-                    }
+                    log(`Found playlist: ${name} (ID: ${playlistId}) with ${videoCount} videos`);
                     playlists.push({
                         id: playlistId,
                         name: name,
@@ -3416,17 +3403,6 @@ source.getSearchCapabilities = function() {
 
 source.search = function(query, type, order, filters, continuationToken) {
     try {
-        // Check if the query is a playlist URL - if so, redirect to searchPlaylists
-        if (query && typeof query === 'string') {
-            const playlistExternalMatch = query.match(REGEX_PATTERNS.urls.playlistExternal);
-            const playlistSimpleMatch = query.match(REGEX_PATTERNS.urls.playlistSimple);
-            
-            if (playlistExternalMatch || playlistSimpleMatch) {
-                log("Detected playlist URL in search, redirecting to searchPlaylists");
-                return source.searchPlaylists(query, type, order, filters, continuationToken);
-            }
-        }
-        
         const page = continuationToken ? parseInt(continuationToken) : 1;
         let searchQuery = query ? query.trim().replace(/\s+/g, '+') : '';
         
@@ -3812,10 +3788,7 @@ source.getSearchChannelContentsCapabilities = function() {
 
 source.getChannelContents = function(url, type, order, filters, continuationToken) {
     try {
-        log("getChannelContents called with URL: " + url + ", page: " + (continuationToken || "1"));
         const result = extractChannelId(url);
-        log("Extracted channel type: " + result.type + ", id: " + result.id);
-        
         const page = continuationToken ? parseInt(continuationToken) : 1;
 
         let profileUrl;
@@ -3826,30 +3799,26 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
             }
             
             if (resolvedShortId) {
-                if (page > 1) {
-                    profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${resolvedShortId}/pornstar/${result.id}/${page}/`;
-                } else {
-                    profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${resolvedShortId}/pornstar/${result.id}/`;
-                }
+                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${resolvedShortId}/pornstar/${result.id}`;
             } else {
-                if (page > 1) {
-                    profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/pornstar/${result.id}/${page}/`;
-                } else {
-                    profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/pornstar/${result.id}/`;
-                }
+                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/pornstar/${result.id}`;
+            }
+            
+            if (page > 1) {
+                profileUrl += `/${page}`;
             }
         } else if (result.type === 'channel') {
             const [shortId, channelName] = result.id.split(':');
             if (page > 1) {
-                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${shortId}/channel/${channelName}/${page}/`;
+                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${shortId}/channel/${channelName}/${page}`;
             } else {
-                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${shortId}/channel/${channelName}/`;
+                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${shortId}/channel/${channelName}`;
             }
         } else {
             if (page > 1) {
-                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos/${page}/`;
+                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos/${page}`;
             } else {
-                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos/`;
+                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos`;
             }
         }
 
@@ -3859,34 +3828,8 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
             profileUrl += (profileUrl.includes('?') ? '&' : '?') + 'o=5';
         }
 
-        log("Fetching channel contents from: " + profileUrl);
-        
-        // Use makeRequestNoThrow to get more details about failures
-        const response = makeRequestNoThrow(profileUrl, API_HEADERS, 'channel contents', false);
-        
-        if (!response.isOk) {
-            log("Channel contents request failed with status: " + response.code);
-            log("Error details: " + (response.error || "No error message"));
-            
-            // If page > 1 and we get 404, it might mean no more content
-            if (response.code === 404 && page > 1) {
-                log("404 on page " + page + " - assuming no more content");
-                return new SpankBangChannelContentPager([], false, {
-                    url: url,
-                    type: type,
-                    order: order,
-                    filters: filters,
-                    continuationToken: null
-                });
-            }
-            
-            throw new ScriptException(`Failed to fetch channel contents: channel contents failed with status ${response.code}`);
-        }
-        
-        const html = response.body;
+        const html = makeRequest(profileUrl, API_HEADERS, 'channel contents');
         const videos = parseSearchResults(html);
-        log("Parsed " + videos.length + " videos from channel contents");
-        
         const platformVideos = videos.map(v => createPlatformVideo(v));
 
         const hasMore = videos.length >= 20;
@@ -3998,9 +3941,7 @@ source.isPlaylistUrl = function(url) {
     if (!url || typeof url !== 'string') return false;
 
     return REGEX_PATTERNS.urls.playlistInternal.test(url) ||
-           REGEX_PATTERNS.urls.categoryInternal.test(url) ||
-           REGEX_PATTERNS.urls.playlistExternal.test(url) ||
-           REGEX_PATTERNS.urls.playlistSimple.test(url);
+           REGEX_PATTERNS.urls.categoryInternal.test(url);
 };
 
 source.searchPlaylists = function(query, type, order, filters, continuationToken) {
@@ -4008,70 +3949,6 @@ source.searchPlaylists = function(query, type, order, filters, continuationToken
         const page = continuationToken ? parseInt(continuationToken) : 1;
         let searchUrl;
 
-        // Check if query is a playlist URL
-        if (query && typeof query === 'string') {
-            const playlistExternalMatch = query.match(REGEX_PATTERNS.urls.playlistExternal);
-            const playlistSimpleMatch = query.match(REGEX_PATTERNS.urls.playlistSimple);
-            
-            if (playlistExternalMatch) {
-                // Direct URL match: https://spankbang.com/dqcr2/playlist/feet+joi/
-                const shortId = playlistExternalMatch[1];
-                const slug = playlistExternalMatch[2];
-                const playlistId = `${shortId}:${slug}`;
-                const internalUrl = `spankbang://playlist/${playlistId}`;
-                
-                log("Detected playlist URL, converting to internal: " + internalUrl);
-                
-                // Return a single result pointing to this playlist
-                const playlistName = slug.replace(/[+_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-                const playlist = new PlatformPlaylist({
-                    id: new PlatformID(PLATFORM, playlistId, plugin.config.id),
-                    name: playlistName,
-                    thumbnail: "",
-                    author: new PlatformAuthorLink(
-                        new PlatformID(PLATFORM, "Unknown", plugin.config.id),
-                        "Unknown",
-                        "",
-                        ""
-                    ),
-                    videoCount: 0,
-                    url: internalUrl
-                });
-                
-                return new SpankBangPlaylistPager([playlist], false, {
-                    query: query,
-                    continuationToken: null
-                });
-            } else if (playlistSimpleMatch) {
-                // Simple URL: https://spankbang.com/playlist/something/
-                const slug = playlistSimpleMatch[1];
-                const internalUrl = `spankbang://playlist/${slug}`;
-                
-                log("Detected simple playlist URL, converting to internal: " + internalUrl);
-                
-                const playlistName = slug.replace(/[+_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-                const playlist = new PlatformPlaylist({
-                    id: new PlatformID(PLATFORM, slug, plugin.config.id),
-                    name: playlistName,
-                    thumbnail: "",
-                    author: new PlatformAuthorLink(
-                        new PlatformID(PLATFORM, "Unknown", plugin.config.id),
-                        "Unknown",
-                        "",
-                        ""
-                    ),
-                    videoCount: 0,
-                    url: internalUrl
-                });
-                
-                return new SpankBangPlaylistPager([playlist], false, {
-                    query: query,
-                    continuationToken: null
-                });
-            }
-        }
-
-        // Regular keyword search
         if (!query || query.trim().length === 0) {
             searchUrl = `${BASE_URL}/playlists/`;
             if (page > 1) {
@@ -4122,23 +3999,6 @@ source.searchPlaylists = function(query, type, order, filters, continuationToken
 source.getPlaylist = function(url) {
     try {
         log("getPlaylist called with URL: " + url);
-        
-        // Check if this is an external playlist URL and convert to internal
-        const playlistExternalMatch = url.match(REGEX_PATTERNS.urls.playlistExternal);
-        const playlistSimpleMatch = url.match(REGEX_PATTERNS.urls.playlistSimple);
-        
-        if (playlistExternalMatch) {
-            const shortId = playlistExternalMatch[1];
-            const slug = playlistExternalMatch[2];
-            const internalUrl = `spankbang://playlist/${shortId}:${slug}`;
-            log("Converting external playlist URL to internal: " + internalUrl);
-            url = internalUrl;
-        } else if (playlistSimpleMatch) {
-            const slug = playlistSimpleMatch[1];
-            const internalUrl = `spankbang://playlist/${slug}`;
-            log("Converting simple playlist URL to internal: " + internalUrl);
-            url = internalUrl;
-        }
         
         const categoryMatch = url.match(REGEX_PATTERNS.urls.categoryInternal);
         const playlistMatch = url.match(REGEX_PATTERNS.urls.playlistInternal);

@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 49,
+  "version": 46,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -51,31 +51,6 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
-    "49": [
-      "Enhanced playlist video count extraction with 10+ new patterns",
-      "Added support for various HTML structures: <span class='len'>, <p>, <div> elements",
-      "Improved regex patterns to match 'X videos', 'X vids', and standalone numbers",
-      "Added comprehensive diagnostic logging for playlists with 0 videos",
-      "Enhanced parsePlaylistsPage() to log HTML structure for debugging",
-      "Better handling of video counts in different contexts (search, import, user playlists)"
-    ],
-    "48": [
-      "Fixed 404 errors on channel contents pagination",
-      "Added trailing slashes to all channel/profile URLs for consistency",
-      "Improved error handling in getChannelContents() with detailed logging",
-      "404 on pagination pages now returns empty results instead of throwing error",
-      "Added makeRequestNoThrow usage for better error diagnostics"
-    ],
-    "47": [
-      "Added playlist search functionality - now supports both URL and keyword search",
-      "Added regex patterns for external playlist URLs (playlistExternal and playlistSimple)",
-      "Updated searchPlaylists() to detect and handle direct playlist URLs",
-      "Updated search() to redirect playlist URLs to searchPlaylists()",
-      "Updated isPlaylistUrl() to recognize external playlist URLs",
-      "Updated getPlaylist() to convert external URLs to internal format",
-      "Users can now paste playlist URLs directly in search (e.g., https://spankbang.com/dqcr2/playlist/feet+joi/)",
-      "Users can also search playlists by keyword/name"
-    ],
     "46": [
       "Fixed playlist import to use cookies directly via http.GET with authenticated client (same as subscriptions)",
       "Fixed history import to use cookies directly without isLoggedIn() check which was failing",
