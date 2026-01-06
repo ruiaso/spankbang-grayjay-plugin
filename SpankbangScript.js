@@ -1223,12 +1223,33 @@ function parseRelatedVideos(html) {
 
             if (seenIds.has(videoId)) continue;
             seenIds.add(videoId);
+            
+            // Try to extract duration from surrounding context
+            const contextStart = Math.max(0, match.index - 300);
+            const contextEnd = Math.min(html.length, match.index + match[0].length + 300);
+            const context = html.substring(contextStart, contextEnd);
+            
+            let duration = 0;
+            const durationPatterns = [
+                /<span[^>]*class="[^"]*(?:l|length|duration|time)[^"]*"[^>]*>([^<]+)<\/span>/i,
+                />(\d{1,3}:\d{2}(?::\d{2})?)</
+            ];
+            for (const durPattern of durationPatterns) {
+                const durationMatch = context.match(durPattern);
+                if (durationMatch && durationMatch[1]) {
+                    const durStr = durationMatch[1].trim();
+                    if (durStr.match(/^\d{1,3}:\d{2}(?::\d{2})?$/)) {
+                        duration = parseDuration(durStr);
+                        if (duration > 0) break;
+                    }
+                }
+            }
 
             relatedVideos.push({
                 id: videoId,
                 title: cleanVideoTitle(match[3]),
                 thumbnail: `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`,
-                duration: 0,
+                duration: duration,
                 views: 0,
                 url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
                 uploader: { name: "", url: "", avatar: "" }
@@ -1291,9 +1312,14 @@ function createVideoSources(videoData) {
     return videoSources;
 }
 
-function createThumbnails(thumbnail) {
-    if (!thumbnail) {
-        return new Thumbnails([]);
+function createThumbnails(thumbnail, videoId) {
+    // Always provide a fallback thumbnail using video ID if available
+    if (!thumbnail || thumbnail.trim().length === 0) {
+        if (videoId) {
+            thumbnail = `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
+        } else {
+            return new Thumbnails([]);
+        }
     }
     return new Thumbnails([
         new Thumbnail(thumbnail, 0)
@@ -1317,7 +1343,7 @@ function createPlatformVideo(videoData) {
     return new PlatformVideo({
         id: new PlatformID(PLATFORM, videoData.id || "", plugin.config.id),
         name: videoData.title || "Untitled",
-        thumbnails: createThumbnails(videoData.thumbnail),
+        thumbnails: createThumbnails(videoData.thumbnail, videoData.id),
         author: createPlatformAuthor(videoData.uploader || {}),
         datetime: videoData.uploadDate || 0,
         duration: videoData.duration || 0,
@@ -1382,7 +1408,7 @@ function createVideoDetails(videoData, url) {
     const details = new PlatformVideoDetails({
         id: new PlatformID(PLATFORM, videoData.id || "", plugin.config.id),
         name: videoData.title || "Untitled",
-        thumbnails: createThumbnails(videoData.thumbnail),
+        thumbnails: createThumbnails(videoData.thumbnail, videoData.id),
         author: createPlatformAuthor(videoData.uploader || {}),
         datetime: videoData.uploadDate || 0,
         duration: videoData.duration || 0,
@@ -1502,11 +1528,16 @@ function parseSearchResults(html) {
             const thumbMatch = block.match(/(?:data-src|src)="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/);
             const thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
             
+            // Try to extract duration from fallback pattern
+            const durationMatch = block.match(/<span[^>]*class="[^"]*(?:l|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i);
+            const durationAltMatch = block.match(/>(\d+:\d+(?::\d+)?)</);
+            const duration = parseDuration(durationMatch ? durationMatch[1].trim() : (durationAltMatch ? durationAltMatch[1] : "0:00"));
+            
             videos.push({
                 id: videoId,
                 title: title,
                 thumbnail: thumbnail,
-                duration: 0,
+                duration: duration,
                 views: 0,
                 uploadDate: 0,
                 url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
@@ -1528,12 +1559,20 @@ function parseSearchResults(html) {
             
             const videoSlug = altMatch[2];
             let title = cleanVideoTitle(altMatch[3]);
+            
+            // Try to extract duration from surrounding context
+            const contextStart = Math.max(0, altMatch.index - 300);
+            const contextEnd = Math.min(html.length, altMatch.index + altMatch[0].length + 300);
+            const context = html.substring(contextStart, contextEnd);
+            const durationMatch = context.match(/<span[^>]*class="[^"]*(?:l|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i);
+            const durationAltMatch = context.match(/>(\d+:\d+(?::\d+)?)</);
+            const duration = parseDuration(durationMatch ? durationMatch[1].trim() : (durationAltMatch ? durationAltMatch[1] : "0:00"));
 
             videos.push({
                 id: videoId,
                 title: title,
                 thumbnail: `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`,
-                duration: 0,
+                duration: duration,
                 views: 0,
                 uploadDate: 0,
                 url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
@@ -1562,12 +1601,17 @@ function parseSearchResults(html) {
             
             const titleMatch = context.match(/title="([^"]+)"/);
             let title = titleMatch ? cleanVideoTitle(titleMatch[1]) : videoSlug.replace(/[_-]/g, ' ');
+            
+            // Try to extract duration from nearby context
+            const durationMatch = context.match(/<span[^>]*class="[^"]*(?:l|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i);
+            const durationAltMatch = context.match(/>(\d+:\d+(?::\d+)?)</);
+            const duration = parseDuration(durationMatch ? durationMatch[1].trim() : (durationAltMatch ? durationAltMatch[1] : "0:00"));
 
             videos.push({
                 id: videoId,
                 title: title,
                 thumbnail: `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`,
-                duration: 0,
+                duration: duration,
                 views: 0,
                 uploadDate: 0,
                 url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
@@ -2493,12 +2537,30 @@ function extractVideoLinksFromHtml(html) {
             thumbnail = CONFIG.EXTERNAL_URL_BASE + '/' + thumbnail;
         }
         
+        // Extract duration from nearby context
+        let duration = 0;
+        const durationPatterns = [
+            /<span[^>]*class="[^"]*(?:l|length|duration|time)[^"]*"[^>]*>([^<]+)<\/span>/i,
+            /<div[^>]*class="[^"]*(?:l|length|duration|time)[^"]*"[^>]*>([^<]+)<\/div>/i,
+            />(\d{1,3}:\d{2}(?::\d{2})?)</
+        ];
+        for (const durPattern of durationPatterns) {
+            const durationMatch = context.match(durPattern);
+            if (durationMatch && durationMatch[1]) {
+                const durStr = durationMatch[1].trim();
+                if (durStr.match(/^\d{1,3}:\d{2}(?::\d{2})?$/)) {
+                    duration = parseDuration(durStr);
+                    if (duration > 0) break;
+                }
+            }
+        }
+        
         // CRITICAL FIX: Keep playlist context URL
         videos.push({
             id: videoId,
             title: title,
             thumbnail: thumbnail,
-            duration: 0,
+            duration: duration,
             views: 0,
             uploadDate: 0,
             url: `${CONFIG.EXTERNAL_URL_BASE}/${playlistId}-${videoId}/playlist/${playlistSlug}`,
@@ -2535,11 +2597,33 @@ function extractVideoLinksFromHtml(html) {
         
         title = cleanVideoTitle(title);
         
+        // Extract duration from nearby context
+        const contextStart2 = Math.max(0, match.index - 200);
+        const contextEnd2 = Math.min(html.length, match.index + 200);
+        const context2 = html.substring(contextStart2, contextEnd2);
+        
+        let duration = 0;
+        const durationPatterns = [
+            /<span[^>]*class="[^"]*(?:l|length|duration|time)[^"]*"[^>]*>([^<]+)<\/span>/i,
+            /<div[^>]*class="[^"]*(?:l|length|duration|time)[^"]*"[^>]*>([^<]+)<\/div>/i,
+            />(\d{1,3}:\d{2}(?::\d{2})?)</
+        ];
+        for (const durPattern of durationPatterns) {
+            const durationMatch = context2.match(durPattern);
+            if (durationMatch && durationMatch[1]) {
+                const durStr = durationMatch[1].trim();
+                if (durStr.match(/^\d{1,3}:\d{2}(?::\d{2})?$/)) {
+                    duration = parseDuration(durStr);
+                    if (duration > 0) break;
+                }
+            }
+        }
+        
         videos.push({
             id: videoId,
             title: title,
             thumbnail: `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`,
-            duration: 0,
+            duration: duration,
             views: 0,
             uploadDate: 0,
             url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
@@ -4170,11 +4254,32 @@ function parseFavoritesPage(html) {
             
             let title = match[3] ? cleanVideoTitle(match[3]) : videoSlug.replace(/[_+-]/g, ' ');
             
+            // Try to extract duration from surrounding context
+            const contextStart = Math.max(0, match.index - 300);
+            const contextEnd = Math.min(html.length, match.index + match[0].length + 300);
+            const context = html.substring(contextStart, contextEnd);
+            
+            let duration = 0;
+            const durationPatterns = [
+                /<span[^>]*class="[^"]*(?:l|length|duration|time)[^"]*"[^>]*>([^<]+)<\/span>/i,
+                />(\d{1,3}:\d{2}(?::\d{2})?)</
+            ];
+            for (const durPattern of durationPatterns) {
+                const durationMatch = context.match(durPattern);
+                if (durationMatch && durationMatch[1]) {
+                    const durStr = durationMatch[1].trim();
+                    if (durStr.match(/^\d{1,3}:\d{2}(?::\d{2})?$/)) {
+                        duration = parseDuration(durStr);
+                        if (duration > 0) break;
+                    }
+                }
+            }
+            
             videos.push({
                 id: videoId,
                 title: title,
                 thumbnail: `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`,
-                duration: 0,
+                duration: duration,
                 views: 0,
                 url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
                 uploader: { name: "", url: "", avatar: "" }
