@@ -3584,7 +3584,10 @@ source.getWatchHistory = function() {
         }
         
         log("getWatchHistory found " + videos.length + " videos");
-        return videos.map(v => v.url);
+        
+        // Return full video objects (PlatformVideo) instead of just URLs
+        // This ensures thumbnails, duration, and other metadata are preserved in history
+        return videos.map(v => createPlatformVideo(v));
 
     } catch (error) {
         log("getWatchHistory error: " + error.message);
