@@ -1,0 +1,16 @@
+node_modules/
+npm-debug.log
+.npm
+.node_repl_history
+*.log
+.DS_Store
+.env
+.env.local
+.vscode/
+.idea/
+
+# Private keys - NEVER commit these!
+*.pem
+.dev-private-key.pem
+production-private-key.pem
+tmp_*.pem
