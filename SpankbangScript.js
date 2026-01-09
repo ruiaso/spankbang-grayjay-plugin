@@ -962,9 +962,42 @@ function parseVideoPage(html, url) {
         }
     }
 
+    // Extract duration with multiple fallback patterns
     const durationMatch = html.match(/itemprop="duration"\s*content="PT(\d+)M(\d+)?S?"/);
     if (durationMatch) {
         videoData.duration = (parseInt(durationMatch[1]) || 0) * 60 + (parseInt(durationMatch[2]) || 0);
+    } else {
+        // Fallback duration patterns
+        const fallbackDurationPatterns = [
+            /"duration"\s*:\s*"?PT(\d+)M(\d+)?S?"?/i,
+            /"duration"\s*:\s*(\d+)/i,  // Duration in seconds
+            /data-duration="(\d+)"/i,
+            /<span[^>]*class="[^"]*(?:duration|length|l)[^"]*"[^>]*>(\d{1,2}):(\d{2})(?::(\d{2}))?<\/span>/i
+        ];
+        
+        for (const pattern of fallbackDurationPatterns) {
+            const fallbackMatch = html.match(pattern);
+            if (fallbackMatch) {
+                if (fallbackMatch[1] && fallbackMatch[2] !== undefined) {
+                    // Format: MM:SS or HH:MM:SS
+                    if (fallbackMatch[3]) {
+                        // HH:MM:SS
+                        videoData.duration = parseInt(fallbackMatch[1]) * 3600 + parseInt(fallbackMatch[2]) * 60 + parseInt(fallbackMatch[3]);
+                    } else {
+                        // MM:SS or PT format
+                        videoData.duration = parseInt(fallbackMatch[1]) * 60 + parseInt(fallbackMatch[2] || 0);
+                    }
+                } else if (fallbackMatch[1]) {
+                    // Just seconds
+                    videoData.duration = parseInt(fallbackMatch[1]);
+                }
+                
+                if (videoData.duration > 0) {
+                    log("Using fallback duration: " + videoData.duration + " seconds");
+                    break;
+                }
+            }
+        }
     }
 
     const viewsMatch = html.match(/"interactionCount"\s*:\s*"?(\d+)"?/);
@@ -979,9 +1012,34 @@ function parseVideoPage(html, url) {
         } catch (e) {}
     }
 
+    // Extract thumbnail with multiple fallback patterns
     const thumbMatch = html.match(/itemprop="thumbnailUrl"\s*content="([^"]+)"/);
-    if (thumbMatch) {
+    if (thumbMatch && thumbMatch[1]) {
         videoData.thumbnail = thumbMatch[1];
+    } else {
+        // Fallback thumbnail patterns
+        const fallbackThumbPatterns = [
+            /<meta\s+property="og:image"\s+content="([^"]+)"/i,
+            /<meta\s+name="twitter:image"\s+content="([^"]+)"/i,
+            /"thumbnailUrl"\s*:\s*"([^"]+)"/i,
+            /data-preview="([^"]+\.jpg)"/i,
+            /poster="([^"]+\.jpg)"/i
+        ];
+        
+        for (const pattern of fallbackThumbPatterns) {
+            const fallbackMatch = html.match(pattern);
+            if (fallbackMatch && fallbackMatch[1]) {
+                videoData.thumbnail = fallbackMatch[1];
+                log("Using fallback thumbnail: " + videoData.thumbnail);
+                break;
+            }
+        }
+        
+        // Ultimate fallback: CDN thumbnail
+        if (!videoData.thumbnail) {
+            videoData.thumbnail = `https://tbi.sb-cd.com/t/${videoData.id}/def/1/default.jpg`;
+            log("Using CDN fallback thumbnail for video " + videoData.id);
+        }
     }
 
     const ratingMatch = html.match(/(\d+(?:\.\d+)?)\s*%\s*(?:rating|like)/i);
@@ -1057,6 +1115,9 @@ function parseVideoPage(html, url) {
 
     videoData.relatedVideos = parseRelatedVideos(html);
     videoData.relatedPlaylists = parseRelatedPlaylists(html);
+
+    // Log the extracted video data for debugging
+    log("parseVideoPage complete: id=" + videoData.id + ", duration=" + videoData.duration + "s, thumbnail=" + (videoData.thumbnail ? "present" : "MISSING"));
 
     return videoData;
 }
@@ -1421,6 +1482,8 @@ function createVideoDetails(videoData, url) {
         subtitles: [],
         rating: videoData.rating ? new RatingScaler(videoData.rating) : null
     });
+    
+    log("createVideoDetails: Created details with duration=" + (videoData.duration || 0) + "s, thumbnail=" + videoData.thumbnail);
 
     details.getContentRecommendations = function() {
         return source.getContentRecommendations(url);
