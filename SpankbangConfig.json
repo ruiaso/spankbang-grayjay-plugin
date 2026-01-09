@@ -15,8 +15,8 @@
     "DOMParser",
     "Utilities"
   ],
-  "allowAllHttpHeaderAccess": true,
-  "allowEval": true,
+  "allowAllHttpHeaderAccess": false,
+  "allowEval": false,
   "allowUrls": [
     "spankbang.com",
     ".spankbang.com",
