@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 64,
+  "version": 65,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -38,6 +38,13 @@
   },
   "settings": [
     {
+      "variable": "manualAuthCookies",
+      "name": "Manual Authentication Cookies",
+      "description": "For desktop users: Manually enter your SpankBang session cookies. Go to spankbang.com in your browser, login, open DevTools (F12) → Application → Cookies → spankbang.com, copy 'sb_session' value and paste here.",
+      "type": "String",
+      "default": ""
+    },
+    {
       "variable": "syncRemoteHistory",
       "name": "Sync Remote History",
       "description": "Synchronize account history from SpankBang on startup",
@@ -51,6 +58,15 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "65": [
+      "CRITICAL FIX: Fixed 'page is not defined' JavaScript error in home content fallback",
+      "DESKTOP LOGIN SOLUTION: Added manual authentication cookies setting for desktop users without browser integration",
+      "Enhanced getHome function with three-tier fallback system: trending → main page → base URL",
+      "Added manual cookie authentication instructions in settings (copy sb_session from browser DevTools)",
+      "Improved authentication logic to prioritize manual cookies for desktop compatibility",
+      "Enhanced error handling with detailed fallback error reporting",
+      "Fixed scope issue with page variable in getHome function"
+    ],
     "64": [
       "CRITICAL FIX: Resolved 403 'Failed to get home content' error on Grayjay desktop",
       "Enhanced HTTP headers with modern Chrome user agent and browser security headers to bypass anti-bot protection",

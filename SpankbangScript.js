@@ -140,6 +140,22 @@ const REGEX_PATTERNS = {
 
 function getAuthHeaders() {
     const headers = { ...API_HEADERS };
+    
+    // Check for manual authentication cookies first (for desktop users)
+    if (pluginSettings.manualAuthCookies && pluginSettings.manualAuthCookies.trim().length > 0) {
+        const manualCookies = pluginSettings.manualAuthCookies.trim();
+        // Handle both just the session value or full cookie format
+        if (manualCookies.includes('=')) {
+            headers["Cookie"] = manualCookies;
+        } else {
+            // Just the session value, format it properly
+            headers["Cookie"] = `sb_session=${manualCookies}`;
+        }
+        log("Using manual authentication cookies for desktop");
+        return headers;
+    }
+    
+    // Fallback to automatic cookies if available
     if (state.authCookies && state.authCookies.length > 0) {
         headers["Cookie"] = state.authCookies;
     }
@@ -3600,6 +3616,17 @@ source.getLoggedInUser = function() {
 
 source.isLoggedIn = function() {
     try {
+        // Check for manual authentication first (desktop users)
+        if (pluginSettings.manualAuthCookies && pluginSettings.manualAuthCookies.trim().length > 0) {
+            log("Manual authentication cookies detected - assuming logged in");
+            return true;
+        }
+        
+        // Quick check for authentication cookies
+        if (!state.authCookies || state.authCookies.length === 0) {
+            return false;
+        }
+        
         if (typeof bridge !== 'undefined' && bridge.isLoggedIn && bridge.isLoggedIn()) {
             log("bridge.isLoggedIn() returned true");
             if (!state.authCookies || state.authCookies.length === 0 || !hasValidAuthCookie(state.authCookies)) {
@@ -4784,8 +4811,9 @@ source.getLikedVideos = function() {
 };
 
 source.getHome = function(continuationToken) {
+    const page = continuationToken ? parseInt(continuationToken) : 1;
+    
     try {
-        const page = continuationToken ? parseInt(continuationToken) : 1;
         const url = `${BASE_URL}/trending_videos/${page}/`;
         
         // Enhanced headers to avoid 403 blocking
@@ -4835,7 +4863,29 @@ source.getHome = function(continuationToken) {
             
         } catch (fallbackError) {
             log(`getHome: Fallback also failed - ${fallbackError.message}`);
-            throw new ScriptException("Failed to get home content: " + error.message + " (fallback: " + fallbackError.message + ")");
+            
+            // Final fallback: try just the base URL without page numbers
+            try {
+                log("getHome: Trying final fallback - base URL");
+                const baseHeaders = {
+                    ...API_HEADERS,
+                    "Referer": BASE_URL + "/",
+                    "Origin": BASE_URL,
+                    "Sec-Fetch-Site": "same-origin"
+                };
+                
+                const baseHtml = makeRequest(BASE_URL + "/", baseHeaders, 'base home content');
+                const baseVideos = parseSearchResults(baseHtml);
+                
+                log(`getHome: Base fallback found ${baseVideos.length} videos`);
+                const platformVideos = baseVideos.map(v => createPlatformVideo(v));
+                
+                return new SpankBangHomeContentPager(platformVideos, false, { continuationToken: null });
+                
+            } catch (baseError) {
+                log(`getHome: All fallbacks failed - ${baseError.message}`);
+                throw new ScriptException("Failed to get home content: " + error.message + " (fallback: " + fallbackError.message + ", base: " + baseError.message + ")");
+            }
         }
     }
 };
@@ -6236,4 +6286,4 @@ class SpankBangHistoryPager extends ContentPager {
     }
 }
 
-log("SpankBang plugin loaded - v64");
+log("SpankBang plugin loaded - v65");
