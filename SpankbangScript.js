@@ -382,6 +382,156 @@ function parseDuration(durationStr) {
     return totalSeconds;
 }
 
+// ===== Shared extraction helpers (duration, views, uploader display) =====
+
+function extractAllDurationCandidatesFromContext(html, opts = {}) {
+    const options = {
+        excludeProgress: opts.excludeProgress !== false, // default true
+        maxSeconds: typeof opts.maxSeconds === 'number' ? opts.maxSeconds : 24 * 60 * 60
+    };
+
+    if (!html || typeof html !== 'string') return [];
+
+    const candidates = [];
+
+    // 1) Data attributes (often seconds)
+    const dataAttrPatterns = [
+        /data-duration=["']([^"']+)["']/gi,
+        /data-length=["']([^"']+)["']/gi,
+        /data-time=["']([^"']+)["']/gi
+    ];
+
+    for (const pattern of dataAttrPatterns) {
+        let m;
+        pattern.lastIndex = 0;
+        while ((m = pattern.exec(html)) !== null) {
+            if (!m[1]) continue;
+            const parsed = parseDuration(m[1].trim());
+            if (parsed > 0 && parsed <= options.maxSeconds) candidates.push(parsed);
+        }
+    }
+
+    // 2) itemprop/meta/JSON-LD PT duration formats
+    const ptPattern = /PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/gi;
+    let pt;
+    while ((pt = ptPattern.exec(html)) !== null) {
+        const h = parseInt(pt[1] || '0');
+        const m = parseInt(pt[2] || '0');
+        const s = parseInt(pt[3] || '0');
+        const total = h * 3600 + m * 60 + s;
+        if (total > 0 && total <= options.maxSeconds) candidates.push(total);
+    }
+
+    // 3) Common span patterns
+    const spanPatterns = [
+        /<span[^>]*class=["'][^"']*\bl\b[^"']*["'][^>]*>([^<]+)<\/span>/gi,
+        /<span[^>]*class=["'][^"']*(?:duration|length|time)[^"']*["'][^>]*>([^<]+)<\/span>/gi
+    ];
+
+    for (const pattern of spanPatterns) {
+        let m;
+        pattern.lastIndex = 0;
+        while ((m = pattern.exec(html)) !== null) {
+            if (!m[1]) continue;
+            const text = m[1].replace(/<[^>]*>/g, '').trim();
+            const parsed = parseDuration(text);
+            if (parsed > 0 && parsed <= options.maxSeconds) candidates.push(parsed);
+        }
+    }
+
+    // 4) Any time-like tokens (MM:SS or HH:MM:SS)
+    const timeToken = /\b\d{1,3}:\d{2}(?::\d{2})?\b/g;
+    let match;
+    while ((match = timeToken.exec(html)) !== null) {
+        const token = match[0];
+        if (!token) continue;
+
+        if (options.excludeProgress) {
+            const start = Math.max(0, match.index - 40);
+            const end = Math.min(html.length, match.index + token.length + 40);
+            const context = html.substring(start, end);
+            if (/watched|progress|viewed|remaining|elapsed/i.test(context)) {
+                continue;
+            }
+        }
+
+        const parsed = parseDuration(token);
+        if (parsed > 0 && parsed <= options.maxSeconds) candidates.push(parsed);
+    }
+
+    // De-dupe + basic sanity
+    const uniq = Array.from(new Set(candidates)).filter(s => s >= 5);
+    return uniq;
+}
+
+function extractBestDurationSecondsFromContext(html, opts = {}) {
+    const preferLargest = opts.preferLargest !== false; // default true
+    const candidates = extractAllDurationCandidatesFromContext(html, opts);
+    if (!candidates || candidates.length === 0) return 0;
+
+    if (preferLargest) {
+        return candidates.reduce((a, b) => (b > a ? b : a), 0);
+    }
+    return candidates[0] || 0;
+}
+
+function extractViewCountFromContext(html) {
+    if (!html || typeof html !== 'string') return 0;
+
+    const patterns = [
+        /data-views=["']([^"']+)["']/i,
+        /data-viewcount=["']([^"']+)["']/i,
+        /data-view-count=["']([^"']+)["']/i,
+        /<span[^>]*class=["'][^"']*(?:v|views)[^"']*["'][^>]*>([^<]+)<\/span>/i,
+        /"interactionCount"\s*:\s*"?(\d+)"?/i,
+        /(\d+(?:[,.]\d+)?[KMB]?)\s*views?/i
+    ];
+
+    for (const pattern of patterns) {
+        const m = html.match(pattern);
+        if (m && m[1]) {
+            const parsed = parseViewCount(m[1].trim());
+            if (parsed > 0) return parsed;
+        }
+    }
+
+    return 0;
+}
+
+function isLikelyBadUploaderName(name, channelSlug = "") {
+    if (!name) return true;
+    const trimmed = name.toString().replace(/<[^>]*>/g, '').trim();
+    if (trimmed.length === 0) return true;
+
+    // Common non-name strings seen in UI
+    if (/^\d+\s*videos?$/i.test(trimmed)) return true;
+    if (/^\d+\s*views?$/i.test(trimmed)) return true;
+    if (/^\d+$/.test(trimmed)) return true;
+
+    const likelyBad = ['HD', '4K', 'VR', 'POV', 'NEW', 'HOT', 'TOP', 'PREMIUM', 'VERIFIED'];
+    if (likelyBad.includes(trimmed.toUpperCase())) return true;
+
+    // If a short label doesn't resemble the channel slug at all, it is often a tag
+    const slugNorm = (channelSlug || '').toString().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const nameNorm = trimmed.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (slugNorm.length >= 5 && nameNorm.length <= 5 && !slugNorm.includes(nameNorm)) {
+        return true;
+    }
+
+    return false;
+}
+
+function findTitleForChannelLink(html, shortId, channelSlug) {
+    if (!html || !shortId || !channelSlug) return "";
+    const escapedSlug = channelSlug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escapedId = shortId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    const pattern = new RegExp(`href=["']\\/${escapedId}\\/channel\\/${escapedSlug}\\/?[^"']*["'][^>]*title=["']([^"']+)["']`, 'i');
+    const m = html.match(pattern);
+    return m && m[1] ? m[1].trim() : "";
+}
+
+
 function parseViewCount(viewsStr) {
     if (!viewsStr) return 0;
 
@@ -561,12 +711,17 @@ function extractUploaderFromVideoToolbar(html) {
                     let channelName = (match[4] || "").replace(/<[^>]*>/g, '').trim();
                     const channelSlug = match[2];
                     
-                    // Validate: reject if channelName is likely a tag
-                    const likelyTags = ['HD', '4K', 'VR', 'POV', 'NEW', 'HOT', 'TOP', 'PREMIUM', 'VERIFIED'];
-                    if (likelyTags.includes(channelName.toUpperCase()) || channelName.length < 2) {
-                        // Use channel slug as fallback
-                        channelName = channelSlug.replace(/[+\-_]/g, ' ').trim();
-                        channelName = channelName.charAt(0).toUpperCase() + channelName.slice(1);
+                    // Validate: reject if channelName is likely a tag or count label
+                    if (isLikelyBadUploaderName(channelName, channelSlug)) {
+                        // Prefer the link title attribute (often holds the real channel name)
+                        const titleName = findTitleForChannelLink(html, match[1], channelSlug);
+                        if (titleName && !isLikelyBadUploaderName(titleName, channelSlug)) {
+                            channelName = titleName;
+                        } else {
+                            // Use channel slug as fallback
+                            channelName = channelSlug.replace(/[+\-_]/g, ' ').trim();
+                            channelName = channelName.charAt(0).toUpperCase() + channelName.slice(1);
+                        }
                     }
                     
                     uploader.name = channelName;
@@ -631,12 +786,16 @@ function extractUploaderFromVideoToolbar(html) {
             
             channelName = channelName.replace(/<[^>]*>/g, '').trim();
             
-            // Validate: reject if channelName is likely a tag (short, all caps, common tags)
-            const likelyTags = ['HD', '4K', 'VR', 'POV', 'NEW', 'HOT', 'TOP'];
-            if (likelyTags.includes(channelName.toUpperCase()) || channelName.length < 2) {
-                // Use channel slug as fallback (capitalize first letter)
-                channelName = channelSlug.replace(/[+\-_]/g, ' ').trim();
-                channelName = channelName.charAt(0).toUpperCase() + channelName.slice(1);
+            // Validate: reject if channelName is likely a tag/count label and fallback cleanly
+            if (isLikelyBadUploaderName(channelName, channelSlug)) {
+                const titleName = findTitleForChannelLink(html, shortId, channelSlug);
+                if (titleName && !isLikelyBadUploaderName(titleName, channelSlug)) {
+                    channelName = titleName;
+                } else {
+                    // Use channel slug as fallback (capitalize first letter)
+                    channelName = channelSlug.replace(/[+\-_]/g, ' ').trim();
+                    channelName = channelName.charAt(0).toUpperCase() + channelName.slice(1);
+                }
             }
             
             if (channelName && channelName.length > 0) {
@@ -729,6 +888,9 @@ function fetchUploaderAvatarIfNeeded(uploader, html) {
 }
 
 function extractUploaderFromSearchResult(block) {
+    // Keep tags working: only extract uploader from explicit channel/profile/pornstar links.
+    // Never treat category tags (e.g., "Solo", "HD") as uploader names.
+
     const uploader = {
         name: "",
         url: "",
@@ -1094,10 +1256,7 @@ function parseVideoPage(html, url) {
         log("WARNING: parseVideoPage could not extract duration for video " + videoData.id);
     }
 
-    const viewsMatch = html.match(/"interactionCount"\s*:\s*"?(\d+)"?/);
-    if (viewsMatch) {
-        videoData.views = parseInt(viewsMatch[1]) || 0;
-    }
+    videoData.views = extractViewCountFromContext(html);
 
     const uploadMatch = html.match(/itemprop="uploadDate"\s*content="([^"]+)"/);
     if (uploadMatch) {
@@ -1362,24 +1521,11 @@ function parseRelatedVideos(html) {
                 }
             }
 
-            // Enhanced duration extraction - prioritize data attributes
-            let durationStr = "0:00";
-            const dataAttrMatch = block.match(/data-duration=["']([^"']+)["']/i) || 
-                                 block.match(/data-length=["']([^"']+)["']/i);
-            if (dataAttrMatch && dataAttrMatch[1]) {
-                durationStr = dataAttrMatch[1].trim();
-            } else {
-                const durationMatch = block.match(/<span[^>]*class="[^"]*(?:l|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i);
-                if (durationMatch && durationMatch[1]) {
-                    durationStr = durationMatch[1].trim();
-                } else {
-                    const durationAltMatch = block.match(/>(\d+:\d+(?::\d+)?)</);
-                    if (durationAltMatch && durationAltMatch[1]) {
-                        durationStr = durationAltMatch[1];
-                    }
-                }
-            }
-            const duration = parseDuration(durationStr);
+            // Unified duration extraction
+            const duration = extractBestDurationSecondsFromContext(block, {
+                excludeProgress: true,
+                preferLargest: true
+            });
 
             const viewsMatch = block.match(/([0-9,.]+[KMB]?)\s*(?:views?|plays?)/i);
             const views = viewsMatch ? parseViewCount(viewsMatch[1]) : 0;
@@ -1415,30 +1561,17 @@ function parseRelatedVideos(html) {
             const contextEnd = Math.min(html.length, match.index + match[0].length + 500);
             const context = html.substring(contextStart, contextEnd);
             
-            let durationStr = "0:00";
-            const dataAttrMatch = context.match(/data-duration=["']([^"']+)["']/i) || 
-                                 context.match(/data-length=["']([^"']+)["']/i);
-            if (dataAttrMatch && dataAttrMatch[1]) {
-                durationStr = dataAttrMatch[1].trim();
-            } else {
-                const durationMatch = context.match(/<span[^>]*class="[^"]*(?:l|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i);
-                if (durationMatch && durationMatch[1]) {
-                    durationStr = durationMatch[1].trim();
-                } else {
-                    const durationAltMatch = context.match(/>(\d+:\d+(?::\d+)?)</);
-                    if (durationAltMatch && durationAltMatch[1]) {
-                        durationStr = durationAltMatch[1];
-                    }
-                }
-            }
-            const duration = parseDuration(durationStr);
+            const duration = extractBestDurationSecondsFromContext(context, {
+                excludeProgress: true,
+                preferLargest: true
+            });
 
             relatedVideos.push({
                 id: videoId,
                 title: cleanVideoTitle(match[3]),
                 thumbnail: `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`,
                 duration: duration,
-                views: 0,
+                views: extractViewCountFromContext(context),
                 url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
                 uploader: { name: "", url: "", avatar: "" }
             });
@@ -1661,32 +1794,13 @@ function parseSearchResults(html) {
         let title = titleMatch ? titleMatch[1] : "Unknown";
         title = cleanVideoTitle(title);
 
-        // Enhanced duration extraction - prioritize data attributes for accuracy
-        let finalDuration = "0:00";
-        
-        // First, try data attributes (most accurate - often in seconds)
-        const dataAttrMatch = block.match(/data-duration=["']([^"']+)["']/i) || 
-                             block.match(/data-length=["']([^"']+)["']/i) ||
-                             block.match(/data-time=["']([^"']+)["']/i);
-        if (dataAttrMatch && dataAttrMatch[1]) {
-            finalDuration = dataAttrMatch[1].trim();
-        } else {
-            // Fallback to span class patterns
-            const durationMatch = block.match(/<span[^>]*class="[^"]*(?:l|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i);
-            if (durationMatch && durationMatch[1]) {
-                finalDuration = durationMatch[1].trim();
-            } else {
-                // Last resort: look for any time format
-                const durationAltMatch = block.match(/>(\d+:\d+(?::\d+)?)</);
-                if (durationAltMatch && durationAltMatch[1]) {
-                    finalDuration = durationAltMatch[1];
-                }
-            }
-        }
+        // Unified duration extraction (for consistent thumbnail timecode overlays)
+        const durationSeconds = extractBestDurationSecondsFromContext(block, {
+            excludeProgress: true,
+            preferLargest: true
+        });
 
-        const viewsMatch = block.match(/<span[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/span>/i);
-        const viewsAltMatch = block.match(/>([0-9,.]+[KMB]?)\s*<\/span>/i);
-        const viewsStr = viewsMatch ? viewsMatch[1].trim() : (viewsAltMatch ? viewsAltMatch[1] : "0");
+        const views = extractViewCountFromContext(block);
 
         let uploadDate = 0;
         const datePatterns = [
@@ -1711,8 +1825,8 @@ function parseSearchResults(html) {
             id: videoId,
             title: title,
             thumbnail: thumbnail,
-            duration: parseDuration(finalDuration),
-            views: parseViewCount(viewsStr),
+            duration: durationSeconds,
+            views: views,
             uploadDate: uploadDate,
             url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
             uploader: uploader
@@ -1743,34 +1857,21 @@ function parseSearchResults(html) {
             const thumbMatch = block.match(/(?:data-src|src)="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/);
             const thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
             
-            // Enhanced duration extraction - prioritize data attributes
-            let durationStr = "0:00";
-            const dataAttrMatch = block.match(/data-duration=["']([^"']+)["']/i) || 
-                                 block.match(/data-length=["']([^"']+)["']/i);
-            if (dataAttrMatch && dataAttrMatch[1]) {
-                durationStr = dataAttrMatch[1].trim();
-            } else {
-                const durationMatch = block.match(/<span[^>]*class="[^"]*(?:l|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i);
-                if (durationMatch && durationMatch[1]) {
-                    durationStr = durationMatch[1].trim();
-                } else {
-                    const durationAltMatch = block.match(/>(\d+:\d+(?::\d+)?)</);
-                    if (durationAltMatch && durationAltMatch[1]) {
-                        durationStr = durationAltMatch[1];
-                    }
-                }
-            }
-            const duration = parseDuration(durationStr);
+            // Unified duration extraction
+            const duration = extractBestDurationSecondsFromContext(block, {
+                excludeProgress: true,
+                preferLargest: true
+            });
             
             videos.push({
                 id: videoId,
                 title: title,
                 thumbnail: thumbnail,
                 duration: duration,
-                views: 0,
+                views: extractViewCountFromContext(block),
                 uploadDate: 0,
                 url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
-                uploader: { name: "", url: "", avatar: "" }
+                uploader: extractUploaderFromSearchResult(block)
             });
         }
         log(`parseSearchResults: Broader pattern found ${videos.length} videos`);
@@ -1794,33 +1895,20 @@ function parseSearchResults(html) {
             const contextEnd = Math.min(html.length, altMatch.index + altMatch[0].length + 300);
             const context = html.substring(contextStart, contextEnd);
             
-            let durationStr = "0:00";
-            const dataAttrMatch = context.match(/data-duration=["']([^"']+)["']/i) || 
-                                 context.match(/data-length=["']([^"']+)["']/i);
-            if (dataAttrMatch && dataAttrMatch[1]) {
-                durationStr = dataAttrMatch[1].trim();
-            } else {
-                const durationMatch = context.match(/<span[^>]*class="[^"]*(?:l|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i);
-                if (durationMatch && durationMatch[1]) {
-                    durationStr = durationMatch[1].trim();
-                } else {
-                    const durationAltMatch = context.match(/>(\d+:\d+(?::\d+)?)</);
-                    if (durationAltMatch && durationAltMatch[1]) {
-                        durationStr = durationAltMatch[1];
-                    }
-                }
-            }
-            const duration = parseDuration(durationStr);
+            const duration = extractBestDurationSecondsFromContext(context, {
+                excludeProgress: true,
+                preferLargest: true
+            });
 
             videos.push({
                 id: videoId,
                 title: title,
                 thumbnail: `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`,
                 duration: duration,
-                views: 0,
+                views: extractViewCountFromContext(context),
                 uploadDate: 0,
                 url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
-                uploader: { name: "", url: "", avatar: "" }
+                uploader: extractUploaderFromSearchResult(context)
             });
         }
         log(`parseSearchResults: Direct link extraction found ${videos.length} videos`);
@@ -1847,33 +1935,20 @@ function parseSearchResults(html) {
             let title = titleMatch ? cleanVideoTitle(titleMatch[1]) : videoSlug.replace(/[_-]/g, ' ');
             
             // Enhanced duration extraction from nearby context
-            let durationStr = "0:00";
-            const dataAttrMatch = context.match(/data-duration=["']([^"']+)["']/i) || 
-                                 context.match(/data-length=["']([^"']+)["']/i);
-            if (dataAttrMatch && dataAttrMatch[1]) {
-                durationStr = dataAttrMatch[1].trim();
-            } else {
-                const durationMatch = context.match(/<span[^>]*class="[^"]*(?:l|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i);
-                if (durationMatch && durationMatch[1]) {
-                    durationStr = durationMatch[1].trim();
-                } else {
-                    const durationAltMatch = context.match(/>(\d+:\d+(?::\d+)?)</);
-                    if (durationAltMatch && durationAltMatch[1]) {
-                        durationStr = durationAltMatch[1];
-                    }
-                }
-            }
-            const duration = parseDuration(durationStr);
+            const duration = extractBestDurationSecondsFromContext(context, {
+                excludeProgress: true,
+                preferLargest: true
+            });
 
             videos.push({
                 id: videoId,
                 title: title,
                 thumbnail: `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`,
                 duration: duration,
-                views: 0,
+                views: extractViewCountFromContext(context),
                 uploadDate: 0,
                 url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
-                uploader: { name: "", url: "", avatar: "" }
+                uploader: extractUploaderFromSearchResult(context)
             });
         }
         log(`parseSearchResults: Most permissive pattern found ${videos.length} videos`);
@@ -2647,13 +2722,12 @@ function parsePlaylistVideos(html) {
                 thumbnail = CONFIG.EXTERNAL_URL_BASE + '/' + thumbnail;
             }
             
-            const durationMatch = block.match(/<span[^>]*class="[^"]*(?:l|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i);
-            const duration = durationMatch ? parseDuration(durationMatch[1].trim()) : 0;
+            const duration = extractBestDurationSecondsFromContext(block, {
+                excludeProgress: true,
+                preferLargest: true
+            });
             
-            // Extract views - improved patterns with more flexibility
-            const viewsMatch = block.match(/<span[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/span>/i) ||
-                              block.match(/([0-9,.]+[KMB]?)\s*(?:views?|plays?)/i);
-            const views = viewsMatch ? parseViewCount(viewsMatch[1].trim()) : 0;
+            const views = extractViewCountFromContext(block);
             
             // Extract uploader info from the video block - enhanced extraction
             let uploader = extractUploaderFromSearchResult(block);
@@ -2796,21 +2870,10 @@ function extractVideoLinksFromHtml(html) {
         }
         
         // Extract duration from nearby context
-        let duration = 0;
-        const durationPatterns = [
-            /data-duration="([^"]+)"/i,
-            /<span[^>]*class="[^"]*(?:l|length|duration|time)[^"]*"[^>]*>([^<]+)<\/span>/i,
-            /<div[^>]*class="[^"]*(?:l|length|duration|time)[^"]*"[^>]*>([^<]+)<\/div>/i,
-            />(\d{1,3}:\d{2}(?::\d{2})?)</
-        ];
-        for (const durPattern of durationPatterns) {
-            const durationMatch = context.match(durPattern);
-            if (durationMatch && durationMatch[1]) {
-                const durStr = durationMatch[1].trim();
-                duration = parseDuration(durStr);
-                if (duration > 0) break;
-            }
-        }
+        const duration = extractBestDurationSecondsFromContext(context, {
+            excludeProgress: true,
+            preferLargest: true
+        });
         
         // CRITICAL FIX: Keep playlist context URL
         videos.push({
@@ -2818,10 +2881,10 @@ function extractVideoLinksFromHtml(html) {
             title: title,
             thumbnail: thumbnail,
             duration: duration,
-            views: 0,
+            views: extractViewCountFromContext(context),
             uploadDate: 0,
             url: `${CONFIG.EXTERNAL_URL_BASE}/${playlistId}-${videoId}/playlist/${playlistSlug}`,
-            uploader: { name: "", url: "", avatar: "" }
+            uploader: extractUploaderFromSearchResult(context)
         });
     }
     
@@ -2854,33 +2917,22 @@ function extractVideoLinksFromHtml(html) {
         
         title = cleanVideoTitle(title);
         
-        // Extract duration from nearby context
+        // Extract duration from nearby context (unified)
         const contextStart2 = Math.max(0, match.index - 200);
         const contextEnd2 = Math.min(html.length, match.index + 200);
         const context2 = html.substring(contextStart2, contextEnd2);
         
-        let duration = 0;
-        const durationPatterns = [
-            /data-duration="([^"]+)"/i,
-            /<span[^>]*class="[^"]*(?:l|length|duration|time)[^"]*"[^>]*>([^<]+)<\/span>/i,
-            /<div[^>]*class="[^"]*(?:l|length|duration|time)[^"]*"[^>]*>([^<]+)<\/div>/i,
-            />(\d{1,3}:\d{2}(?::\d{2})?)</
-        ];
-        for (const durPattern of durationPatterns) {
-            const durationMatch = context2.match(durPattern);
-            if (durationMatch && durationMatch[1]) {
-                const durStr = durationMatch[1].trim();
-                duration = parseDuration(durStr);
-                if (duration > 0) break;
-            }
-        }
+        const duration = extractBestDurationSecondsFromContext(context2, {
+            excludeProgress: true,
+            preferLargest: true
+        });
         
         videos.push({
             id: videoId,
             title: title,
             thumbnail: `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`,
             duration: duration,
-            views: 0,
+            views: extractViewCountFromContext(context2),
             uploadDate: 0,
             url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
             uploader: { name: "", url: "", avatar: "" }
@@ -4612,18 +4664,19 @@ function parseFavoritesPage(html) {
             const contextEnd = Math.min(html.length, match.index + match[0].length + 300);
             const context = html.substring(contextStart, contextEnd);
             
-            const durationMatch = context.match(/<span[^>]*class="[^"]*(?:l|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i);
-            const durationAltMatch = context.match(/>(\d+:\d+(?::\d+)?)</);
-            const duration = parseDuration(durationMatch ? durationMatch[1].trim() : (durationAltMatch ? durationAltMatch[1] : "0:00"));
+            const duration = extractBestDurationSecondsFromContext(context, {
+                excludeProgress: true,
+                preferLargest: true
+            });
             
             videos.push({
                 id: videoId,
                 title: title,
                 thumbnail: `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`,
                 duration: duration,
-                views: 0,
+                views: extractViewCountFromContext(context),
                 url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
-                uploader: { name: "", url: "", avatar: "" }
+                uploader: extractUploaderFromSearchResult(context)
             });
         }
         if (videos.length > 0) break;

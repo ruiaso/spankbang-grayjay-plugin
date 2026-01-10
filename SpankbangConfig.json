@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 60,
+  "version": 61,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -51,6 +51,12 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "61": [
+      "Fix: consistent duration (timecode overlay) extraction across Home/Search/Channels/Related/Favorites/History",
+      "Fix: history duration now prefers full video duration over watch-progress timestamps",
+      "Fix: view count now extracted in more places (search fallbacks, playlist/favorites/related where available)",
+      "Fix: uploader/channel name parsing avoids tag-like labels (e.g., 'Solo', 'HD', '148 videos') while keeping tags usable"
+    ],
     "60": [
       "CRITICAL FIX: Restored video duration display on thumbnails (regression from v59)",
       "Fixed duration extraction logging to help diagnose issues",
