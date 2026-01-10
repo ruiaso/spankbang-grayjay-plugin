@@ -3873,62 +3873,77 @@ function parseHistoryPage(html) {
             thumbnail = 'https:' + thumbnail;
         }
         
-        // Extract duration from <span class="l">...</span> inside the anchor or nearby
-        // NOTE: History page may have watch progress time in addition to duration
-        // We need to be more careful to get the actual video duration, not watch time
+        // Extract duration - FIXED to prioritize data attributes and actual video duration
+        // History pages can have BOTH watch progress AND video duration - we need the video duration!
         let duration = 0;
-        const durationPatterns = [
-            // SpankBang specific: exact class="l" match FIRST (most common pattern)
-            /<span\s+class=["']l["'][^>]*>([^<]+)<\/span>/i,
-            /<span\s+class=["']l["']>([^<]+)<\/span>/i,
-            // Data attribute with duration in seconds (very reliable)
-            /data-duration=["']([^"']+)["']/i,
-            /data-length=["']([^"']+)["']/i,
-            /data-time=["']([^"']+)["']/i,
-            // Try to find duration in specific context - NOT near "watched" or "progress"
-            // Look for duration in the thumbnail overlay (usually bottom-right corner)
-            /<div[^>]*class=["'][^"']*(?:duration|l|time)[^"']*["'][^>]*>(\d{1,2}:\d{2}:\d{2}|\d{1,3}:\d{2})<\/div>/i,
-            /<span[^>]*class=["'][^"']*(?:duration|time)[^"']*["'][^>]*>(\d{1,2}:\d{2}:\d{2}|\d{1,3}:\d{2})<\/span>/i,
-            // Alternative class names for duration
-            /<span[^>]*class=["'](?:l|length|duration|dur)["'][^>]*>([^<]+)<\/span>/i,
-            /<span[^>]*class=["'][^"']*length[^"']*["'][^>]*>([^<]+)<\/span>/i,
-            // Div with duration class
-            /<div[^>]*class=["'](?:l|length|dur)["'][^>]*>([^<]+)<\/div>/i,
-            // Generic span with time format (must be HH:MM:SS or MM:SS format)
-            /<span[^>]*>(\d{1,2}:\d{2}:\d{2})<\/span>/i,
-            /<span[^>]*>(\d{1,3}:\d{2})<\/span>/i,
-            // Direct time format match
-            />(\d{1,2}:\d{2}:\d{2})</,
-            />(\d{1,3}:\d{2})</,
-            // Pure seconds as number
-            /duration[^>]*>(\d+)</i
-        ];
         
-        // Try each pattern and validate the result
-        for (const durPattern of durationPatterns) {
-            const dMatch = innerContent.match(durPattern) || fullMatch.match(durPattern) || fullContext.match(durPattern);
-            if (dMatch && dMatch[1]) {
-                const durStr = dMatch[1].trim();
-                
-                // Skip if this looks like it's part of a "watched X minutes ago" or progress indicator
-                const contextAroundMatch = fullContext.substring(
-                    Math.max(0, fullContext.indexOf(durStr) - 50),
-                    Math.min(fullContext.length, fullContext.indexOf(durStr) + durStr.length + 50)
-                );
-                
-                // Skip if context contains watch progress indicators
-                if (contextAroundMatch && (
-                    /watched|progress|viewed|ago|minutes?\s+ago|hours?\s+ago/i.test(contextAroundMatch)
-                )) {
-                    continue;
+        // PRIORITY 1: Check data attributes (most reliable for actual video duration)
+        const dataAttrMatch = fullContext.match(/data-duration=["'](\d+)["']/i) || 
+                             fullContext.match(/data-length=["'](\d+)["']/i) ||
+                             fullContext.match(/data-time=["'](\d+)["']/i);
+        if (dataAttrMatch && dataAttrMatch[1]) {
+            duration = parseInt(dataAttrMatch[1]);
+            log("parseHistoryPage: Found duration from data attribute: " + duration + "s");
+        }
+        
+        // PRIORITY 2: Look for <span class="l"> which typically shows video duration
+        if (duration === 0) {
+            const spanLMatch = fullContext.match(/<span[^>]*class=["'][^"']*\bl\b[^"']*["'][^>]*>([^<]+)<\/span>/i);
+            if (spanLMatch && spanLMatch[1]) {
+                const durStr = spanLMatch[1].trim();
+                // Make sure it's a time format (not text)
+                if (/^\d{1,3}:\d{2}(?::\d{2})?$/.test(durStr)) {
+                    duration = parseDuration(durStr);
+                    log("parseHistoryPage: Found duration from <span class='l'>: " + duration + "s (" + durStr + ")");
                 }
-                
-                // Try to parse any valid duration format
-                const parsedDuration = parseDuration(durStr);
-                if (parsedDuration > 0) {
-                    duration = parsedDuration;
-                    log("parseHistoryPage: Found duration " + duration + "s from string '" + durStr + "'");
-                    break;
+            }
+        }
+        
+        // PRIORITY 3: Look for duration/length class that's NOT near "watched" or "progress" text
+        if (duration === 0) {
+            const durationSpans = fullContext.match(/<span[^>]*class=["'][^"']*(?:duration|length|dur)[^"']*["'][^>]*>([^<]+)<\/span>/gi);
+            if (durationSpans) {
+                for (const span of durationSpans) {
+                    const durMatch = span.match(/>([^<]+)</);
+                    if (durMatch && durMatch[1]) {
+                        const durStr = durMatch[1].trim();
+                        // Get context around this span to check if it's watch progress
+                        const spanIndex = fullContext.indexOf(span);
+                        const contextAround = fullContext.substring(
+                            Math.max(0, spanIndex - 100),
+                            Math.min(fullContext.length, spanIndex + span.length + 100)
+                        );
+                        // Skip if near watch progress indicators
+                        if (/watched|progress|viewed|ago/i.test(contextAround)) {
+                            continue;
+                        }
+                        // Validate it's a time format
+                        if (/^\d{1,3}:\d{2}(?::\d{2})?$/.test(durStr)) {
+                            duration = parseDuration(durStr);
+                            log("parseHistoryPage: Found duration from duration/length class: " + duration + "s (" + durStr + ")");
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // PRIORITY 4: Last resort - look for any time format, but validate it's reasonable
+        if (duration === 0) {
+            const timeMatches = fullContext.match(/>\s*(\d{1,3}:\d{2}(?::\d{2})?)\s*</g);
+            if (timeMatches) {
+                for (const timeMatch of timeMatches) {
+                    const durMatch = timeMatch.match(/(\d{1,3}:\d{2}(?::\d{2})?)/);
+                    if (durMatch && durMatch[1]) {
+                        const durStr = durMatch[1];
+                        const testDuration = parseDuration(durStr);
+                        // Videos are usually at least 30 seconds - helps filter out false positives
+                        if (testDuration >= 30) {
+                            duration = testDuration;
+                            log("parseHistoryPage: Found duration from time pattern: " + duration + "s (" + durStr + ")");
+                            break;
+                        }
+                    }
                 }
             }
         }
