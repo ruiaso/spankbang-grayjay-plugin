@@ -502,6 +502,11 @@ function extractUploaderFromVideoToolbar(html) {
 
     const uploaderPatterns = [
         {
+            // Priority: Check for title attribute with channel name
+            pattern: /<a[^>]*href="\/([a-z0-9]+)\/channel\/([^"\/]+)\/?\"[^>]*title="([^"]+)"[^>]*>/i,
+            type: 'channel_title'
+        },
+        {
             pattern: /<a[^>]*href="\/([a-z0-9]+)\/channel\/([^"\/]+)\/?\"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?<span[^>]*>([^<]+)<\/span>/i,
             type: 'channel'
         },
@@ -535,7 +540,17 @@ function extractUploaderFromVideoToolbar(html) {
         for (const { pattern, type } of uploaderPatterns) {
             const match = searchHtml.match(pattern);
             if (match) {
-                let avatarUrl = match[3] || "";
+                let avatarUrl = "";
+                
+                if (type === 'channel_title') {
+                    // Title attribute pattern: match[1]=shortId, match[2]=slug, match[3]=title
+                    uploader.name = match[3].trim();
+                    uploader.url = `spankbang://channel/${match[1]}:${match[2]}`;
+                    uploader.avatar = extractChannelAvatarNearLink(searchHtml, match[1], match[2]) || extractAvatarFromHtml(searchHtml);
+                    return uploader;
+                }
+                
+                avatarUrl = match[3] || "";
                 if (avatarUrl.startsWith('//')) {
                     avatarUrl = `https:${avatarUrl}`;
                 } else if (avatarUrl && !avatarUrl.startsWith('http')) {
@@ -543,7 +558,18 @@ function extractUploaderFromVideoToolbar(html) {
                 }
 
                 if (type === 'channel') {
-                    uploader.name = (match[4] || "").replace(/<[^>]*>/g, '').trim();
+                    let channelName = (match[4] || "").replace(/<[^>]*>/g, '').trim();
+                    const channelSlug = match[2];
+                    
+                    // Validate: reject if channelName is likely a tag
+                    const likelyTags = ['HD', '4K', 'VR', 'POV', 'NEW', 'HOT', 'TOP', 'PREMIUM', 'VERIFIED'];
+                    if (likelyTags.includes(channelName.toUpperCase()) || channelName.length < 2) {
+                        // Use channel slug as fallback
+                        channelName = channelSlug.replace(/[+\-_]/g, ' ').trim();
+                        channelName = channelName.charAt(0).toUpperCase() + channelName.slice(1);
+                    }
+                    
+                    uploader.name = channelName;
                     uploader.url = `spankbang://channel/${match[1]}:${match[2]}`;
                     uploader.avatar = avatarUrl;
                 } else if (type === 'pornstar') {
@@ -567,19 +593,58 @@ function extractUploaderFromVideoToolbar(html) {
     }
 
     const simpleChannelPatterns = [
-        /<a[^>]*href="\/([a-z0-9]+)\/channel\/([^"]+)"[^>]*>([^<]+)<\/a>/i,
+        // Priority 1: Title attribute (most reliable for channel name)
         /href="\/([a-z0-9]+)\/channel\/([^"]+)"[^>]*title="([^"]+)"/i,
+        /<a[^>]*title="([^"]+)"[^>]*href="\/([a-z0-9]+)\/channel\/([^"]+)"/i,
+        // Priority 2: Span inside link (actual displayed name)
         /<a[^>]*href="\/([a-z0-9]+)\/channel\/([^"]+)"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/i,
-        /class="[^"]*n[^"]*"[^>]*><a[^>]*href="\/([a-z0-9]+)\/channel\/([^"]+)"[^>]*>([^<]+)<\/a>/i
+        // Priority 3: Class with name indicator
+        /class="[^"]*n[^"]*"[^>]*><a[^>]*href="\/([a-z0-9]+)\/channel\/([^"]+)"[^>]*>([^<]+)<\/a>/i,
+        // Priority 4: Direct link text (may be tag, so validate)
+        /<a[^>]*href="\/([a-z0-9]+)\/channel\/([^"]+)"[^>]*>([^<]+)<\/a>/i
     ];
 
     for (const pattern of simpleChannelPatterns) {
         const match = html.match(pattern);
         if (match) {
-            uploader.name = match[3].replace(/<[^>]*>/g, '').trim();
-            uploader.url = `spankbang://channel/${match[1]}:${match[2]}`;
-            uploader.avatar = extractChannelAvatarNearLink(html, match[1], match[2]) || extractAvatarFromHtml(html);
-            return uploader;
+            let channelName = "";
+            let shortId = "";
+            let channelSlug = "";
+            
+            // Different patterns have different capture group orders
+            if (pattern.source.includes('title="([^"]+)"[^>]*href')) {
+                // Pattern: title="Name" href="/id/channel/slug"
+                channelName = match[1];
+                shortId = match[2];
+                channelSlug = match[3];
+            } else if (pattern.source.includes('href=".*title="')) {
+                // Pattern: href="/id/channel/slug" title="Name"
+                shortId = match[1];
+                channelSlug = match[2];
+                channelName = match[3];
+            } else {
+                // Pattern: href="/id/channel/slug">Name</a>
+                shortId = match[1];
+                channelSlug = match[2];
+                channelName = match[3];
+            }
+            
+            channelName = channelName.replace(/<[^>]*>/g, '').trim();
+            
+            // Validate: reject if channelName is likely a tag (short, all caps, common tags)
+            const likelyTags = ['HD', '4K', 'VR', 'POV', 'NEW', 'HOT', 'TOP'];
+            if (likelyTags.includes(channelName.toUpperCase()) || channelName.length < 2) {
+                // Use channel slug as fallback (capitalize first letter)
+                channelName = channelSlug.replace(/[+\-_]/g, ' ').trim();
+                channelName = channelName.charAt(0).toUpperCase() + channelName.slice(1);
+            }
+            
+            if (channelName && channelName.length > 0) {
+                uploader.name = channelName;
+                uploader.url = `spankbang://channel/${shortId}:${channelSlug}`;
+                uploader.avatar = extractChannelAvatarNearLink(html, shortId, channelSlug) || extractAvatarFromHtml(html);
+                return uploader;
+            }
         }
     }
 
