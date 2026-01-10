@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 58,
+  "version": 59,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -51,6 +51,24 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "59": [
+      "CRITICAL FIX: Video duration now shows seconds in home section (14:44 instead of 14:00)",
+      "CRITICAL FIX: Video duration now appears in search results (was completely missing)",
+      "CRITICAL FIX: Video duration now appears in subscriptions (was completely missing)",
+      "CRITICAL FIX: Video duration now appears in channel contents (was completely missing)",
+      "CRITICAL FIX: History now shows correct video durations (15:21 instead of wrong 1:23)",
+      "Enhanced duration extraction with 13 comprehensive patterns across all video listings",
+      "Added HH:MM:SS and MM:SS time format support with proper regex patterns",
+      "Added word boundary matching (\\bl\\b) to prevent false duration matches",
+      "Added specific duration/time class patterns for better HTML structure detection",
+      "Added data-length and data-time attribute patterns as fallbacks",
+      "Fixed history duration extraction to filter out 'watch progress' time",
+      "Added context validation to skip 'watched/progress/viewed' indicators in history",
+      "Updated parseSearchResults() primary and all 3 fallback patterns",
+      "Updated parseRelatedVideos() in 2 locations with enhanced patterns",
+      "Updated parseHistoryPage() in 3 locations with watch progress filtering",
+      "Duration extraction now prioritizes specific matches before generic patterns"
+    ],
     "58": [
       "CRITICAL FIX: Grayjay local history now displays thumbnails correctly (was showing black thumbnails)",
       "CRITICAL FIX: Grayjay local history now displays video durations correctly (was showing 0:00)",
