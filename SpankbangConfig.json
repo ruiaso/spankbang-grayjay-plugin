@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 64,
+  "version": 63,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -51,15 +51,6 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
-    "64": [
-      "CRITICAL FIX: Resolved 403 'Failed to get home content' error on Grayjay desktop",
-      "Enhanced HTTP headers with modern Chrome user agent and browser security headers to bypass anti-bot protection",
-      "Added fallback mechanism for home content - tries trending page first, then main page if blocked",
-      "Improved request headers with realistic browser fingerprint (Chrome 131, Windows 10)",
-      "Added Origin, Referer, and Sec-Fetch headers to make requests appear more legitimate",
-      "Enhanced error logging for better debugging of home content fetch issues",
-      "Fixed desktop compatibility issues with SpankBang's updated security measures"
-    ],
     "63": [
       "CRITICAL FIX: Made uploader name detection more permissive to show more channel/pornstar names instead of missing uploaders",
       "CRITICAL FIX: Enhanced video pattern detection to catch thumbnail timecode overlays on home, trending, and search pages",

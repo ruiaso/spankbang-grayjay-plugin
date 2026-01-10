@@ -71,19 +71,9 @@ const CONFIG = {
 };
 
 const API_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br, zstd",
-    "Cache-Control": "max-age=0",
-    "Sec-Ch-Ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-    "Sec-Ch-Ua-Mobile": "?0",
-    "Sec-Ch-Ua-Platform": '"Windows"',
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "none",
-    "Sec-Fetch-User": "?1",
-    "Upgrade-Insecure-Requests": "1"
+    "User-Agent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5"
 };
 
 const REGEX_PATTERNS = {
@@ -148,26 +138,13 @@ function getAuthHeaders() {
 
 function makeRequest(url, headers = null, context = 'request', useAuth = false) {
     try {
-        // Add small random delay to avoid looking like a bot (100-300ms)
-        const delay = Math.floor(Math.random() * 200) + 100;
-        if (typeof setTimeout !== 'undefined') {
-            // Note: This won't actually delay in Grayjay, but shows intent
-            log(`makeRequest: Adding ${delay}ms delay for ${context}`);
-        }
-        
         const requestHeaders = headers || getAuthHeaders();
-        log(`makeRequest: ${context} to ${url.substring(0, 60)}...`);
-        
         const response = http.GET(url, requestHeaders, useAuth);
         if (!response.isOk) {
-            log(`makeRequest: ${context} failed with status ${response.code}`);
             throw new ScriptException(`${context} failed with status ${response.code}`);
         }
-        
-        log(`makeRequest: ${context} succeeded (${response.body?.length || 0} bytes)`);
         return response.body;
     } catch (error) {
-        log(`makeRequest: ${context} error - ${error.message}`);
         throw new ScriptException(`Failed to fetch ${context}: ${error.message}`);
     }
 }
@@ -4787,20 +4764,9 @@ source.getHome = function(continuationToken) {
     try {
         const page = continuationToken ? parseInt(continuationToken) : 1;
         const url = `${BASE_URL}/trending_videos/${page}/`;
-        
-        // Enhanced headers to avoid 403 blocking
-        const homeHeaders = {
-            ...API_HEADERS,
-            "Referer": BASE_URL + "/",
-            "Origin": BASE_URL,
-            "Sec-Fetch-Site": "same-origin"
-        };
 
-        log(`getHome: Fetching page ${page} from ${url}`);
-        const html = makeRequest(url, homeHeaders, 'home content');
+        const html = makeRequest(url, API_HEADERS, 'home content');
         const videos = parseSearchResults(html);
-        
-        log(`getHome: Parsed ${videos.length} videos from trending page ${page}`);
         const platformVideos = videos.map(v => createPlatformVideo(v));
 
         const hasMore = videos.length >= 20;
@@ -4809,34 +4775,7 @@ source.getHome = function(continuationToken) {
         return new SpankBangHomeContentPager(platformVideos, hasMore, { continuationToken: nextToken });
 
     } catch (error) {
-        log(`getHome: Error fetching home content - ${error.message}`);
-        
-        // Fallback: try main page instead of trending
-        try {
-            log("getHome: Trying fallback to main page");
-            const fallbackHeaders = {
-                ...API_HEADERS,
-                "Referer": BASE_URL + "/",
-                "Origin": BASE_URL,
-                "Sec-Fetch-Site": "same-origin"
-            };
-            
-            const fallbackUrl = page > 1 ? `${BASE_URL}/${page}/` : BASE_URL + "/";
-            const fallbackHtml = makeRequest(fallbackUrl, fallbackHeaders, 'home content fallback');
-            const fallbackVideos = parseSearchResults(fallbackHtml);
-            
-            log(`getHome: Fallback found ${fallbackVideos.length} videos`);
-            const platformVideos = fallbackVideos.map(v => createPlatformVideo(v));
-            
-            const hasMore = fallbackVideos.length >= 20;
-            const nextToken = hasMore ? (page + 1).toString() : null;
-            
-            return new SpankBangHomeContentPager(platformVideos, hasMore, { continuationToken: nextToken });
-            
-        } catch (fallbackError) {
-            log(`getHome: Fallback also failed - ${fallbackError.message}`);
-            throw new ScriptException("Failed to get home content: " + error.message + " (fallback: " + fallbackError.message + ")");
-        }
+        throw new ScriptException("Failed to get home content: " + error.message);
     }
 };
 
@@ -6236,4 +6175,4 @@ class SpankBangHistoryPager extends ContentPager {
     }
 }
 
-log("SpankBang plugin loaded - v64");
+log("SpankBang plugin loaded - v63");
