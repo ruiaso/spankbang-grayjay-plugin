@@ -963,64 +963,41 @@ function parseVideoPage(html, url) {
     }
 
     // Extract duration with multiple fallback patterns
-    // Extract duration with multiple fallback patterns
     const durationMatch = html.match(/itemprop="duration"\s*content="PT(\d+)M(\d+)?S?"/);
     if (durationMatch) {
         videoData.duration = (parseInt(durationMatch[1]) || 0) * 60 + (parseInt(durationMatch[2]) || 0);
-        log("parseVideoPage: Found duration via itemprop: " + videoData.duration + "s");
     } else {
-        // Fallback duration patterns - comprehensive list
+        // Fallback duration patterns
         const fallbackDurationPatterns = [
-            // itemprop with different attribute order
-            /content="PT(\d+)M(\d+)?S?"\s*itemprop="duration"/i,
-            /<meta[^>]+itemprop="duration"[^>]+content="PT(\d+)M(\d+)?S?"/i,
-            /<meta[^>]+content="PT(\d+)M(\d+)?S?"[^>]+itemprop="duration"/i,
-            // JSON-LD duration formats
-            /"duration"\s*:\s*"PT(\d+)M(\d+)?S?"/i,
+            /"duration"\s*:\s*"?PT(\d+)M(\d+)?S?"?/i,
             /"duration"\s*:\s*(\d+)/i,  // Duration in seconds
-            // yt-dlp pattern: right_side div with span
-            /<div[^>]+class="[^"]*right_side[^"]*"[^>]*>\s*<span>([^<]+)<\/span>/i,
-            // Data attribute
             /data-duration="(\d+)"/i,
-            // Various span patterns for duration display
-            /<span[^>]*class="[^"]*(?:duration|length|l|time)[^"]*"[^>]*>(\d{1,3}:\d{2}(?::\d{2})?)<\/span>/i,
-            /<span[^>]*class="[^"]*\bl\b[^"]*"[^>]*>([^<]+)<\/span>/i,
-            // Generic time format anywhere
-            />(\d{1,2}:\d{2}(?::\d{2})?)</
+            /<span[^>]*class="[^"]*(?:duration|length|l)[^"]*"[^>]*>(\d{1,2}):(\d{2})(?::(\d{2}))?<\/span>/i
         ];
         
         for (const pattern of fallbackDurationPatterns) {
             const fallbackMatch = html.match(pattern);
-            if (fallbackMatch && fallbackMatch[1]) {
-                const matchStr = fallbackMatch[1].toString().trim();
-                
-                // Check if it's PT format (already has minutes/seconds groups)
-                if (fallbackMatch[2] !== undefined) {
+            if (fallbackMatch) {
+                if (fallbackMatch[1] && fallbackMatch[2] !== undefined) {
+                    // Format: MM:SS or HH:MM:SS
                     if (fallbackMatch[3]) {
                         // HH:MM:SS
                         videoData.duration = parseInt(fallbackMatch[1]) * 3600 + parseInt(fallbackMatch[2]) * 60 + parseInt(fallbackMatch[3]);
                     } else {
-                        // PT format: MM and SS groups
+                        // MM:SS or PT format
                         videoData.duration = parseInt(fallbackMatch[1]) * 60 + parseInt(fallbackMatch[2] || 0);
                     }
-                } else if (matchStr.includes(':')) {
-                    // Time format like "12:34" or "1:23:45"
-                    videoData.duration = parseDuration(matchStr);
-                } else if (/^\d+$/.test(matchStr)) {
+                } else if (fallbackMatch[1]) {
                     // Just seconds
-                    videoData.duration = parseInt(matchStr);
+                    videoData.duration = parseInt(fallbackMatch[1]);
                 }
                 
                 if (videoData.duration > 0) {
-                    log("parseVideoPage: Found duration via fallback: " + videoData.duration + "s from '" + matchStr + "'");
+                    log("Using fallback duration: " + videoData.duration + " seconds");
                     break;
                 }
             }
         }
-    }
-    
-    if (!videoData.duration || videoData.duration === 0) {
-        log("WARNING: parseVideoPage could not extract duration for video " + videoData.id);
     }
 
     const viewsMatch = html.match(/"interactionCount"\s*:\s*"?(\d+)"?/);
@@ -1036,58 +1013,32 @@ function parseVideoPage(html, url) {
     }
 
     // Extract thumbnail with multiple fallback patterns
-    // Primary patterns - try various attribute orderings since HTML can vary
-    const thumbnailPatterns = [
-        // itemprop patterns (various orderings)
-        /itemprop="thumbnailUrl"\s+content="([^"]+)"/i,
-        /content="([^"]+)"\s+itemprop="thumbnailUrl"/i,
-        /<meta[^>]+itemprop="thumbnailUrl"[^>]+content="([^"]+)"/i,
-        /<meta[^>]+content="([^"]+)"[^>]+itemprop="thumbnailUrl"/i,
-        // og:image patterns (most reliable - used by yt-dlp)
-        /<meta\s+property="og:image"\s+content="([^"]+)"/i,
-        /<meta\s+content="([^"]+)"\s+property="og:image"/i,
-        /<meta[^>]+property="og:image"[^>]+content="([^"]+)"/i,
-        /<meta[^>]+content="([^"]+)"[^>]+property="og:image"/i,
-        // twitter:image patterns
-        /<meta\s+name="twitter:image"\s+content="([^"]+)"/i,
-        /<meta\s+content="([^"]+)"\s+name="twitter:image"/i,
-        /<meta[^>]+name="twitter:image"[^>]+content="([^"]+)"/i,
-        /<meta[^>]+content="([^"]+)"[^>]+name="twitter:image"/i,
-        // JSON-LD thumbnailUrl
-        /"thumbnailUrl"\s*:\s*"([^"]+)"/i,
-        /"thumbnail"\s*:\s*"([^"]+)"/i,
-        // Video poster/preview attributes
-        /data-preview="([^"]+\.(?:jpg|jpeg|png|webp))"/i,
-        /poster="([^"]+\.(?:jpg|jpeg|png|webp))"/i,
-        /data-poster="([^"]+\.(?:jpg|jpeg|png|webp))"/i,
-        // Image in video player area
-        /<img[^>]+class="[^"]*(?:poster|thumb|preview)[^"]*"[^>]+src="([^"]+)"/i,
-        /<img[^>]+src="([^"]+)"[^>]+class="[^"]*(?:poster|thumb|preview)[^"]*"/i
-    ];
-    
-    for (const pattern of thumbnailPatterns) {
-        const thumbMatch = html.match(pattern);
-        if (thumbMatch && thumbMatch[1]) {
-            let thumbUrl = thumbMatch[1];
-            // Ensure it's a valid image URL
-            if (thumbUrl.includes('.jpg') || thumbUrl.includes('.jpeg') || 
-                thumbUrl.includes('.png') || thumbUrl.includes('.webp') ||
-                thumbUrl.includes('thumb') || thumbUrl.includes('image')) {
-                videoData.thumbnail = thumbUrl;
-                log("parseVideoPage: Found thumbnail via pattern: " + thumbUrl.substring(0, 80));
+    const thumbMatch = html.match(/itemprop="thumbnailUrl"\s*content="([^"]+)"/);
+    if (thumbMatch && thumbMatch[1]) {
+        videoData.thumbnail = thumbMatch[1];
+    } else {
+        // Fallback thumbnail patterns
+        const fallbackThumbPatterns = [
+            /<meta\s+property="og:image"\s+content="([^"]+)"/i,
+            /<meta\s+name="twitter:image"\s+content="([^"]+)"/i,
+            /"thumbnailUrl"\s*:\s*"([^"]+)"/i,
+            /data-preview="([^"]+\.jpg)"/i,
+            /poster="([^"]+\.jpg)"/i
+        ];
+        
+        for (const pattern of fallbackThumbPatterns) {
+            const fallbackMatch = html.match(pattern);
+            if (fallbackMatch && fallbackMatch[1]) {
+                videoData.thumbnail = fallbackMatch[1];
+                log("Using fallback thumbnail: " + videoData.thumbnail);
                 break;
             }
         }
-    }
-    
-    // If still no thumbnail, log warning but don't use broken CDN fallback
-    if (!videoData.thumbnail) {
-        log("WARNING: parseVideoPage could not extract thumbnail for video " + videoData.id);
-        // Try to extract any image URL that might be a thumbnail
-        const anyImageMatch = html.match(/https?:\/\/[^"'\s]+(?:thumb|preview|poster)[^"'\s]*\.(?:jpg|jpeg|png|webp)/i);
-        if (anyImageMatch) {
-            videoData.thumbnail = anyImageMatch[0];
-            log("parseVideoPage: Using last-resort image URL: " + videoData.thumbnail);
+        
+        // Ultimate fallback: CDN thumbnail
+        if (!videoData.thumbnail) {
+            videoData.thumbnail = `https://tbi.sb-cd.com/t/${videoData.id}/def/1/default.jpg`;
+            log("Using CDN fallback thumbnail for video " + videoData.id);
         }
     }
 
@@ -1423,19 +1374,14 @@ function createVideoSources(videoData) {
 }
 
 function createThumbnails(thumbnail, videoId) {
-    // Only use thumbnail if it's a valid URL
-    // NOTE: The CDN fallback URL (tbi.sb-cd.com) returns 404 errors, so we don't use it
+    // Always provide a fallback thumbnail using video ID if available
     if (!thumbnail || thumbnail.trim().length === 0) {
-        log("createThumbnails: No thumbnail available for video " + videoId);
-        return new Thumbnails([]);
+        if (videoId) {
+            thumbnail = `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
+        } else {
+            return new Thumbnails([]);
+        }
     }
-    
-    // Validate thumbnail URL looks reasonable
-    if (!thumbnail.startsWith('http')) {
-        log("createThumbnails: Invalid thumbnail URL (not http): " + thumbnail);
-        return new Thumbnails([]);
-    }
-    
     return new Thumbnails([
         new Thumbnail(thumbnail, 0)
     ]);
@@ -5148,20 +5094,10 @@ source.getContentDetails = function(url) {
         }
         
         const html = makeRequest(url, API_HEADERS, 'video details');
-        log("getContentDetails: Received HTML length: " + html.length);
-        
         const videoData = parseVideoPage(html, url);
-        
-        // Log critical metadata for debugging history issues
-        log("getContentDetails: Parsed video - id=" + videoData.id + 
-            ", duration=" + videoData.duration + "s" +
-            ", thumbnail=" + (videoData.thumbnail ? "present (" + videoData.thumbnail.substring(0, 50) + "...)" : "MISSING") +
-            ", title=" + (videoData.title ? videoData.title.substring(0, 30) : "MISSING"));
-        
         return createVideoDetails(videoData, url);
 
     } catch (error) {
-        log("getContentDetails ERROR: " + error.message);
         throw new ScriptException("Failed to get video details: " + error.message);
     }
 };
