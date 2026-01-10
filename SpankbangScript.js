@@ -4544,7 +4544,7 @@ source.searchSuggestions = function(query) {
 source.getSearchCapabilities = function() {
     return {
         types: [Type.Feed.Mixed],
-        sorts: ["Trending", "New", "Popular", "Featured"],
+        sorts: ["Trending", "Featured", "New", "Popular"],
         filters: [
             {
                 id: "quality",
@@ -4716,17 +4716,20 @@ source.search = function(query, type, order, filters, continuationToken) {
         const orderStr = String(order);
         log("Search order normalized to string: '" + orderStr + "'");
         
-        if (orderStr === "" || orderStr === "0" || orderStr === "null" || orderStr === "undefined" || order === null || order === undefined) {
-            log("Order: Relevance (default)");
+        // Note: SpankBang's default (no parameter) is Trending
+        // So we only add params for non-default sorts
+        if (orderStr === "" || orderStr === "0" || orderStr === "null" || orderStr === "undefined" || order === null || order === undefined || orderStr === "Trending" || orderStr === "trending" || order === Type.Order.Trending) {
+            // Default or Trending: no parameter needed (SpankBang default is trending)
+            log("Order: Trending (default) - no param added");
         } else if (orderStr === "1" || orderStr === "new" || order === "New" || order === Type.Order.Chronological) {
             log("Order: New - adding o=new");
             params.push("o=new");
-        } else if (orderStr === "2" || orderStr === "trending" || order === "Trending" || order === Type.Order.Trending) {
-            log("Order: Trending - adding o=trending");
-            params.push("o=trending");
-        } else if (orderStr === "3" || orderStr === "popular" || order === "Popular") {
+        } else if (orderStr === "2" || orderStr === "popular" || order === "Popular") {
             log("Order: Popular - adding o=popular");
             params.push("o=popular");
+        } else if (orderStr === "3" || orderStr === "featured" || order === "Featured") {
+            log("Order: Featured - adding o=featured");
+            params.push("o=featured");
         } else if (orderStr === "4" || orderStr === "views") {
             log("Order: Views - adding o=views");
             params.push("o=views");
