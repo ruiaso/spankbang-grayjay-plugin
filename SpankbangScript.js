@@ -1622,13 +1622,17 @@ function parseSearchResults(html) {
         }
         
         // Class-based patterns - specifically target duration overlay elements
+        // Made more lenient to catch any time format in these elements
         const durationClassPatterns = [
-            { pattern: /<span[^>]*class="[^"]*\bl\b[^"]*"[^>]*>(\d{1,2}:\d{2}:\d{2}|\d{1,3}:\d{2})<\/span>/gi, name: 'span.l' },
-            { pattern: /<span[^>]*class="[^"]*\bl\b[^"]*"[^>]*>([^<]+)<\/span>/gi, name: 'span.l-text' },
-            { pattern: /<div[^>]*class="[^"]*\bl\b[^"]*"[^>]*>(\d{1,2}:\d{2}:\d{2}|\d{1,3}:\d{2})<\/div>/gi, name: 'div.l' },
-            { pattern: /<div[^>]*class="[^"]*\bl\b[^"]*"[^>]*>([^<]+)<\/div>/gi, name: 'div.l-text' },
-            { pattern: /<span[^>]*class="[^"]*(?:duration|length|time)[^"]*"[^>]*>(\d{1,2}:\d{2}:\d{2}|\d{1,3}:\d{2})<\/span>/gi, name: 'span.duration' },
-            { pattern: /<div[^>]*class="[^"]*(?:duration|length|time)[^"]*"[^>]*>(\d{1,2}:\d{2}:\d{2}|\d{1,3}:\d{2})<\/div>/gi, name: 'div.duration' }
+            { pattern: /<span[^>]*class="[^"]*\bl\b[^"]*"[^>]*>([^<]+)<\/span>/gi, name: 'span.l' },
+            { pattern: /<div[^>]*class="[^"]*\bl\b[^"]*"[^>]*>([^<]+)<\/div>/gi, name: 'div.l' },
+            { pattern: /<span[^>]*class="[^"]*(?:duration|length|time)[^"]*"[^>]*>([^<]+)<\/span>/gi, name: 'span.duration' },
+            { pattern: /<div[^>]*class="[^"]*(?:duration|length|time)[^"]*"[^>]*>([^<]+)<\/div>/gi, name: 'div.duration' },
+            // Try without class restrictions - any span/div with time format
+            { pattern: /<span[^>]*>(\d{1,2}:\d{2}:\d{2})<\/span>/gi, name: 'span-hms' },
+            { pattern: /<span[^>]*>(\d{1,3}:\d{2})<\/span>/gi, name: 'span-ms' },
+            { pattern: /<div[^>]*>(\d{1,2}:\d{2}:\d{2})<\/div>/gi, name: 'div-hms' },
+            { pattern: /<div[^>]*>(\d{1,3}:\d{2})<\/div>/gi, name: 'div-ms' }
         ];
         
         for (const { pattern, name } of durationClassPatterns) {
@@ -1646,14 +1650,23 @@ function parseSearchResults(html) {
             }
         }
         
-        // Generic time pattern fallback
-        const genericTimeRegex = />(\d{1,2}:\d{2}:\d{2})<|>(\d{1,3}:\d{2})</g;
-        let genericMatch;
-        while ((genericMatch = genericTimeRegex.exec(block)) !== null) {
-            const durStr = (genericMatch[1] || genericMatch[2]).trim();
-            const parsed = parseDuration(durStr);
-            if (parsed > 0) {
-                allTimeMatches.push({ value: parsed, source: 'generic', original: durStr });
+        // Generic time pattern fallback - very broad to catch any time format
+        const genericTimePatterns = [
+            /[>"\s](\d{1,2}:\d{2}:\d{2})[<"\s]/g,
+            /[>"\s](\d{1,3}:\d{2})[<"\s]/g,
+            />(\d{1,2}:\d{2}:\d{2})</g,
+            />(\d{1,3}:\d{2})</g
+        ];
+        
+        for (const genericTimeRegex of genericTimePatterns) {
+            let genericMatch;
+            genericTimeRegex.lastIndex = 0;
+            while ((genericMatch = genericTimeRegex.exec(block)) !== null) {
+                const durStr = genericMatch[1].trim();
+                const parsed = parseDuration(durStr);
+                if (parsed > 0) {
+                    allTimeMatches.push({ value: parsed, source: 'generic', original: durStr });
+                }
             }
         }
         
@@ -1664,10 +1677,15 @@ function parseSearchResults(html) {
             if (dataMatches.length > 0) {
                 duration = dataMatches[0].value;
             } else {
-                // Pick the longest one
+                // Pick the longest one (actual duration is usually longer than progress)
                 allTimeMatches.sort((a, b) => b.value - a.value);
                 duration = allTimeMatches[0].value;
             }
+        }
+        
+        // Log if no duration found for debugging
+        if (duration === 0 && videoId) {
+            log("WARNING: No duration found for video " + videoId + " in parseSearchResults");
         }
 
         const viewsMatch = block.match(/<span[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/span>/i);
@@ -3951,89 +3969,137 @@ function parseHistoryPage(html) {
         }
         
         // Then collect from span/div with duration classes
+        // PRIORITY: innerContent (inside thumbnail) is most reliable for actual duration
         const durationPatterns = [
             // SpankBang uses class="l" for duration in thumbnail overlay
-            { pattern: /<span[^>]*class="[^"]*\bl\b[^"]*"[^>]*>(\d{1,2}:\d{2}:\d{2})<\/span>/gi, name: 'span.l-hms' },
-            { pattern: /<span[^>]*class="[^"]*\bl\b[^"]*"[^>]*>(\d{1,3}:\d{2})<\/span>/gi, name: 'span.l-ms' },
-            { pattern: /<div[^>]*class="[^"]*\bl\b[^"]*"[^>]*>(\d{1,2}:\d{2}:\d{2})<\/div>/gi, name: 'div.l-hms' },
-            { pattern: /<div[^>]*class="[^"]*\bl\b[^"]*"[^>]*>(\d{1,3}:\d{2})<\/div>/gi, name: 'div.l-ms' },
-            { pattern: /<span[^>]*class="[^"]*(?:duration|length|time)[^"]*"[^>]*>(\d{1,2}:\d{2}:\d{2})<\/span>/gi, name: 'span.duration-hms' },
-            { pattern: /<span[^>]*class="[^"]*(?:duration|length|time)[^"]*"[^>]*>(\d{1,3}:\d{2})<\/span>/gi, name: 'span.duration-ms' },
-            { pattern: /<div[^>]*class="[^"]*(?:duration|length|time)[^"]*"[^>]*>(\d{1,2}:\d{2}:\d{2})<\/div>/gi, name: 'div.duration-hms' },
-            { pattern: /<div[^>]*class="[^"]*(?:duration|length|time)[^"]*"[^>]*>(\d{1,3}:\d{2})<\/div>/gi, name: 'div.duration-ms' }
+            { pattern: /<span[^>]*class="[^"]*\bl\b[^"]*"[^>]*>([^<]+)<\/span>/gi, name: 'span.l' },
+            { pattern: /<div[^>]*class="[^"]*\bl\b[^"]*"[^>]*>([^<]+)<\/div>/gi, name: 'div.l' },
+            { pattern: /<span[^>]*class="[^"]*(?:duration|length|time)[^"]*"[^>]*>([^<]+)<\/span>/gi, name: 'span.duration' },
+            { pattern: /<div[^>]*class="[^"]*(?:duration|length|time)[^"]*"[^>]*>([^<]+)<\/div>/gi, name: 'div.duration' },
+            // More lenient - any span/div with time format
+            { pattern: /<span[^>]*>(\d{1,2}:\d{2}:\d{2})<\/span>/gi, name: 'span-hms' },
+            { pattern: /<span[^>]*>(\d{1,3}:\d{2})<\/span>/gi, name: 'span-ms' },
+            { pattern: /<div[^>]*>(\d{1,2}:\d{2}:\d{2})<\/div>/gi, name: 'div-hms' },
+            { pattern: /<div[^>]*>(\d{1,3}:\d{2})<\/div>/gi, name: 'div-ms' }
+        ];
+        
+        // STRATEGY: Prioritize by location - innerContent (thumbnail overlay) is most likely to have actual duration
+        const searchSources = [
+            { str: innerContent, priority: 3, name: 'thumbnail' },
+            { str: fullMatch, priority: 2, name: 'anchor' },
+            { str: fullContext, priority: 1, name: 'context' }
         ];
         
         for (const { pattern, name } of durationPatterns) {
-            let dMatch;
-            // Search in innerContent first (most specific), then fullMatch, then fullContext
-            const searchSources = [innerContent, fullMatch, fullContext];
-            for (const searchStr of searchSources) {
+            for (const { str: searchStr, priority, name: sourceName } of searchSources) {
+                let dMatch;
                 pattern.lastIndex = 0;
                 while ((dMatch = pattern.exec(searchStr)) !== null) {
                     const durStr = dMatch[1].trim();
                     const matchPos = dMatch.index;
                     
+                    // Only accept time-like values
+                    if (!durStr.includes(':') && !/^\d+$/.test(durStr)) continue;
+                    
                     // Get context around match to check for "watched/progress" indicators
-                    const contextStart = Math.max(0, matchPos - 60);
-                    const contextEnd = Math.min(searchStr.length, matchPos + durStr.length + 60);
+                    const contextStart = Math.max(0, matchPos - 80);
+                    const contextEnd = Math.min(searchStr.length, matchPos + durStr.length + 80);
                     const contextAroundMatch = searchStr.substring(contextStart, contextEnd).toLowerCase();
                     
-                    // Skip if this is clearly a watch progress indicator
-                    const isWatchProgress = /watched|progress|viewed|ago\s*$|minute.?\s+ago|hour.?\s+ago|time\s+watched/i.test(contextAroundMatch);
+                    // Enhanced watch progress detection
+                    const isWatchProgress = /watched|progress|viewed|you watched|viewing|resume|continue|play from|ago\s*$|minute.?\s+ago|hour.?\s+ago|time\s+watched|completed|stopped at/i.test(contextAroundMatch);
                     
                     const parsed = parseDuration(durStr);
                     if (parsed > 0) {
                         allTimeMatches.push({ 
                             value: parsed, 
-                            source: name, 
+                            source: name + '@' + sourceName, 
                             original: durStr,
-                            isWatchProgress: isWatchProgress
+                            isWatchProgress: isWatchProgress,
+                            priority: priority,
+                            location: sourceName
                         });
                     }
                 }
             }
         }
         
-        // Also look for generic time patterns as fallback
-        const genericTimeRegex = />(\d{1,2}:\d{2}:\d{2}|\d{1,3}:\d{2})</g;
-        let genericMatch;
-        const searchStr = innerContent + fullMatch;
-        while ((genericMatch = genericTimeRegex.exec(searchStr)) !== null) {
-            const durStr = genericMatch[1].trim();
-            const matchPos = genericMatch.index;
-            const contextStart = Math.max(0, matchPos - 60);
-            const contextEnd = Math.min(searchStr.length, matchPos + durStr.length + 60);
-            const contextAroundMatch = searchStr.substring(contextStart, contextEnd).toLowerCase();
-            const isWatchProgress = /watched|progress|viewed|ago\s*$|minute.?\s+ago|hour.?\s+ago|time\s+watched/i.test(contextAroundMatch);
-            
-            const parsed = parseDuration(durStr);
-            if (parsed > 0) {
-                allTimeMatches.push({ 
-                    value: parsed, 
-                    source: 'generic', 
-                    original: durStr,
-                    isWatchProgress: isWatchProgress
-                });
+        // Also look for generic time patterns with broader matching
+        const genericTimePatterns = [
+            /[>"\s](\d{1,2}:\d{2}:\d{2})[<"\s]/g,
+            /[>"\s](\d{1,3}:\d{2})[<"\s]/g,
+            />(\d{1,2}:\d{2}:\d{2})</g,
+            />(\d{1,3}:\d{2})</g
+        ];
+        
+        for (const genericTimeRegex of genericTimePatterns) {
+            for (const { str: searchStr, priority, name: sourceName } of searchSources.slice(0, 2)) { // Only check innerContent and fullMatch
+                let genericMatch;
+                genericTimeRegex.lastIndex = 0;
+                while ((genericMatch = genericTimeRegex.exec(searchStr)) !== null) {
+                    const durStr = genericMatch[1].trim();
+                    const matchPos = genericMatch.index;
+                    const contextStart = Math.max(0, matchPos - 80);
+                    const contextEnd = Math.min(searchStr.length, matchPos + genericMatch[0].length + 80);
+                    const contextAroundMatch = searchStr.substring(contextStart, contextEnd).toLowerCase();
+                    const isWatchProgress = /watched|progress|viewed|you watched|viewing|resume|continue|play from|ago\s*$|minute.?\s+ago|hour.?\s+ago|time\s+watched|completed|stopped at/i.test(contextAroundMatch);
+                    
+                    const parsed = parseDuration(durStr);
+                    if (parsed > 0) {
+                        allTimeMatches.push({ 
+                            value: parsed, 
+                            source: 'generic@' + sourceName, 
+                            original: durStr,
+                            isWatchProgress: isWatchProgress,
+                            priority: priority,
+                            location: sourceName
+                        });
+                    }
+                }
             }
         }
         
-        // Strategy: Prefer non-watch-progress durations, and among those, prefer the longest one
-        // (Video duration is typically longer than watch progress time)
+        // IMPROVED STRATEGY: 
+        // 1. Prefer data attributes (most reliable)
+        // 2. Then prefer durations from thumbnail/anchor (not context)
+        // 3. Filter out watch progress indicators
+        // 4. Pick the LONGEST duration (actual video is longer than watch progress)
         if (allTimeMatches.length > 0) {
-            // First, try to find non-watch-progress durations
-            const nonProgressDurations = allTimeMatches.filter(m => !m.isWatchProgress);
-            
-            if (nonProgressDurations.length > 0) {
-                // Sort by value descending and pick the longest
-                nonProgressDurations.sort((a, b) => b.value - a.value);
-                duration = nonProgressDurations[0].value;
-                log("parseHistoryPage: Found duration " + duration + "s from '" + nonProgressDurations[0].original + "' via " + nonProgressDurations[0].source);
-            } else {
-                // All matches look like watch progress - pick the longest anyway (might be the actual duration)
-                allTimeMatches.sort((a, b) => b.value - a.value);
-                duration = allTimeMatches[0].value;
-                log("parseHistoryPage: All durations look like progress, using longest: " + duration + "s from '" + allTimeMatches[0].original + "'");
+            // Log all found times for debugging
+            if (allTimeMatches.length > 1) {
+                const timesStr = allTimeMatches.map(m => m.original + '(' + m.source + ')').join(', ');
+                log("parseHistoryPage: Found " + allTimeMatches.length + " time values for " + videoId + ": " + timesStr);
             }
+            
+            // First priority: non-watch-progress durations from data attributes
+            const dataMatches = allTimeMatches.filter(m => m.source.includes('data-attribute') && !m.isWatchProgress);
+            if (dataMatches.length > 0) {
+                dataMatches.sort((a, b) => b.value - a.value);
+                duration = dataMatches[0].value;
+                log("parseHistoryPage: Using data-attribute duration: " + duration + "s from '" + dataMatches[0].original + "'");
+            } else {
+                // Second priority: non-watch-progress from thumbnail/anchor, prefer longest
+                const thumbnailMatches = allTimeMatches.filter(m => m.location === 'thumbnail' && !m.isWatchProgress);
+                const anchorMatches = allTimeMatches.filter(m => m.location === 'anchor' && !m.isWatchProgress);
+                const nonProgressDurations = [...thumbnailMatches, ...anchorMatches];
+                
+                if (nonProgressDurations.length > 0) {
+                    // Sort by priority first, then by value (longest)
+                    nonProgressDurations.sort((a, b) => {
+                        if (a.priority !== b.priority) return b.priority - a.priority;
+                        return b.value - a.value;
+                    });
+                    duration = nonProgressDurations[0].value;
+                    log("parseHistoryPage: Using longest non-progress duration: " + duration + "s from '" + nonProgressDurations[0].original + "' @ " + nonProgressDurations[0].location);
+                } else {
+                    // Fallback: Just pick the longest time value overall (likely the actual duration)
+                    allTimeMatches.sort((a, b) => b.value - a.value);
+                    duration = allTimeMatches[0].value;
+                    log("parseHistoryPage: All times look like progress, using longest: " + duration + "s from '" + allTimeMatches[0].original + "'");
+                }
+            }
+        } else {
+            log("WARNING: No duration found for video " + videoId + " in parseHistoryPage");
         }
         
         // Extract views if available - enhanced patterns
@@ -4153,12 +4219,15 @@ function parseHistoryPage(html) {
                     }
                 }
                 
-                // Duration class patterns
+                // Duration class patterns - made more lenient
                 const durationClassPatterns = [
-                    { pattern: /<span[^>]*class="[^"]*\bl\b[^"]*"[^>]*>(\d{1,2}:\d{2}:\d{2}|\d{1,3}:\d{2})<\/span>/gi, name: 'span.l' },
-                    { pattern: /<div[^>]*class="[^"]*\bl\b[^"]*"[^>]*>(\d{1,2}:\d{2}:\d{2}|\d{1,3}:\d{2})<\/div>/gi, name: 'div.l' },
-                    { pattern: /<span[^>]*class="[^"]*(?:duration|length|time)[^"]*"[^>]*>(\d{1,2}:\d{2}:\d{2}|\d{1,3}:\d{2})<\/span>/gi, name: 'span.duration' },
-                    { pattern: /<div[^>]*class="[^"]*(?:duration|length|time)[^"]*"[^>]*>(\d{1,2}:\d{2}:\d{2}|\d{1,3}:\d{2})<\/div>/gi, name: 'div.duration' }
+                    { pattern: /<span[^>]*class="[^"]*\bl\b[^"]*"[^>]*>([^<]+)<\/span>/gi, name: 'span.l' },
+                    { pattern: /<div[^>]*class="[^"]*\bl\b[^"]*"[^>]*>([^<]+)<\/div>/gi, name: 'div.l' },
+                    { pattern: /<span[^>]*class="[^"]*(?:duration|length|time)[^"]*"[^>]*>([^<]+)<\/span>/gi, name: 'span.duration' },
+                    { pattern: /<div[^>]*class="[^"]*(?:duration|length|time)[^"]*"[^>]*>([^<]+)<\/div>/gi, name: 'div.duration' },
+                    // More lenient patterns
+                    { pattern: /<span[^>]*>(\d{1,2}:\d{2}:\d{2})<\/span>/gi, name: 'span-hms' },
+                    { pattern: /<span[^>]*>(\d{1,3}:\d{2})<\/span>/gi, name: 'span-ms' }
                 ];
                 
                 for (const { pattern, name } of durationClassPatterns) {
@@ -4166,11 +4235,15 @@ function parseHistoryPage(html) {
                     pattern.lastIndex = 0;
                     while ((dMatch = pattern.exec(block)) !== null) {
                         const durStr = dMatch[1].trim();
+                        
+                        // Only accept time-like values
+                        if (!durStr.includes(':') && !/^\d+$/.test(durStr)) continue;
+                        
                         const matchPos = dMatch.index;
-                        const contextStart = Math.max(0, matchPos - 60);
-                        const contextEnd = Math.min(block.length, matchPos + dMatch[0].length + 60);
+                        const contextStart = Math.max(0, matchPos - 80);
+                        const contextEnd = Math.min(block.length, matchPos + dMatch[0].length + 80);
                         const contextAroundMatch = block.substring(contextStart, contextEnd).toLowerCase();
-                        const isWatchProgress = /watched|progress|viewed|ago\s*$|minute.?\s+ago|hour.?\s+ago|time\s+watched/i.test(contextAroundMatch);
+                        const isWatchProgress = /watched|progress|viewed|you watched|viewing|resume|continue|play from|ago\s*$|minute.?\s+ago|hour.?\s+ago|time\s+watched|completed|stopped at/i.test(contextAroundMatch);
                         
                         const parsed = parseDuration(durStr);
                         if (parsed > 0) {
@@ -4179,34 +4252,51 @@ function parseHistoryPage(html) {
                     }
                 }
                 
-                // Generic time pattern as fallback
-                const genericTimeRegex = />(\d{1,2}:\d{2}:\d{2}|\d{1,3}:\d{2})</g;
-                let genericMatch;
-                while ((genericMatch = genericTimeRegex.exec(block)) !== null) {
-                    const durStr = genericMatch[1].trim();
-                    const matchPos = genericMatch.index;
-                    const contextStart = Math.max(0, matchPos - 60);
-                    const contextEnd = Math.min(block.length, matchPos + genericMatch[0].length + 60);
-                    const contextAroundMatch = block.substring(contextStart, contextEnd).toLowerCase();
-                    const isWatchProgress = /watched|progress|viewed|ago\s*$|minute.?\s+ago|hour.?\s+ago|time\s+watched/i.test(contextAroundMatch);
-                    
-                    const parsed = parseDuration(durStr);
-                    if (parsed > 0) {
-                        allTimeMatches.push({ value: parsed, source: 'generic', original: durStr, isWatchProgress: isWatchProgress });
+                // Generic time pattern as fallback - broader patterns
+                const genericTimePatterns = [
+                    /[>"\s](\d{1,2}:\d{2}:\d{2})[<"\s]/g,
+                    /[>"\s](\d{1,3}:\d{2})[<"\s]/g,
+                    />(\d{1,2}:\d{2}:\d{2})</g,
+                    />(\d{1,3}:\d{2})</g
+                ];
+                
+                for (const genericTimeRegex of genericTimePatterns) {
+                    let genericMatch;
+                    genericTimeRegex.lastIndex = 0;
+                    while ((genericMatch = genericTimeRegex.exec(block)) !== null) {
+                        const durStr = genericMatch[1].trim();
+                        const matchPos = genericMatch.index;
+                        const contextStart = Math.max(0, matchPos - 80);
+                        const contextEnd = Math.min(block.length, matchPos + genericMatch[0].length + 80);
+                        const contextAroundMatch = block.substring(contextStart, contextEnd).toLowerCase();
+                        const isWatchProgress = /watched|progress|viewed|you watched|viewing|resume|continue|play from|ago\s*$|minute.?\s+ago|hour.?\s+ago|time\s+watched|completed|stopped at/i.test(contextAroundMatch);
+                        
+                        const parsed = parseDuration(durStr);
+                        if (parsed > 0) {
+                            allTimeMatches.push({ value: parsed, source: 'generic', original: durStr, isWatchProgress: isWatchProgress });
+                        }
                     }
                 }
                 
                 // Pick the longest non-watch-progress duration
                 if (allTimeMatches.length > 0) {
-                    const nonProgressDurations = allTimeMatches.filter(m => !m.isWatchProgress);
-                    if (nonProgressDurations.length > 0) {
-                        nonProgressDurations.sort((a, b) => b.value - a.value);
-                        duration = nonProgressDurations[0].value;
-                        log("parseHistoryPage (div pattern): Found duration " + duration + "s from '" + nonProgressDurations[0].original + "' via " + nonProgressDurations[0].source);
+                    // Prefer data attributes first
+                    const dataMatches = allTimeMatches.filter(m => m.source === 'data-attribute');
+                    if (dataMatches.length > 0) {
+                        dataMatches.sort((a, b) => b.value - a.value);
+                        duration = dataMatches[0].value;
+                        log("parseHistoryPage (div pattern): Using data-attribute duration: " + duration + "s");
                     } else {
-                        allTimeMatches.sort((a, b) => b.value - a.value);
-                        duration = allTimeMatches[0].value;
-                        log("parseHistoryPage (div pattern): Using longest duration: " + duration + "s from '" + allTimeMatches[0].original + "'");
+                        const nonProgressDurations = allTimeMatches.filter(m => !m.isWatchProgress);
+                        if (nonProgressDurations.length > 0) {
+                            nonProgressDurations.sort((a, b) => b.value - a.value);
+                            duration = nonProgressDurations[0].value;
+                            log("parseHistoryPage (div pattern): Found duration " + duration + "s from '" + nonProgressDurations[0].original + "' via " + nonProgressDurations[0].source);
+                        } else {
+                            allTimeMatches.sort((a, b) => b.value - a.value);
+                            duration = allTimeMatches[0].value;
+                            log("parseHistoryPage (div pattern): Using longest duration: " + duration + "s from '" + allTimeMatches[0].original + "'");
+                        }
                     }
                 }
                 
