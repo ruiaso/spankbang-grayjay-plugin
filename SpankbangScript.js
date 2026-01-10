@@ -4544,7 +4544,7 @@ source.searchSuggestions = function(query) {
 source.getSearchCapabilities = function() {
     return {
         types: [Type.Feed.Mixed],
-        sorts: ["Trending", "Featured", "New", "Popular"],
+        sorts: ["Trending", "New", "Popular", "Featured"],
         filters: [
             {
                 id: "quality",
