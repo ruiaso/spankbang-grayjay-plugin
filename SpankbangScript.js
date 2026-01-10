@@ -479,19 +479,53 @@ function extractViewCountFromContext(html) {
     if (!html || typeof html !== 'string') return 0;
 
     const patterns = [
+        // Data attributes - most reliable
         /data-views=["']([^"']+)["']/i,
         /data-viewcount=["']([^"']+)["']/i,
         /data-view-count=["']([^"']+)["']/i,
-        /<span[^>]*class=["'][^"']*(?:v|views)[^"']*["'][^>]*>([^<]+)<\/span>/i,
-        /"interactionCount"\s*:\s*"?(\d+)"?/i,
-        /(\d+(?:[,.]\d+)?[KMB]?)\s*views?/i
+        
+        // JSON-LD and meta data
+        /"interactionCount"\s*:\s*"?(\d+(?:[,.]\d+)?[KMB]?)"?/i,
+        /"viewCount"\s*:\s*"?(\d+(?:[,.]\d+)?[KMB]?)"?/i,
+        
+        // Span elements with view classes
+        /<span[^>]*class=["'][^"']*\bv\b[^"']*["'][^>]*>([^<]+)<\/span>/i,
+        /<span[^>]*class=["'][^"']*(?:views?|view-count)[^"']*["'][^>]*>([^<]+)<\/span>/i,
+        
+        // Generic view patterns with word boundaries
+        /\b(\d+(?:[,.]\d+)?[KMB]?)\s*views?\b/i,
+        /\bviews?\s*:?\s*(\d+(?:[,.]\d+)?[KMB]?)\b/i,
+        
+        // Common HTML structures
+        /<div[^>]*class=["'][^"']*(?:views?|view-count)[^"']*["'][^>]*>[\s\S]*?(\d+(?:[,.]\d+)?[KMB]?)/i,
+        /<li[^>]*class=["'][^"']*(?:views?|view-count)[^"']*["'][^>]*>[\s\S]*?(\d+(?:[,.]\d+)?[KMB]?)/i,
+        
+        // Fallback patterns
+        />(\d{1,3}(?:[,.]\d{3})*[KMB]?)\s*views?</i,
+        /(\d{1,3}(?:[,.]\d{3})*[KMB]?)\s*views?\s*$/mi
     ];
 
     for (const pattern of patterns) {
         const m = html.match(pattern);
         if (m && m[1]) {
-            const parsed = parseViewCount(m[1].trim());
-            if (parsed > 0) return parsed;
+            const viewStr = m[1].trim();
+            const parsed = parseViewCount(viewStr);
+            if (parsed > 0) {
+                return parsed;
+            }
+        }
+    }
+
+    // Try to find view counts in a more flexible way
+    const flexiblePattern = /(?:views?|watched|plays?)\s*:?\s*(\d+(?:[,.]\d+)?[KMB]?)|(\d+(?:[,.]\d+)?[KMB]?)\s*(?:views?|watched|plays?)/gi;
+    let flexMatch;
+    while ((flexMatch = flexiblePattern.exec(html)) !== null) {
+        const viewStr = flexMatch[1] || flexMatch[2];
+        if (viewStr) {
+            const parsed = parseViewCount(viewStr.trim());
+            if (parsed > 0) {
+                return parsed;
+            }
         }
     }
 
@@ -508,13 +542,33 @@ function isLikelyBadUploaderName(name, channelSlug = "") {
     if (/^\d+\s*views?$/i.test(trimmed)) return true;
     if (/^\d+$/.test(trimmed)) return true;
 
-    const likelyBad = ['HD', '4K', 'VR', 'POV', 'NEW', 'HOT', 'TOP', 'PREMIUM', 'VERIFIED'];
+    // Expanded list of common tags that are not uploader names
+    const likelyBad = [
+        'HD', '4K', 'VR', 'POV', 'NEW', 'HOT', 'TOP', 'PREMIUM', 'VERIFIED',
+        'AMATEUR', 'PROFESSIONAL', 'SOLO', 'COUPLE', 'GROUP', 'PUBLIC', 'PRIVATE',
+        'JAPANESE', 'ASIAN', 'EUROPEAN', 'AMERICAN', 'LATINA', 'EBONY', 'BLONDE', 'BRUNETTE',
+        'MILF', 'TEEN', 'MATURE', 'BBW', 'SKINNY', 'CURVY', 'PETITE', 'TALL',
+        'BIG TITS', 'SMALL TITS', 'BIG ASS', 'ANAL', 'ORAL', 'FACIAL', 'CREAMPIE',
+        'HOMEMADE', 'WEBCAM', 'CASTING', 'INTERVIEW', 'BEHIND SCENES', 'COMPILATION',
+        'FETISH', 'BDSM', 'ROLEPLAY', 'COSPLAY', 'UNIFORM', 'LINGERIE',
+        'OUTDOOR', 'INDOOR', 'BATHROOM', 'BEDROOM', 'KITCHEN', 'OFFICE',
+        'SLOW', 'FAST', 'ROUGH', 'GENTLE', 'ROMANTIC', 'HARDCORE', 'SOFTCORE'
+    ];
+    
     if (likelyBad.includes(trimmed.toUpperCase())) return true;
+
+    // Check for common category/tag patterns
+    if (/^(JAPANESE|ASIAN|LATINA|EBONY|AMATEUR|PROFESSIONAL|HOMEMADE|WEBCAM|CASTING)$/i.test(trimmed)) return true;
+    if (/^(BIG|SMALL|HUGE|TINY)\s+(TITS|BOOBS|ASS|COCK|DICK)$/i.test(trimmed)) return true;
+    if (/^(ANAL|ORAL|FACIAL|CREAMPIE|SQUIRT|ORGASM)$/i.test(trimmed)) return true;
+
+    // If it's a single word that's very generic or short, likely a tag
+    if (trimmed.length <= 3 && !/^[A-Z][a-z]+$/.test(trimmed)) return true;
 
     // If a short label doesn't resemble the channel slug at all, it is often a tag
     const slugNorm = (channelSlug || '').toString().toLowerCase().replace(/[^a-z0-9]/g, '');
     const nameNorm = trimmed.toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (slugNorm.length >= 5 && nameNorm.length <= 5 && !slugNorm.includes(nameNorm)) {
+    if (slugNorm.length >= 5 && nameNorm.length <= 7 && !slugNorm.includes(nameNorm)) {
         return true;
     }
 
@@ -623,17 +677,41 @@ function extractAvatarFromHtml(html) {
 
 function extractPornstarAvatarFromHtml(html, pornstarSlug) {
     const patterns = [
-        new RegExp(`href="[^"]*pornstar/${pornstarSlug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^"]*"[^>]*>[\\s\\S]*?<img[^>]*(?:data-src|src)="(https?://[^"]*pornstarimg[^"]+)"`, 'i'),
+        // Look for pornstar images in links or surrounding context
+        new RegExp(`href="[^"]*pornstar/${pornstarSlug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^"]*"[\\s\\S]*?<img[^>]*(?:data-src|src)="(https?://[^"]*pornstarimg[^"]+)"`, 'i'),
+        new RegExp(`<img[^>]*(?:data-src|src)="(https?://[^"]*pornstarimg[^"]+)"[\\s\\S]*?href="[^"]*pornstar/${pornstarSlug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`, 'i'),
+        // Standard pornstar image patterns
         /src="(https?:\/\/[^"]*pornstarimg\/f\/\d+-\d+\.jpg)"/i,
-        /data-src="(https?:\/\/[^"]*pornstarimg\/f\/\d+-\d+\.jpg)"/i
+        /data-src="(https?:\/\/[^"]*pornstarimg\/f\/\d+-\d+\.jpg)"/i,
+        /<img[^>]*(?:data-src|src)="(https?:\/\/spankbang\.com\/pornstarimg\/[^"]+)"/i,
+        // Alternative CDN patterns
+        /src="(https?:\/\/[^"]*spankbang[^"]*pornstarimg[^"]+)"/i,
+        /data-src="(https?:\/\/[^"]*spankbang[^"]*pornstarimg[^"]+)"/i,
+        // Lazy loading patterns
+        /data-original="(https?:\/\/[^"]*pornstarimg[^"]+)"/i,
+        /data-lazy="(https?:\/\/[^"]*pornstarimg[^"]+)"/i
     ];
 
     for (const pattern of patterns) {
         const match = html.match(pattern);
         if (match && match[1]) {
-            return match[1];
+            let avatarUrl = match[1];
+            // Ensure proper protocol
+            if (avatarUrl.startsWith('//')) {
+                avatarUrl = `https:${avatarUrl}`;
+            } else if (!avatarUrl.startsWith('http')) {
+                avatarUrl = `https://spankbang.com${avatarUrl}`;
+            }
+            return avatarUrl;
         }
     }
+    
+    // Generate fallback pornstar avatar URL if we have a slug
+    if (pornstarSlug) {
+        // Try to generate a pornstar image URL (this is speculative but follows common patterns)
+        return `${CONFIG.PORNSTAR_IMG_BASE}${pornstarSlug.toLowerCase().replace(/[^a-z0-9]/g, '')}-250.jpg`;
+    }
+    
     return "";
 }
 
@@ -845,23 +923,49 @@ function extractUploaderFromVideoToolbar(html) {
 
 function extractChannelAvatarNearLink(html, shortId, channelName) {
     const patterns = [
-        new RegExp(`<img[^>]*(?:data-src|src)="([^"]+)"[^>]*>[\\s\\S]{0,200}href="/${shortId}/channel/${channelName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`, 'i'),
-        new RegExp(`href="/${shortId}/channel/${channelName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[\\s\\S]{0,200}<img[^>]*(?:data-src|src)="([^"]+)"`, 'i'),
-        new RegExp(`class="[^"]*(?:thumb|avatar|pic)[^"]*"[^>]*>[\\s\\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[^>]*>[\\s\\S]*?href="/${shortId}/channel/${channelName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`, 'i')
+        // Look for images before channel links
+        new RegExp(`<img[^>]*(?:data-src|src)="([^"]+)"[^>]*>[\\s\\S]{0,300}href="/${shortId}/channel/${channelName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`, 'i'),
+        // Look for images after channel links
+        new RegExp(`href="/${shortId}/channel/${channelName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[\\s\\S]{0,300}<img[^>]*(?:data-src|src)="([^"]+)"`, 'i'),
+        // Look for images within channel link containers
+        new RegExp(`class="[^"]*(?:thumb|avatar|pic|channel)[^"]*"[^>]*>[\\s\\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[^>]*>[\\s\\S]*?href="/${shortId}/channel/${channelName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`, 'i'),
+        // Reverse order
+        new RegExp(`href="/${shortId}/channel/${channelName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[\\s\\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[^>]*>[\\s\\S]*?class="[^"]*(?:thumb|avatar|pic|channel)[^"]*"`, 'i'),
+        // Look for any image near channel context
+        new RegExp(`channel[\\s\\S]{0,200}<img[^>]*(?:data-src|src)="([^"]+)"`, 'i'),
+        new RegExp(`<img[^>]*(?:data-src|src)="([^"]+)"[\\s\\S]{0,200}channel`, 'i')
     ];
     
     for (const pattern of patterns) {
         const match = html.match(pattern);
         if (match && match[1]) {
             let avatar = match[1];
+            
+            // Skip obvious non-avatar images
+            if (avatar.includes('video') || avatar.includes('thumb') && !avatar.includes('avatar')) {
+                continue;
+            }
+            
+            // Ensure proper protocol and domain
             if (avatar.startsWith('//')) {
                 avatar = 'https:' + avatar;
             } else if (!avatar.startsWith('http')) {
                 avatar = 'https://spankbang.com' + avatar;
             }
-            return avatar;
+            
+            // Validate it looks like a reasonable avatar URL
+            if (avatar.includes('.jpg') || avatar.includes('.png') || avatar.includes('.webp') || 
+                avatar.includes('avatar') || avatar.includes('profile')) {
+                return avatar;
+            }
         }
     }
+    
+    // Generate a fallback channel avatar URL (speculative)
+    if (shortId && channelName) {
+        return `https://spankbang.com/avatar/channel/${shortId}/${channelName.toLowerCase().replace(/[^a-z0-9]/g, '')}.jpg`;
+    }
+    
     return "";
 }
 
@@ -924,9 +1028,12 @@ function extractUploaderFromSearchResult(block) {
             let avatar = match[3] || "";
             if (avatar.startsWith('//')) avatar = 'https:' + avatar;
             else if (avatar && !avatar.startsWith('http')) avatar = 'https://spankbang.com' + avatar;
-            if (name && name.length > 0 && name.length < 100) {
+            
+            const channelSlug = match[2];
+            // Validate this is actually a channel name, not a tag
+            if (name && name.length > 0 && name.length < 100 && !isLikelyBadUploaderName(name, channelSlug)) {
                 uploader.name = name;
-                uploader.url = `spankbang://channel/${match[1]}:${match[2]}`;
+                uploader.url = `spankbang://channel/${match[1]}:${channelSlug}`;
                 uploader.avatar = avatar;
                 return uploader;
             }
@@ -945,10 +1052,13 @@ function extractUploaderFromSearchResult(block) {
         const match = searchHtml.match(pattern) || block.match(pattern);
         if (match && match[3]) {
             const name = match[3].replace(/<[^>]*>/g, '').trim();
-            if (name && name.length > 0 && name.length < 100) {
+            const channelSlug = match[2];
+            
+            // Validate this is actually a channel name, not a tag
+            if (name && name.length > 0 && name.length < 100 && !isLikelyBadUploaderName(name, channelSlug)) {
                 uploader.name = name;
-                uploader.url = `spankbang://channel/${match[1]}:${match[2]}`;
-                uploader.avatar = extractChannelAvatarNearLink(block, match[1], match[2]) || extractAvatarFromHtml(block);
+                uploader.url = `spankbang://channel/${match[1]}:${channelSlug}`;
+                uploader.avatar = extractChannelAvatarNearLink(block, match[1], channelSlug) || extractAvatarFromHtml(block);
                 return uploader;
             }
         }
@@ -966,7 +1076,9 @@ function extractUploaderFromSearchResult(block) {
             let avatar = match[3] || "";
             if (avatar.startsWith('//')) avatar = 'https:' + avatar;
             else if (avatar && !avatar.startsWith('http')) avatar = 'https://spankbang.com' + avatar;
-            if (name && name.length > 0 && name.length < 100) {
+            
+            // Validate this is actually a name, not a tag
+            if (name && name.length > 0 && name.length < 100 && !isLikelyBadUploaderName(name)) {
                 uploader.name = name;
                 uploader.url = `spankbang://profile/pornstar:${match[2]}`;
                 uploader.avatar = avatar || extractPornstarAvatarFromHtml(block, match[2]);
@@ -987,7 +1099,8 @@ function extractUploaderFromSearchResult(block) {
         const match = searchHtml.match(pattern) || block.match(pattern);
         if (match && match[3]) {
             const name = match[3].replace(/<[^>]*>/g, '').trim();
-            if (name && name.length > 0 && name.length < 100) {
+            // Validate this is actually a name, not a tag
+            if (name && name.length > 0 && name.length < 100 && !isLikelyBadUploaderName(name)) {
                 uploader.name = name;
                 uploader.url = `spankbang://profile/pornstar:${match[2]}`;
                 uploader.avatar = extractPornstarAvatarFromHtml(block, match[2]);
@@ -1008,7 +1121,8 @@ function extractUploaderFromSearchResult(block) {
         const match = searchHtml.match(pattern) || block.match(pattern);
         if (match && match[2]) {
             const name = match[2].replace(/<[^>]*>/g, '').trim();
-            if (name && name.length > 0 && name.length < 100) {
+            // Validate this is actually a name, not a tag
+            if (name && name.length > 0 && name.length < 100 && !isLikelyBadUploaderName(name)) {
                 uploader.name = name;
                 uploader.url = `spankbang://profile/${match[1]}`;
                 uploader.avatar = extractAvatarFromHtml(block);
@@ -1021,7 +1135,8 @@ function extractUploaderFromSearchResult(block) {
     const svgMatch = block.match(svgPattern);
     if (svgMatch && svgMatch[1]) {
         const name = svgMatch[1].trim();
-        if (name && name.length > 0 && name.length < 100) {
+        // Validate this is actually a name, not a tag
+        if (name && name.length > 0 && name.length < 100 && !isLikelyBadUploaderName(name)) {
             const pornstarHrefMatch = block.match(/href="\/([a-z0-9]+)\/pornstar\/([^"]+)"/i);
             if (pornstarHrefMatch) {
                 uploader.name = name;
@@ -1040,7 +1155,8 @@ function extractUploaderFromSearchResult(block) {
     const userSpanMatch = block.match(/<span[^>]*class="[^"]*(?:user|uploader|author|name|n)[^"]*"[^>]*>([^<]+)<\/span>/i);
     if (userSpanMatch && userSpanMatch[1]) {
         const name = userSpanMatch[1].trim();
-        if (name && name.length > 0 && name.length < 100) {
+        // Validate this is actually a name, not a tag
+        if (name && name.length > 0 && name.length < 100 && !isLikelyBadUploaderName(name)) {
             uploader.name = name;
             
             const nearbyHrefPornstar = block.match(/href="\/([a-z0-9]+)\/pornstar\/([^"]+)"/i);
@@ -1090,15 +1206,16 @@ function extractUploaderFromSearchResult(block) {
                         const candidateName = nameMatch[1].replace(/<[^>]*>/g, '').trim();
                         if (candidateName.length > 1 && candidateName.length < 100 && 
                             !candidateName.match(/^\d+:\d+$/) && // Not a duration
-                            !candidateName.match(/^\d+[KMB]?\s*views?$/i)) { // Not view count
+                            !candidateName.match(/^\d+[KMB]?\s*views?$/i) && // Not view count
+                            !isLikelyBadUploaderName(candidateName, slug)) { // Not a common tag
                             uploader.name = candidateName;
                             break;
                         }
                     }
                 }
                 
-                if (!uploader.name) {
-                    uploader.name = slug.replace(/[+_-]/g, ' ');
+                if (!uploader.name && !isLikelyBadUploaderName(slug)) {
+                    uploader.name = slug.replace(/[+_-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
                 }
                 
                 if (type === 'channel') {
@@ -1106,13 +1223,19 @@ function extractUploaderFromSearchResult(block) {
                 } else {
                     uploader.url = `spankbang://profile/pornstar:${slug}`;
                 }
-                return uploader;
+                
+                // Only return if we have a valid name
+                if (uploader.name) {
+                    return uploader;
+                }
             } else {
                 // Profile link
                 const slug = anyLinkMatch[1];
-                uploader.name = slug.replace(/[+_-]/g, ' ');
-                uploader.url = `spankbang://profile/${slug}`;
-                return uploader;
+                if (!isLikelyBadUploaderName(slug)) {
+                    uploader.name = slug.replace(/[+_-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    uploader.url = `spankbang://profile/${slug}`;
+                    return uploader;
+                }
             }
         }
     }
@@ -1634,22 +1757,32 @@ function createVideoSources(videoData) {
 }
 
 function createThumbnails(thumbnail, videoId) {
-    // Only use thumbnail if it's a valid URL
-    // NOTE: The CDN fallback URL (tbi.sb-cd.com) returns 404 errors, so we don't use it
-    if (!thumbnail || thumbnail.trim().length === 0) {
-        log("createThumbnails: No thumbnail available for video " + videoId);
-        return new Thumbnails([]);
+    const thumbnails = [];
+    
+    // Primary thumbnail - use extracted thumbnail if available and valid
+    if (thumbnail && thumbnail.trim().length > 0 && thumbnail.startsWith('http')) {
+        thumbnails.push(new Thumbnail(thumbnail, 480));
+        log("createThumbnails: Using extracted thumbnail for video " + videoId + ": " + thumbnail.substring(0, 60) + "...");
+    } else {
+        log("createThumbnails: No valid thumbnail available for video " + videoId + ", thumbnail=" + (thumbnail || "null"));
     }
     
-    // Validate thumbnail URL looks reasonable
-    if (!thumbnail.startsWith('http')) {
-        log("createThumbnails: Invalid thumbnail URL (not http): " + thumbnail);
-        return new Thumbnails([]);
+    // Add CDN fallback options (these may work in some cases)
+    if (videoId && videoId.length >= 4) {
+        const cdnThumbs = [
+            `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`,
+            `https://tbi.sb-cd.com/t/${videoId}/small/1/default.jpg`,
+            `https://cdn.spankbang.com/t/${videoId}/def/1/default.jpg`
+        ];
+        
+        cdnThumbs.forEach(cdnThumb => {
+            if (!thumbnails.some(t => t.url === cdnThumb)) {
+                thumbnails.push(new Thumbnail(cdnThumb, 320));
+            }
+        });
     }
     
-    return new Thumbnails([
-        new Thumbnail(thumbnail, 0)
-    ]);
+    return new Thumbnails(thumbnails);
 }
 
 function createPlatformAuthor(uploader) {
