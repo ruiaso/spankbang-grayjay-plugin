@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 62,
+  "version": 63,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -51,6 +51,17 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "63": [
+      "CRITICAL FIX: Made uploader name detection more permissive to show more channel/pornstar names instead of missing uploaders",
+      "CRITICAL FIX: Enhanced video pattern detection to catch thumbnail timecode overlays on home, trending, and search pages",
+      "CRITICAL FIX: Improved video extraction across different SpankBang page layouts (trending, popular, featured, thumb-based)",
+      "Enhanced uploader extraction to be less aggressive in filtering, allowing more valid names through",
+      "Added comprehensive video patterns for better detection on all SpankBang page types",
+      "Improved systematic pattern testing with better logging for debugging video extraction issues",
+      "Fixed missing thumbnail duration overlays by enhancing video container pattern matching",
+      "Better fallback logic for uploader names when primary extraction methods don't find results",
+      "Enhanced context extraction for direct link parsing to improve metadata extraction"
+    ],
     "62": [
       "CRITICAL FIX: Channel/pornstar names now display correctly instead of showing generic tags like 'HD', 'Japanese', 'Amateur'",
       "CRITICAL FIX: Improved uploader detection to prioritize actual channel/pornstar names over category tags",
