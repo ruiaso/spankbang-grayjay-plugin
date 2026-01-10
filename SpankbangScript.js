@@ -1298,38 +1298,9 @@ function parseRelatedVideos(html) {
             }
 
             // Enhanced duration extraction patterns - FIXED for SpankBang
-            let duration = 0;
-            const durationPatterns = [
-                // SpankBang specific: exact class="l" match FIRST
-                /<span\s+class=["']l["'][^>]*>([^<]+)<\/span>/i,
-                /<span\s+class=["']l["']>([^<]+)<\/span>/i,
-                // Data attributes
-                /data-duration=["']([^"']+)["']/i,
-                /data-length=["']([^"']+)["']/i,
-                // Other class patterns
-                /<span[^>]*class=["'](?:l|length|duration|time)["'][^>]*>([^<]+)<\/span>/i,
-                /<span[^>]*class=["'][^"']*length[^"']*["'][^>]*>([^<]+)<\/span>/i,
-                /<span[^>]*class=["'][^"']*duration[^"']*["'][^>]*>([^<]+)<\/span>/i,
-                /<div[^>]*class=["']l["'][^>]*>([^<]+)<\/div>/i,
-                // Time format in spans
-                /<span[^>]*>(\d{1,2}:\d{2}:\d{2})<\/span>/i,
-                /<span[^>]*>(\d{1,3}:\d{2})<\/span>/i,
-                // Generic time patterns
-                />(\d{1,2}:\d{2}:\d{2})</,
-                />(\d{1,3}:\d{2})</,
-                /[>\s](\d{1,2}:\d{2}:\d{2})[<\s]/,
-                /[>\s](\d{1,3}:\d{2})[<\s]/
-            ];
-            for (const durPattern of durationPatterns) {
-                const durationMatch = block.match(durPattern);
-                if (durationMatch && durationMatch[1]) {
-                    const durStr = durationMatch[1].trim();
-                    if (durStr.includes(':') || /^\d+$/.test(durStr)) {
-                        duration = parseDuration(durStr);
-                        if (duration > 0) break;
-                    }
-                }
-            }
+            const durationMatch = block.match(/<span[^>]*class="[^"]*(?:l|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i);
+            const durationAltMatch = block.match(/>(\d+:\d+(?::\d+)?)</);
+            const duration = parseDuration(durationMatch ? durationMatch[1].trim() : (durationAltMatch ? durationAltMatch[1] : "0:00"));
 
             const viewsMatch = block.match(/([0-9,.]+[KMB]?)\s*(?:views?|plays?)/i);
             const views = viewsMatch ? parseViewCount(viewsMatch[1]) : 0;
@@ -1365,26 +1336,9 @@ function parseRelatedVideos(html) {
             const contextEnd = Math.min(html.length, match.index + match[0].length + 500);
             const context = html.substring(contextStart, contextEnd);
             
-            let duration = 0;
-            const durationPatterns = [
-                // SpankBang specific: exact class="l" match FIRST
-                /<span\s+class=["']l["'][^>]*>([^<]+)<\/span>/i,
-                /<span\s+class=["']l["']>([^<]+)<\/span>/i,
-                /data-duration=["']([^"']+)["']/i,
-                /<span[^>]*class=["'](?:l|length|duration|time)["'][^>]*>([^<]+)<\/span>/i,
-                />(\d{1,3}:\d{2}(?::\d{2})?)</,
-                /[>\s](\d{1,3}:\d{2}(?::\d{2})?)[<\s]/
-            ];
-            for (const durPattern of durationPatterns) {
-                const durationMatch = context.match(durPattern);
-                if (durationMatch && durationMatch[1]) {
-                    const durStr = durationMatch[1].trim();
-                    if (durStr.includes(':') || /^\d+$/.test(durStr)) {
-                        duration = parseDuration(durStr);
-                        if (duration > 0) break;
-                    }
-                }
-            }
+            const durationMatch = context.match(/<span[^>]*class="[^"]*(?:l|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i);
+            const durationAltMatch = context.match(/>(\d+:\d+(?::\d+)?)</);
+            const duration = parseDuration(durationMatch ? durationMatch[1].trim() : (durationAltMatch ? durationAltMatch[1] : "0:00"));
 
             relatedVideos.push({
                 id: videoId,
@@ -1614,55 +1568,9 @@ function parseSearchResults(html) {
         let title = titleMatch ? titleMatch[1] : "Unknown";
         title = cleanVideoTitle(title);
 
-        // Enhanced duration extraction with multiple patterns - FIXED for SpankBang structure
-        let finalDuration = "0:00";
-        const durationPatterns = [
-            // SpankBang specific: <span class="l">12:34</span> - exact class match FIRST
-            /<span\s+class=["']l["'][^>]*>([^<]+)<\/span>/i,
-            /<span\s+class=["']l["']>([^<]+)<\/span>/i,
-            // Data attributes (very reliable)
-            /data-duration=["']([^"']+)["']/i,
-            /data-length=["']([^"']+)["']/i,
-            /data-time=["']([^"']+)["']/i,
-            // Class containing 'l' as a word - improved patterns
-            /<span[^>]*class=["'][^"']*(?:^|\s)l(?:\s|["'])[^>]*>([^<]+)<\/span>/i,
-            /<span[^>]*class=["'](?:l|length|duration|time)["'][^>]*>([^<]+)<\/span>/i,
-            // Multiple classes where 'l' is one of them
-            /<span[^>]*class=["'][^"']*\sl\s[^"']*["'][^>]*>([^<]+)<\/span>/i,
-            /<span[^>]*class=["'][^"']*\sl["'][^>]*>([^<]+)<\/span>/i,
-            /<span[^>]*class=["']l\s[^"']*["'][^>]*>([^<]+)<\/span>/i,
-            // Other duration class names
-            /<span[^>]*class=["'][^"']*length[^"']*["'][^>]*>([^<]+)<\/span>/i,
-            /<span[^>]*class=["'][^"']*duration[^"']*["'][^>]*>([^<]+)<\/span>/i,
-            /<span[^>]*class=["'][^"']*time[^"']*["'][^>]*>([^<]+)<\/span>/i,
-            /<div[^>]*class=["']l["'][^>]*>([^<]+)<\/div>/i,
-            // Time format patterns - capture HH:MM:SS or MM:SS in span tags
-            /<span[^>]*>(\d{1,2}:\d{2}:\d{2})<\/span>/i,
-            /<span[^>]*>(\d{1,3}:\d{2})<\/span>/i,
-            // Generic time format anywhere in the block with tag boundaries
-            />(\d{1,2}:\d{2}:\d{2})</,
-            />(\d{1,3}:\d{2})</,
-            // Last resort: any time pattern in the block
-            /[>\s](\d{1,2}:\d{2}:\d{2})[<\s]/,
-            /[>\s](\d{1,3}:\d{2})[<\s]/
-        ];
-        
-        for (const pattern of durationPatterns) {
-            const match = block.match(pattern);
-            if (match && match[1]) {
-                const durStr = match[1].trim();
-                // Validate it looks like a duration (not a date or other number)
-                if (durStr.includes(':') || /^\d+$/.test(durStr)) {
-                    finalDuration = durStr;
-                    log("parseSearchResults: Found duration '" + finalDuration + "' for video " + videoId);
-                    break;
-                }
-            }
-        }
-        
-        if (finalDuration === "0:00") {
-            log("parseSearchResults: WARNING - No duration found for video " + videoId);
-        }
+        const durationMatch = block.match(/<span[^>]*class="[^"]*(?:l|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i);
+        const durationAltMatch = block.match(/>(\d+:\d+(?::\d+)?)</);
+        const finalDuration = durationMatch ? durationMatch[1].trim() : (durationAltMatch ? durationAltMatch[1] : "0:00");
 
         const viewsMatch = block.match(/<span[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/span>/i);
         const viewsAltMatch = block.match(/>([0-9,.]+[KMB]?)\s*<\/span>/i);
@@ -1723,39 +1631,10 @@ function parseSearchResults(html) {
             const thumbMatch = block.match(/(?:data-src|src)="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/);
             const thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
             
-            // Enhanced duration extraction with multiple patterns - FIXED for SpankBang
-            let duration = 0;
-            const durationPatterns = [
-                // SpankBang specific: exact class="l" match
-                /<span\s+class=["']l["'][^>]*>([^<]+)<\/span>/i,
-                /<span\s+class=["']l["']>([^<]+)<\/span>/i,
-                // Data attributes
-                /data-duration=["']([^"']+)["']/i,
-                /data-length=["']([^"']+)["']/i,
-                // Other class patterns
-                /<span[^>]*class=["'](?:l|length|duration|time)["'][^>]*>([^<]+)<\/span>/i,
-                /<span[^>]*class=["'][^"']*length[^"']*["'][^>]*>([^<]+)<\/span>/i,
-                /<span[^>]*class=["'][^"']*duration[^"']*["'][^>]*>([^<]+)<\/span>/i,
-                /<div[^>]*class=["']l["'][^>]*>([^<]+)<\/div>/i,
-                // Time format in spans
-                /<span[^>]*>(\d{1,2}:\d{2}:\d{2})<\/span>/i,
-                /<span[^>]*>(\d{1,3}:\d{2})<\/span>/i,
-                // Generic time patterns
-                />(\d{1,2}:\d{2}:\d{2})</,
-                />(\d{1,3}:\d{2})</,
-                /[>\s](\d{1,2}:\d{2}:\d{2})[<\s]/,
-                /[>\s](\d{1,3}:\d{2})[<\s]/
-            ];
-            for (const pattern of durationPatterns) {
-                const match = block.match(pattern);
-                if (match && match[1]) {
-                    const durStr = match[1].trim();
-                    if (durStr.includes(':') || /^\d+$/.test(durStr)) {
-                        duration = parseDuration(durStr);
-                        if (duration > 0) break;
-                    }
-                }
-            }
+            // Try to extract duration from fallback pattern
+            const durationMatch = block.match(/<span[^>]*class="[^"]*(?:l|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i);
+            const durationAltMatch = block.match(/>(\d+:\d+(?::\d+)?)</);
+            const duration = parseDuration(durationMatch ? durationMatch[1].trim() : (durationAltMatch ? durationAltMatch[1] : "0:00"));
             
             videos.push({
                 id: videoId,
@@ -1784,43 +1663,13 @@ function parseSearchResults(html) {
             const videoSlug = altMatch[2];
             let title = cleanVideoTitle(altMatch[3]);
             
-            // Enhanced duration extraction from surrounding context
-            const contextStart = Math.max(0, altMatch.index - 500);
-            const contextEnd = Math.min(html.length, altMatch.index + altMatch[0].length + 500);
+            // Try to extract duration from surrounding context
+            const contextStart = Math.max(0, altMatch.index - 300);
+            const contextEnd = Math.min(html.length, altMatch.index + altMatch[0].length + 300);
             const context = html.substring(contextStart, contextEnd);
-            
-            let duration = 0;
-            const durationPatterns = [
-                // SpankBang specific: exact class="l" match
-                /<span\s+class=["']l["'][^>]*>([^<]+)<\/span>/i,
-                /<span\s+class=["']l["']>([^<]+)<\/span>/i,
-                // Data attributes
-                /data-duration=["']([^"']+)["']/i,
-                /data-length=["']([^"']+)["']/i,
-                // Other class patterns
-                /<span[^>]*class=["'](?:l|length|duration|time)["'][^>]*>([^<]+)<\/span>/i,
-                /<span[^>]*class=["'][^"']*length[^"']*["'][^>]*>([^<]+)<\/span>/i,
-                /<span[^>]*class=["'][^"']*duration[^"']*["'][^>]*>([^<]+)<\/span>/i,
-                /<div[^>]*class=["']l["'][^>]*>([^<]+)<\/div>/i,
-                // Time format in spans
-                /<span[^>]*>(\d{1,2}:\d{2}:\d{2})<\/span>/i,
-                /<span[^>]*>(\d{1,3}:\d{2})<\/span>/i,
-                // Generic time patterns
-                />(\d{1,2}:\d{2}:\d{2})</,
-                />(\d{1,3}:\d{2})</,
-                /[>\s](\d{1,2}:\d{2}:\d{2})[<\s]/,
-                /[>\s](\d{1,3}:\d{2})[<\s]/
-            ];
-            for (const pattern of durationPatterns) {
-                const match = context.match(pattern);
-                if (match && match[1]) {
-                    const durStr = match[1].trim();
-                    if (durStr.includes(':') || /^\d+$/.test(durStr)) {
-                        duration = parseDuration(durStr);
-                        if (duration > 0) break;
-                    }
-                }
-            }
+            const durationMatch = context.match(/<span[^>]*class="[^"]*(?:l|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i);
+            const durationAltMatch = context.match(/>(\d+:\d+(?::\d+)?)</);
+            const duration = parseDuration(durationMatch ? durationMatch[1].trim() : (durationAltMatch ? durationAltMatch[1] : "0:00"));
 
             videos.push({
                 id: videoId,
@@ -1856,27 +1705,10 @@ function parseSearchResults(html) {
             const titleMatch = context.match(/title="([^"]+)"/);
             let title = titleMatch ? cleanVideoTitle(titleMatch[1]) : videoSlug.replace(/[_-]/g, ' ');
             
-            // Try to extract duration from nearby context - FIXED patterns
-            let duration = 0;
-            const durationPatterns = [
-                /<span\s+class=["']l["'][^>]*>([^<]+)<\/span>/i,
-                /<span\s+class=["']l["']>([^<]+)<\/span>/i,
-                /<span[^>]*class=["'](?:l|length|duration)["'][^>]*>([^<]+)<\/span>/i,
-                />(\d{1,2}:\d{2}:\d{2})</,
-                />(\d{1,3}:\d{2})</,
-                /[>\s](\d{1,2}:\d{2}:\d{2})[<\s]/,
-                /[>\s](\d{1,3}:\d{2})[<\s]/
-            ];
-            for (const pattern of durationPatterns) {
-                const match = context.match(pattern);
-                if (match && match[1]) {
-                    const durStr = match[1].trim();
-                    if (durStr.includes(':') || /^\d+$/.test(durStr)) {
-                        duration = parseDuration(durStr);
-                        if (duration > 0) break;
-                    }
-                }
-            }
+            // Try to extract duration from nearby context
+            const durationMatch = context.match(/<span[^>]*class="[^"]*(?:l|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i);
+            const durationAltMatch = context.match(/>(\d+:\d+(?::\d+)?)</);
+            const duration = parseDuration(durationMatch ? durationMatch[1].trim() : (durationAltMatch ? durationAltMatch[1] : "0:00"));
 
             videos.push({
                 id: videoId,
@@ -4606,30 +4438,13 @@ function parseFavoritesPage(html) {
             let title = match[3] ? cleanVideoTitle(match[3]) : videoSlug.replace(/[_+-]/g, ' ');
             
             // Try to extract duration from surrounding context - FIXED patterns
-            const contextStart = Math.max(0, match.index - 500);
-            const contextEnd = Math.min(html.length, match.index + match[0].length + 500);
+            const contextStart = Math.max(0, match.index - 300);
+            const contextEnd = Math.min(html.length, match.index + match[0].length + 300);
             const context = html.substring(contextStart, contextEnd);
             
-            let duration = 0;
-            const durationPatterns = [
-                // SpankBang specific: exact class="l" match FIRST
-                /<span\s+class=["']l["'][^>]*>([^<]+)<\/span>/i,
-                /<span\s+class=["']l["']>([^<]+)<\/span>/i,
-                /data-duration=["']([^"']+)["']/i,
-                /<span[^>]*class=["'](?:l|length|duration|time)["'][^>]*>([^<]+)<\/span>/i,
-                />(\d{1,3}:\d{2}(?::\d{2})?)</,
-                /[>\s](\d{1,3}:\d{2}(?::\d{2})?)[<\s]/
-            ];
-            for (const durPattern of durationPatterns) {
-                const durationMatch = context.match(durPattern);
-                if (durationMatch && durationMatch[1]) {
-                    const durStr = durationMatch[1].trim();
-                    if (durStr.includes(':') || /^\d+$/.test(durStr)) {
-                        duration = parseDuration(durStr);
-                        if (duration > 0) break;
-                    }
-                }
-            }
+            const durationMatch = context.match(/<span[^>]*class="[^"]*(?:l|length|duration)[^"]*"[^>]*>([^<]+)<\/span>/i);
+            const durationAltMatch = context.match(/>(\d+:\d+(?::\d+)?)</);
+            const duration = parseDuration(durationMatch ? durationMatch[1].trim() : (durationAltMatch ? durationAltMatch[1] : "0:00"));
             
             videos.push({
                 id: videoId,
