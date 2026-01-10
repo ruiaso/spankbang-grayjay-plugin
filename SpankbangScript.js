@@ -1697,7 +1697,7 @@ function parseSearchResults(html) {
             id: videoId,
             title: title,
             thumbnail: thumbnail,
-            duration: parseDuration(finalDuration),
+            duration: duration,
             views: parseViewCount(viewsStr),
             uploadDate: uploadDate,
             url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
