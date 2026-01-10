@@ -1654,9 +1654,14 @@ function parseSearchResults(html) {
                 // Validate it looks like a duration (not a date or other number)
                 if (durStr.includes(':') || /^\d+$/.test(durStr)) {
                     finalDuration = durStr;
+                    log("parseSearchResults: Found duration '" + finalDuration + "' for video " + videoId);
                     break;
                 }
             }
+        }
+        
+        if (finalDuration === "0:00") {
+            log("parseSearchResults: WARNING - No duration found for video " + videoId);
         }
 
         const viewsMatch = block.match(/<span[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/span>/i);
@@ -6093,4 +6098,4 @@ class SpankBangHistoryPager extends ContentPager {
     }
 }
 
-log("SpankBang plugin loaded - v46");
+log("SpankBang plugin loaded - v60");
