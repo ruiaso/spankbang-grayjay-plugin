@@ -14,7 +14,8 @@ var config = {};
 let localConfig = {
     pornstarShortIds: {},
     lastRequestTime: 0,
-    requestDelay: 150 // 150ms delay between requests to avoid rate limiting
+    requestDelay: 500, // Increased to 500ms delay between requests to avoid rate limiting
+    consecutiveErrors: 0
 };
 var state = {
     sessionCookie: "",
@@ -169,24 +170,31 @@ function makeRequest(url, headers = null, context = 'request', useAuth = false) 
         const requestHeaders = headers || getAuthHeaders();
         const response = http.GET(url, requestHeaders, useAuth);
         if (!response.isOk) {
-            // If we get 429, add exponential backoff
+            // If we get 429, add exponential backoff with multiple retries
             if (response.code === 429) {
-                log("Rate limit hit (429), waiting 2 seconds before retry...");
-                sleep(2000);
-                localConfig.requestDelay = Math.min(localConfig.requestDelay * 1.5, 1000); // Increase delay up to 1s
+                localConfig.consecutiveErrors++;
+                const waitTime = Math.min(3000 * localConfig.consecutiveErrors, 10000); // 3s, 6s, 9s, max 10s
+                log(`Rate limit hit (429), attempt ${localConfig.consecutiveErrors}, waiting ${waitTime}ms before retry...`);
+                sleep(waitTime);
+                localConfig.requestDelay = Math.min(localConfig.requestDelay * 2, 2000); // Increase delay up to 2s
                 
-                // Retry once
-                const retryResponse = http.GET(url, requestHeaders, useAuth);
-                if (retryResponse.isOk) {
-                    return retryResponse.body;
+                // Retry up to 3 times
+                if (localConfig.consecutiveErrors < 3) {
+                    const retryResponse = http.GET(url, requestHeaders, useAuth);
+                    if (retryResponse.isOk) {
+                        localConfig.consecutiveErrors = 0; // Reset on success
+                        localConfig.requestDelay = Math.max(500, localConfig.requestDelay * 0.8); // Slowly decrease
+                        return retryResponse.body;
+                    }
                 }
             }
             throw new ScriptException(`${context} failed with status ${response.code}`);
         }
         
-        // Reset delay on successful request
-        if (localConfig.requestDelay > 150) {
-            localConfig.requestDelay = Math.max(150, localConfig.requestDelay * 0.9);
+        // Reset on successful request
+        localConfig.consecutiveErrors = 0;
+        if (localConfig.requestDelay > 500) {
+            localConfig.requestDelay = Math.max(500, localConfig.requestDelay * 0.9);
         }
         
         return response.body;
@@ -205,18 +213,29 @@ function makeRequestNoThrow(url, headers = null, context = 'request', useAuth = 
         
         // If we get 429, add exponential backoff and retry
         if (!response.isOk && response.code === 429) {
-            log("Rate limit hit (429), waiting 2 seconds before retry...");
-            sleep(2000);
-            localConfig.requestDelay = Math.min(localConfig.requestDelay * 1.5, 1000); // Increase delay up to 1s
+            localConfig.consecutiveErrors++;
+            const waitTime = Math.min(3000 * localConfig.consecutiveErrors, 10000); // 3s, 6s, 9s, max 10s
+            log(`Rate limit hit (429), attempt ${localConfig.consecutiveErrors}, waiting ${waitTime}ms before retry...`);
+            sleep(waitTime);
+            localConfig.requestDelay = Math.min(localConfig.requestDelay * 2, 2000); // Increase delay up to 2s
             
-            // Retry once
-            const retryResponse = http.GET(url, requestHeaders, useAuth);
-            return { isOk: retryResponse.isOk, code: retryResponse.code, body: retryResponse.body };
+            // Retry up to 3 times
+            if (localConfig.consecutiveErrors < 3) {
+                const retryResponse = http.GET(url, requestHeaders, useAuth);
+                if (retryResponse.isOk) {
+                    localConfig.consecutiveErrors = 0;
+                    localConfig.requestDelay = Math.max(500, localConfig.requestDelay * 0.8);
+                }
+                return { isOk: retryResponse.isOk, code: retryResponse.code, body: retryResponse.body };
+            }
         }
         
-        // Reset delay on successful request
-        if (response.isOk && localConfig.requestDelay > 150) {
-            localConfig.requestDelay = Math.max(150, localConfig.requestDelay * 0.9);
+        // Reset on successful request
+        if (response.isOk) {
+            localConfig.consecutiveErrors = 0;
+            if (localConfig.requestDelay > 500) {
+                localConfig.requestDelay = Math.max(500, localConfig.requestDelay * 0.9);
+            }
         }
         
         return { isOk: response.isOk, code: response.code, body: response.body };
