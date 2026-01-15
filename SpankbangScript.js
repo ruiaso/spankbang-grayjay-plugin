@@ -90,6 +90,9 @@ const REGEX_PATTERNS = {
         channelS: /^https?:\/\/(?:www\.)?spankbang\.com\/s\/([^\/\?]+)/,
         pornstar: /^https?:\/\/(?:www\.)?spankbang\.com\/([a-z0-9]+)\/pornstar\/([^\/\?]+)/,
         pornstarSimple: /^https?:\/\/(?:www\.)?spankbang\.com\/pornstar\/([^\/\?]+)/,
+        // Category/Tag URLs
+        categoryS: /^https?:\/\/(?:www\.)?spankbang\.com\/s\/([^\/\?]+)\/?$/,
+        categoryTag: /^https?:\/\/(?:www\.)?spankbang\.com\/([a-z0-9\-_]+)\/?$/,
         // Playlist URL - note: must NOT have hyphen in first segment (that would be video-in-playlist)
         playlistExternal: /^https?:\/\/(?:www\.)?spankbang\.com\/([a-z0-9]+)\/playlist\/([^\/\?]+)/,
         playlistSimple: /^https?:\/\/(?:www\.)?spankbang\.com\/playlist\/([^\/\?]+)/,
@@ -335,6 +338,11 @@ function extractChannelId(url) {
         return { type: 'channel', id: channelInternalMatch[1] };
     }
 
+    const categoryInternalMatch = url.match(REGEX_PATTERNS.urls.categoryInternal);
+    if (categoryInternalMatch && categoryInternalMatch[1]) {
+        return { type: 'category', id: categoryInternalMatch[1] };
+    }
+
     const profileInternalMatch = url.match(REGEX_PATTERNS.urls.profileInternal);
     if (profileInternalMatch && profileInternalMatch[1]) {
         if (profileInternalMatch[1].startsWith('pornstar:')) {
@@ -381,6 +389,18 @@ function extractChannelId(url) {
     const relativeProfileMatch = url.match(REGEX_PATTERNS.urls.relativeProfile);
     if (relativeProfileMatch && relativeProfileMatch[1]) {
         return { type: 'profile', id: relativeProfileMatch[1] };
+    }
+
+    // Check for category/tag URLs (like /s/japanese/)
+    const categorySMatch = url.match(REGEX_PATTERNS.urls.categoryS);
+    if (categorySMatch && categorySMatch[1]) {
+        return { type: 'category', id: categorySMatch[1] };
+    }
+
+    const channelSMatch = url.match(REGEX_PATTERNS.urls.channelS);
+    if (channelSMatch && channelSMatch[1]) {
+        // This could be a category or tag - treat as category
+        return { type: 'category', id: channelSMatch[1] };
     }
 
     const profileMatch = url.match(REGEX_PATTERNS.extraction.profileName);
@@ -2086,6 +2106,11 @@ function parseSearchResults(html) {
             }
 
             const uploader = extractUploaderFromSearchResult(block);
+            
+            // LOG extracted data for debugging
+            if (videos.length < 3) {
+                log(`parseSearchResults: Video ${videoId}: title="${title}", duration=${durationSeconds}s, views=${views}, uploader="${uploader.name || 'NONE'}"`);
+            }
 
             videos.push({
                 id: videoId,
@@ -5359,6 +5384,8 @@ source.isChannelUrl = function(url) {
 
     if (REGEX_PATTERNS.urls.channelInternal.test(url)) return true;
     if (REGEX_PATTERNS.urls.profileInternal.test(url)) return true;
+    if (REGEX_PATTERNS.urls.categoryInternal.test(url)) return true;
+    if (REGEX_PATTERNS.urls.categoryS.test(url)) return true;
 
     if (REGEX_PATTERNS.urls.relativeProfile.test(url)) return true;
     if (REGEX_PATTERNS.urls.relativeChannel.test(url)) return true;
@@ -5369,6 +5396,7 @@ source.isChannelUrl = function(url) {
     if (REGEX_PATTERNS.urls.channelOfficial.test(url)) return true;
     if (REGEX_PATTERNS.urls.pornstar.test(url)) return true;
     if (REGEX_PATTERNS.urls.pornstarSimple.test(url)) return true;
+    if (REGEX_PATTERNS.urls.channelS.test(url)) return true;
 
     return false;
 };
@@ -5382,7 +5410,11 @@ source.getChannel = function(url) {
         
         const normalizedId = result.id.toLowerCase().replace(/\s+/g, '+');
 
-        if (result.type === 'pornstar') {
+        if (result.type === 'category') {
+            // Handle categories/tags (like /s/japanese/)
+            profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/s/${normalizedId}/`;
+            internalUrl = `spankbang://category/${normalizedId}`;
+        } else if (result.type === 'pornstar') {
             if (!resolvedShortId) {
                 resolvedShortId = resolvePornstarShortId(normalizedId);
                 log("Resolved pornstar shortId for " + normalizedId + ": " + resolvedShortId);
@@ -5564,7 +5596,14 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
         const page = continuationToken ? parseInt(continuationToken) : 1;
 
         let profileUrl;
-        if (result.type === 'pornstar') {
+        if (result.type === 'category') {
+            // Handle categories/tags
+            if (page > 1) {
+                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/s/${result.id}/${page}/`;
+            } else {
+                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/s/${result.id}/`;
+            }
+        } else if (result.type === 'pornstar') {
             let resolvedShortId = result.shortId;
             if (!resolvedShortId) {
                 resolvedShortId = resolvePornstarShortId(result.id);
