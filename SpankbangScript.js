@@ -159,8 +159,8 @@ function makeRequestNoThrow(url, headers = null, context = 'request', useAuth = 
     }
 }
 
-// Rate limit aware request with retry for 429 errors
-function makeRequestWithRetry(url, headers = null, context = 'request', useAuth = false, maxRetries = 2) {
+// Rate limit aware request with retry for 429 errors and exponential backoff
+function makeRequestWithRetry(url, headers = null, context = 'request', useAuth = false, maxRetries = 3) {
     let lastResponse = null;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
@@ -172,10 +172,15 @@ function makeRequestWithRetry(url, headers = null, context = 'request', useAuth 
                 return lastResponse;
             }
             
-            // If rate limited (429), wait briefly before retry
+            // If rate limited (429), use exponential backoff
             if (response.code === 429 && attempt < maxRetries) {
-                log(`Rate limited (429) on ${context}, attempt ${attempt + 1}/${maxRetries + 1}, waiting before retry...`);
-                // Note: JavaScript sleep isn't available, but the delay between retries helps
+                const delayMs = Math.min(1000 * Math.pow(2, attempt), 8000); // Max 8 seconds
+                log(`Rate limited (429) on ${context}, attempt ${attempt + 1}/${maxRetries + 1}, waiting ${delayMs}ms before retry...`);
+                // Simulate delay with a busy loop (not ideal but JavaScript doesn't have sleep)
+                const startTime = Date.now();
+                while (Date.now() - startTime < delayMs) {
+                    // Busy wait
+                }
                 continue;
             }
             
@@ -185,6 +190,11 @@ function makeRequestWithRetry(url, headers = null, context = 'request', useAuth 
             lastResponse = { isOk: false, code: 0, body: null, error: error.message };
             if (attempt < maxRetries) {
                 log(`Request failed for ${context}, attempt ${attempt + 1}/${maxRetries + 1}: ${error.message}`);
+                // Small delay before retry
+                const startTime = Date.now();
+                while (Date.now() - startTime < 500) {
+                    // Busy wait 500ms
+                }
                 continue;
             }
         }
@@ -386,11 +396,15 @@ function parseDuration(durationStr) {
         return parseInt(numericOnly[1]);
     }
 
+    // CRITICAL FIX: Match time formats correctly to preserve seconds
+    // Format: HH:MM:SS or MM:SS or H:MM:SS
     const colonMatch = durationStr.match(/(\d+):(\d+)(?::(\d+))?/);
     if (colonMatch) {
         if (colonMatch[3]) {
+            // Format: HH:MM:SS
             totalSeconds = parseInt(colonMatch[1]) * 3600 + parseInt(colonMatch[2]) * 60 + parseInt(colonMatch[3]);
         } else {
+            // Format: MM:SS
             totalSeconds = parseInt(colonMatch[1]) * 60 + parseInt(colonMatch[2]);
         }
         return totalSeconds;
@@ -455,7 +469,7 @@ function extractAllDurationCandidatesFromContext(html, opts = {}) {
         if (total > 0 && total <= options.maxSeconds) candidates.push(total);
     }
 
-    // 3) Common span patterns
+    // 3) Common span patterns - specifically for class="l" (SpankBang duration class)
     const spanPatterns = [
         /<span[^>]*class=["'][^"']*\bl\b[^"']*["'][^>]*>([^<]+)<\/span>/gi,
         /<span[^>]*class=["'][^"']*(?:duration|length|time)[^"']*["'][^>]*>([^<]+)<\/span>/gi
@@ -472,23 +486,28 @@ function extractAllDurationCandidatesFromContext(html, opts = {}) {
         }
     }
 
-    // 4) Any time-like tokens (MM:SS or HH:MM:SS)
-    const timeToken = /\b\d{1,3}:\d{2}(?::\d{2})?\b/g;
+    // 4) CRITICAL FIX: Match time-like tokens with seconds preserved
+    // Match formats: MM:SS or HH:MM:SS (ensure we capture seconds)
+    const timeToken = /\b(\d{1,3}):(\d{2})(?::(\d{2}))?\b/g;
     let match;
     while ((match = timeToken.exec(html)) !== null) {
-        const token = match[0];
-        if (!token) continue;
-
+        const fullMatch = match[0];
+        
         if (options.excludeProgress) {
             const start = Math.max(0, match.index - 40);
-            const end = Math.min(html.length, match.index + token.length + 40);
+            const end = Math.min(html.length, match.index + fullMatch.length + 40);
             const context = html.substring(start, end);
             if (/watched|progress|viewed|remaining|elapsed/i.test(context)) {
                 continue;
             }
         }
 
-        const parsed = parseDuration(token);
+        // Parse with seconds preserved
+        const hours = match[3] ? parseInt(match[1]) : 0;
+        const minutes = match[3] ? parseInt(match[2]) : parseInt(match[1]);
+        const seconds = match[3] ? parseInt(match[3]) : parseInt(match[2]);
+        
+        const parsed = hours * 3600 + minutes * 60 + seconds;
         if (parsed > 0 && parsed <= options.maxSeconds) candidates.push(parsed);
     }
 
@@ -540,13 +559,14 @@ function extractViewCountFromContext(html) {
         /<li[^>]*class="[^"]*\bv\b[^"]*"[^>]*>([^<]+)<\/li>/i,
         /<div[^>]*class="[^"]*\bv\b[^"]*"[^>]*>([^<]+)<\/div>/i,
         
-        // Generic view patterns with word boundaries
+        // ENHANCED: More flexible view patterns
         /\b(\d+(?:[,.]\d+)?[KMB]?)\s*views?\b/i,
         /\bviews?\s*:?\s*(\d+(?:[,.]\d+)?[KMB]?)\b/i,
         
-        // Common HTML structures
-        /<div[^>]*class=["'][^"']*(?:views?|view-count)[^"']*["'][^>]*>[\s\S]*?(\d+(?:[,.]\d+)?[KMB]?)/i,
-        /<li[^>]*class=["'][^"']*(?:views?|view-count)[^"']*["'][^>]*>[\s\S]*?(\d+(?:[,.]\d+)?[KMB]?)/i,
+        // Common HTML structures with views
+        /<div[^>]*class=["'][^"']*(?:views?|view-count|stats?)[^"']*["'][^>]*>[\s\S]*?(\d+(?:[,.]\d+)?[KMB]?)/i,
+        /<li[^>]*class=["'][^"']*(?:views?|view-count|stats?)[^"']*["'][^>]*>[\s\S]*?(\d+(?:[,.]\d+)?[KMB]?)/i,
+        /<span[^>]*class=["'][^"']*(?:stats?|meta|info)[^"']*["'][^>]*>[\s\S]*?(\d+(?:[,.]\d+)?[KMB]?)\s*views?/i,
         
         // Fallback patterns
         />(\d{1,3}(?:[,.]\d{3})*[KMB]?)\s*views?</i,
@@ -554,7 +574,11 @@ function extractViewCountFromContext(html) {
         
         // Plays/watched patterns
         /\b(\d+(?:[,.]\d+)?[KMB]?)\s*plays?\b/i,
-        /\b(\d+(?:[,.]\d+)?[KMB]?)\s*watched\b/i
+        /\b(\d+(?:[,.]\d+)?[KMB]?)\s*watched\b/i,
+        
+        // More aggressive patterns for stubborn cases
+        /<span[^>]*>(\d+(?:[,.]\d+)?[KMB]?)\s*(?:views?|plays?)<\/span>/i,
+        /(?:views?|plays?)\s*[:\-]?\s*(\d+(?:[,.]\d+)?[KMB]?)/i
     ];
 
     for (const pattern of patterns) {
@@ -1001,12 +1025,15 @@ function extractChannelAvatarNearLink(html, shortId, channelName) {
         // Look for images after channel links
         new RegExp(`href="/${shortId}/channel/${channelName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[\\s\\S]{0,300}<img[^>]*(?:data-src|src)="([^"]+)"`, 'i'),
         // Look for images within channel link containers
-        new RegExp(`class="[^"]*(?:thumb|avatar|pic|channel)[^"]*"[^>]*>[\\s\\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[^>]*>[\\s\\S]*?href="/${shortId}/channel/${channelName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`, 'i'),
+        new RegExp(`class="[^"]*(?:thumb|avatar|pic|channel|user)[^"]*"[^>]*>[\\s\\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[^>]*>[\\s\\S]*?href="/${shortId}/channel/${channelName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`, 'i'),
         // Reverse order
-        new RegExp(`href="/${shortId}/channel/${channelName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[\\s\\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[^>]*>[\\s\\S]*?class="[^"]*(?:thumb|avatar|pic|channel)[^"]*"`, 'i'),
+        new RegExp(`href="/${shortId}/channel/${channelName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[\\s\\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[^>]*>[\\s\\S]*?class="[^"]*(?:thumb|avatar|pic|channel|user)[^"]*"`, 'i'),
         // Look for any image near channel context
         new RegExp(`channel[\\s\\S]{0,200}<img[^>]*(?:data-src|src)="([^"]+)"`, 'i'),
-        new RegExp(`<img[^>]*(?:data-src|src)="([^"]+)"[\\s\\S]{0,200}channel`, 'i')
+        new RegExp(`<img[^>]*(?:data-src|src)="([^"]+)"[\\s\\S]{0,200}channel`, 'i'),
+        // Enhanced: Look for images in uploader/author divs or spans
+        new RegExp(`(?:uploader|author|user)[\\s\\S]{0,200}<img[^>]*(?:data-src|src)="([^"]+)"`, 'i'),
+        new RegExp(`<img[^>]*(?:data-src|src)="([^"]+)"[\\s\\S]{0,200}(?:uploader|author|user)`, 'i')
     ];
     
     for (const pattern of patterns) {
@@ -1014,8 +1041,12 @@ function extractChannelAvatarNearLink(html, shortId, channelName) {
         if (match && match[1]) {
             let avatar = match[1];
             
-            // Skip obvious non-avatar images
-            if (avatar.includes('video') || avatar.includes('thumb') && !avatar.includes('avatar')) {
+            // Skip obvious non-avatar images (video thumbnails)
+            if (avatar.includes('/t/') && avatar.includes('/def/')) {
+                // This is likely a video thumbnail, not a channel avatar
+                continue;
+            }
+            if (avatar.includes('thumb') && !avatar.includes('avatar') && !avatar.includes('profile')) {
                 continue;
             }
             
@@ -1028,7 +1059,7 @@ function extractChannelAvatarNearLink(html, shortId, channelName) {
             
             // Validate it looks like a reasonable avatar URL
             if (avatar.includes('.jpg') || avatar.includes('.png') || avatar.includes('.webp') || 
-                avatar.includes('avatar') || avatar.includes('profile')) {
+                avatar.includes('avatar') || avatar.includes('profile') || avatar.includes('pornstarimg')) {
                 return avatar;
             }
         }
@@ -5454,8 +5485,8 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
 
         log("Fetching channel contents from: " + profileUrl);
         
-        // Use makeRequestWithRetry to handle 429 rate limiting errors
-        let response = makeRequestWithRetry(profileUrl, API_HEADERS, 'channel contents', false, 2);
+        // Use makeRequestWithRetry with increased retries to handle 429 rate limiting errors
+        let response = makeRequestWithRetry(profileUrl, API_HEADERS, 'channel contents', false, 3);
         
         // If first request fails with 404 for profile type, try alternative URL formats
         if (!response.isOk && response.code === 404 && result.type === 'profile') {
