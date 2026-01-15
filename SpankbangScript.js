@@ -159,49 +159,6 @@ function makeRequestNoThrow(url, headers = null, context = 'request', useAuth = 
     }
 }
 
-// Rate limit aware request with retry for 429 errors and exponential backoff
-function makeRequestWithRetry(url, headers = null, context = 'request', useAuth = false, maxRetries = 3) {
-    let lastResponse = null;
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        try {
-            const requestHeaders = headers || getAuthHeaders();
-            const response = http.GET(url, requestHeaders, useAuth);
-            lastResponse = { isOk: response.isOk, code: response.code, body: response.body };
-            
-            if (response.isOk) {
-                return lastResponse;
-            }
-            
-            // If rate limited (429), use exponential backoff
-            if (response.code === 429 && attempt < maxRetries) {
-                const delayMs = Math.min(1000 * Math.pow(2, attempt), 8000); // Max 8 seconds
-                log(`Rate limited (429) on ${context}, attempt ${attempt + 1}/${maxRetries + 1}, waiting ${delayMs}ms before retry...`);
-                // Simulate delay with a busy loop (not ideal but JavaScript doesn't have sleep)
-                const startTime = Date.now();
-                while (Date.now() - startTime < delayMs) {
-                    // Busy wait
-                }
-                continue;
-            }
-            
-            // For other errors, return immediately
-            return lastResponse;
-        } catch (error) {
-            lastResponse = { isOk: false, code: 0, body: null, error: error.message };
-            if (attempt < maxRetries) {
-                log(`Request failed for ${context}, attempt ${attempt + 1}/${maxRetries + 1}: ${error.message}`);
-                // Small delay before retry
-                const startTime = Date.now();
-                while (Date.now() - startTime < 500) {
-                    // Busy wait 500ms
-                }
-                continue;
-            }
-        }
-    }
-    return lastResponse || { isOk: false, code: 0, body: null, error: 'Max retries exceeded' };
-}
-
 function resolvePornstarShortId(slug) {
     if (!localConfig.pornstarShortIds) {
         localConfig.pornstarShortIds = {};
@@ -396,15 +353,11 @@ function parseDuration(durationStr) {
         return parseInt(numericOnly[1]);
     }
 
-    // CRITICAL FIX: Match time formats correctly to preserve seconds
-    // Format: HH:MM:SS or MM:SS or H:MM:SS
     const colonMatch = durationStr.match(/(\d+):(\d+)(?::(\d+))?/);
     if (colonMatch) {
         if (colonMatch[3]) {
-            // Format: HH:MM:SS
             totalSeconds = parseInt(colonMatch[1]) * 3600 + parseInt(colonMatch[2]) * 60 + parseInt(colonMatch[3]);
         } else {
-            // Format: MM:SS
             totalSeconds = parseInt(colonMatch[1]) * 60 + parseInt(colonMatch[2]);
         }
         return totalSeconds;
@@ -469,7 +422,7 @@ function extractAllDurationCandidatesFromContext(html, opts = {}) {
         if (total > 0 && total <= options.maxSeconds) candidates.push(total);
     }
 
-    // 3) Common span patterns - specifically for class="l" (SpankBang duration class)
+    // 3) Common span patterns
     const spanPatterns = [
         /<span[^>]*class=["'][^"']*\bl\b[^"']*["'][^>]*>([^<]+)<\/span>/gi,
         /<span[^>]*class=["'][^"']*(?:duration|length|time)[^"']*["'][^>]*>([^<]+)<\/span>/gi
@@ -486,28 +439,23 @@ function extractAllDurationCandidatesFromContext(html, opts = {}) {
         }
     }
 
-    // 4) CRITICAL FIX: Match time-like tokens with seconds preserved
-    // Match formats: MM:SS or HH:MM:SS (ensure we capture seconds)
-    const timeToken = /\b(\d{1,3}):(\d{2})(?::(\d{2}))?\b/g;
+    // 4) Any time-like tokens (MM:SS or HH:MM:SS)
+    const timeToken = /\b\d{1,3}:\d{2}(?::\d{2})?\b/g;
     let match;
     while ((match = timeToken.exec(html)) !== null) {
-        const fullMatch = match[0];
-        
+        const token = match[0];
+        if (!token) continue;
+
         if (options.excludeProgress) {
             const start = Math.max(0, match.index - 40);
-            const end = Math.min(html.length, match.index + fullMatch.length + 40);
+            const end = Math.min(html.length, match.index + token.length + 40);
             const context = html.substring(start, end);
             if (/watched|progress|viewed|remaining|elapsed/i.test(context)) {
                 continue;
             }
         }
 
-        // Parse with seconds preserved
-        const hours = match[3] ? parseInt(match[1]) : 0;
-        const minutes = match[3] ? parseInt(match[2]) : parseInt(match[1]);
-        const seconds = match[3] ? parseInt(match[3]) : parseInt(match[2]);
-        
-        const parsed = hours * 3600 + minutes * 60 + seconds;
+        const parsed = parseDuration(token);
         if (parsed > 0 && parsed <= options.maxSeconds) candidates.push(parsed);
     }
 
@@ -519,21 +467,10 @@ function extractAllDurationCandidatesFromContext(html, opts = {}) {
 function extractBestDurationSecondsFromContext(html, opts = {}) {
     const preferLargest = opts.preferLargest !== false; // default true
     const candidates = extractAllDurationCandidatesFromContext(html, opts);
-    if (!candidates || candidates.length === 0) {
-        // Log when no duration found to help debug
-        if (html && html.length > 0) {
-            // Try to find any time-like pattern for debugging
-            const anyTime = html.match(/\d{1,3}:\d{2}/);
-            if (anyTime) {
-                log("extractBestDuration: Found time pattern '" + anyTime[0] + "' but it was filtered out");
-            }
-        }
-        return 0;
-    }
+    if (!candidates || candidates.length === 0) return 0;
 
     if (preferLargest) {
-        const result = candidates.reduce((a, b) => (b > a ? b : a), 0);
-        return result;
+        return candidates.reduce((a, b) => (b > a ? b : a), 0);
     }
     return candidates[0] || 0;
 }
@@ -551,34 +488,21 @@ function extractViewCountFromContext(html) {
         /"interactionCount"\s*:\s*"?(\d+(?:[,.]\d+)?[KMB]?)"?/i,
         /"viewCount"\s*:\s*"?(\d+(?:[,.]\d+)?[KMB]?)"?/i,
         
-        // Span elements with view classes - SpankBang uses class="v" for views
+        // Span elements with view classes
         /<span[^>]*class=["'][^"']*\bv\b[^"']*["'][^>]*>([^<]+)<\/span>/i,
         /<span[^>]*class=["'][^"']*(?:views?|view-count)[^"']*["'][^>]*>([^<]+)<\/span>/i,
         
-        // Additional SpankBang-specific patterns
-        /<li[^>]*class="[^"]*\bv\b[^"]*"[^>]*>([^<]+)<\/li>/i,
-        /<div[^>]*class="[^"]*\bv\b[^"]*"[^>]*>([^<]+)<\/div>/i,
-        
-        // ENHANCED: More flexible view patterns
+        // Generic view patterns with word boundaries
         /\b(\d+(?:[,.]\d+)?[KMB]?)\s*views?\b/i,
         /\bviews?\s*:?\s*(\d+(?:[,.]\d+)?[KMB]?)\b/i,
         
-        // Common HTML structures with views
-        /<div[^>]*class=["'][^"']*(?:views?|view-count|stats?)[^"']*["'][^>]*>[\s\S]*?(\d+(?:[,.]\d+)?[KMB]?)/i,
-        /<li[^>]*class=["'][^"']*(?:views?|view-count|stats?)[^"']*["'][^>]*>[\s\S]*?(\d+(?:[,.]\d+)?[KMB]?)/i,
-        /<span[^>]*class=["'][^"']*(?:stats?|meta|info)[^"']*["'][^>]*>[\s\S]*?(\d+(?:[,.]\d+)?[KMB]?)\s*views?/i,
+        // Common HTML structures
+        /<div[^>]*class=["'][^"']*(?:views?|view-count)[^"']*["'][^>]*>[\s\S]*?(\d+(?:[,.]\d+)?[KMB]?)/i,
+        /<li[^>]*class=["'][^"']*(?:views?|view-count)[^"']*["'][^>]*>[\s\S]*?(\d+(?:[,.]\d+)?[KMB]?)/i,
         
         // Fallback patterns
         />(\d{1,3}(?:[,.]\d{3})*[KMB]?)\s*views?</i,
-        /(\d{1,3}(?:[,.]\d{3})*[KMB]?)\s*views?\s*$/mi,
-        
-        // Plays/watched patterns
-        /\b(\d+(?:[,.]\d+)?[KMB]?)\s*plays?\b/i,
-        /\b(\d+(?:[,.]\d+)?[KMB]?)\s*watched\b/i,
-        
-        // More aggressive patterns for stubborn cases
-        /<span[^>]*>(\d+(?:[,.]\d+)?[KMB]?)\s*(?:views?|plays?)<\/span>/i,
-        /(?:views?|plays?)\s*[:\-]?\s*(\d+(?:[,.]\d+)?[KMB]?)/i
+        /(\d{1,3}(?:[,.]\d{3})*[KMB]?)\s*views?\s*$/mi
     ];
 
     for (const pattern of patterns) {
@@ -618,55 +542,22 @@ function isLikelyBadUploaderName(name, channelSlug = "") {
     if (/^\d+\s*views?$/i.test(trimmed)) return true;
     if (/^\d+$/.test(trimmed)) return true;
 
-    // Filter out common tags that get misidentified as uploaders
-    // These are category/tag names, not channel names
+    // Only filter out the most obvious tags - be more permissive
     const obviouslyBad = [
-        // Quality/format tags
-        'HD', '4K', 'VR', 'POV', 'NEW', 'HOT', 'TOP', 'PREMIUM', 'VERIFIED', 'HQ', 'FHD', 'UHD',
-        // Generic category terms that are NOT channel names
-        'AMATEUR', 'PROFESSIONAL', 'HOMEMADE', 'WEBCAM', 'CASTING',
-        // Common tags often misidentified as uploader names
-        'COMPILATION', 'COMPILATIONS', 'JAPANESE', 'ASIAN', 'KOREAN', 'CHINESE',
-        'ANAL', 'ORAL', 'SOLO', 'LESBIAN', 'GAY', 'THREESOME', 'FOURSOME',
-        'MILF', 'TEEN', 'MATURE', 'GRANNY', 'BBW', 'SKINNY', 'PETITE',
-        'BLONDE', 'BRUNETTE', 'REDHEAD', 'EBONY', 'LATINA', 'INTERRACIAL',
-        'BDSM', 'BONDAGE', 'FETISH', 'MASSAGE', 'CREAMPIE', 'CUMSHOT',
-        'BLOWJOB', 'DEEPTHROAT', 'HANDJOB', 'FOOTJOB', 'TITJOB',
-        'BIG TITS', 'BIG ASS', 'BIG COCK', 'SMALL TITS', 'NATURAL TITS',
-        'SQUIRT', 'ORGASM', 'FACIAL', 'SWALLOW', 'CUM', 'PUSSY', 'ASS',
-        'HARDCORE', 'SOFTCORE', 'ROMANTIC', 'ROUGH', 'GENTLE',
-        'PUBLIC', 'OUTDOOR', 'INDOOR', 'SHOWER', 'BATHROOM', 'KITCHEN', 'BEDROOM',
-        'OFFICE', 'SCHOOL', 'COLLEGE', 'UNIVERSITY', 'DOCTOR', 'NURSE',
-        'STEPMOM', 'STEPDAD', 'STEPSISTER', 'STEPBROTHER', 'FAMILY',
-        'CHEATING', 'WIFE', 'HUSBAND', 'GIRLFRIEND', 'BOYFRIEND',
-        'COSPLAY', 'HENTAI', 'CARTOON', 'ANIMATION', 'CGI',
-        'INDIAN', 'ARAB', 'RUSSIAN', 'GERMAN', 'FRENCH', 'BRITISH', 'AMERICAN',
-        'CZECH', 'HUNGARIAN', 'POLISH', 'ITALIAN', 'SPANISH', 'BRAZILIAN',
-        'VINTAGE', 'RETRO', 'CLASSIC', 'OLD', 'YOUNG',
-        'GANGBANG', 'ORGY', 'GROUP', 'PARTY', 'SWINGER',
-        'ASMR', 'JOI', 'CEI', 'SPH', 'FEMDOM', 'DOMINATION', 'SUBMISSION',
-        'CUCKOLD', 'HOTWIFE', 'VOYEUR', 'HIDDEN', 'SPY',
-        'PORNSTAR', 'MODEL', 'ACTRESS', 'PERFORMER',
-        'EXCLUSIVE', 'ORIGINAL', 'FIRST TIME', 'DEBUT'
+        'HD', '4K', 'VR', 'POV', 'NEW', 'HOT', 'TOP', 'PREMIUM', 'VERIFIED',
+        // Only filter out very generic category terms
+        'AMATEUR', 'PROFESSIONAL', 'HOMEMADE', 'WEBCAM', 'CASTING'
     ];
     
-    const upperTrimmed = trimmed.toUpperCase();
-    if (obviouslyBad.includes(upperTrimmed)) return true;
+    if (obviouslyBad.includes(trimmed.toUpperCase())) return true;
 
-    // Check for very obvious tag patterns
+    // Check for very obvious tag patterns only
     if (/^(HD|4K|VR|POV)$/i.test(trimmed)) return true;
     if (/^\d+[KMB]?\s*views?$/i.test(trimmed)) return true;
     if (/^\d+\s*videos?$/i.test(trimmed)) return true;
 
     // If it's a very short single word that looks generic, might be a tag
     if (trimmed.length <= 2) return true;
-    
-    // Check if the name is a single common word that's likely a tag
-    // But allow multi-word names that might be actual channel names
-    if (trimmed.split(/\s+/).length === 1 && obviouslyBad.some(tag => 
-        upperTrimmed === tag.replace(/\s+/g, ''))) {
-        return true;
-    }
 
     // Be less strict - allow most names through unless they're obviously bad
     return false;
@@ -1025,15 +916,12 @@ function extractChannelAvatarNearLink(html, shortId, channelName) {
         // Look for images after channel links
         new RegExp(`href="/${shortId}/channel/${channelName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[\\s\\S]{0,300}<img[^>]*(?:data-src|src)="([^"]+)"`, 'i'),
         // Look for images within channel link containers
-        new RegExp(`class="[^"]*(?:thumb|avatar|pic|channel|user)[^"]*"[^>]*>[\\s\\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[^>]*>[\\s\\S]*?href="/${shortId}/channel/${channelName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`, 'i'),
+        new RegExp(`class="[^"]*(?:thumb|avatar|pic|channel)[^"]*"[^>]*>[\\s\\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[^>]*>[\\s\\S]*?href="/${shortId}/channel/${channelName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`, 'i'),
         // Reverse order
-        new RegExp(`href="/${shortId}/channel/${channelName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[\\s\\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[^>]*>[\\s\\S]*?class="[^"]*(?:thumb|avatar|pic|channel|user)[^"]*"`, 'i'),
+        new RegExp(`href="/${shortId}/channel/${channelName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[\\s\\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[^>]*>[\\s\\S]*?class="[^"]*(?:thumb|avatar|pic|channel)[^"]*"`, 'i'),
         // Look for any image near channel context
         new RegExp(`channel[\\s\\S]{0,200}<img[^>]*(?:data-src|src)="([^"]+)"`, 'i'),
-        new RegExp(`<img[^>]*(?:data-src|src)="([^"]+)"[\\s\\S]{0,200}channel`, 'i'),
-        // Enhanced: Look for images in uploader/author divs or spans
-        new RegExp(`(?:uploader|author|user)[\\s\\S]{0,200}<img[^>]*(?:data-src|src)="([^"]+)"`, 'i'),
-        new RegExp(`<img[^>]*(?:data-src|src)="([^"]+)"[\\s\\S]{0,200}(?:uploader|author|user)`, 'i')
+        new RegExp(`<img[^>]*(?:data-src|src)="([^"]+)"[\\s\\S]{0,200}channel`, 'i')
     ];
     
     for (const pattern of patterns) {
@@ -1041,12 +929,8 @@ function extractChannelAvatarNearLink(html, shortId, channelName) {
         if (match && match[1]) {
             let avatar = match[1];
             
-            // Skip obvious non-avatar images (video thumbnails)
-            if (avatar.includes('/t/') && avatar.includes('/def/')) {
-                // This is likely a video thumbnail, not a channel avatar
-                continue;
-            }
-            if (avatar.includes('thumb') && !avatar.includes('avatar') && !avatar.includes('profile')) {
+            // Skip obvious non-avatar images
+            if (avatar.includes('video') || avatar.includes('thumb') && !avatar.includes('avatar')) {
                 continue;
             }
             
@@ -1059,7 +943,7 @@ function extractChannelAvatarNearLink(html, shortId, channelName) {
             
             // Validate it looks like a reasonable avatar URL
             if (avatar.includes('.jpg') || avatar.includes('.png') || avatar.includes('.webp') || 
-                avatar.includes('avatar') || avatar.includes('profile') || avatar.includes('pornstarimg')) {
+                avatar.includes('avatar') || avatar.includes('profile')) {
                 return avatar;
             }
         }
@@ -5091,23 +4975,17 @@ source.search = function(query, type, order, filters, continuationToken) {
         const orderStr = String(order);
         log("Search order normalized to string: '" + orderStr + "'");
         
-        // SpankBang URL parameter mapping:
-        // o=new - newest videos
-        // o=top - most viewed/trending 
-        // o=popular - popular/hot videos
-        // o=featured - featured videos
-        // Note: SpankBang's default (no param) returns POPULAR results, NOT trending!
-        // So we must explicitly add o=top for trending sort
+        // Note: SpankBang's default (no parameter) is Trending
+        // So we only add params for non-default sorts
         if (orderStr === "" || orderStr === "0" || orderStr === "null" || orderStr === "undefined" || order === null || order === undefined || orderStr === "Trending" || orderStr === "trending" || order === Type.Order.Trending) {
-            // Trending: explicitly add o=top (SpankBang default without param is popular, not trending!)
-            log("Order: Trending - adding o=top");
-            params.push("o=top");
+            // Default or Trending: no parameter needed (SpankBang default is trending)
+            log("Order: Trending (default) - no param added");
         } else if (orderStr === "1" || orderStr === "new" || order === "New" || order === Type.Order.Chronological) {
             log("Order: New - adding o=new");
             params.push("o=new");
         } else if (orderStr === "2" || orderStr === "popular" || order === "Popular") {
-            log("Order: Popular - no param needed (SpankBang default)");
-            // No parameter needed - SpankBang's default is popular
+            log("Order: Popular - adding o=popular");
+            params.push("o=popular");
         } else if (orderStr === "3" || orderStr === "featured" || order === "Featured") {
             log("Order: Featured - adding o=featured");
             params.push("o=featured");
@@ -5121,7 +4999,7 @@ source.search = function(query, type, order, filters, continuationToken) {
             log("Order: Length - adding o=length");
             params.push("o=length");
         } else {
-            log("Order: Unknown value '" + orderStr + "' - defaulting to popular (no param)");
+            log("Order: Unknown value '" + orderStr + "' - no order param added");
         }
 
         if (params.length > 0) {
@@ -5485,8 +5363,8 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
 
         log("Fetching channel contents from: " + profileUrl);
         
-        // Use makeRequestWithRetry with increased retries to handle 429 rate limiting errors
-        let response = makeRequestWithRetry(profileUrl, API_HEADERS, 'channel contents', false, 3);
+        // Use makeRequestNoThrow to get more details about failures
+        let response = makeRequestNoThrow(profileUrl, API_HEADERS, 'channel contents', false);
         
         // If first request fails with 404 for profile type, try alternative URL formats
         if (!response.isOk && response.code === 404 && result.type === 'profile') {

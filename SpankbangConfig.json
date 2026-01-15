@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 64,
+  "version": 63,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -51,22 +51,6 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
-    "64": [
-      "CRITICAL FIX: Enhanced 429 rate limiting handling with exponential backoff (fixes channel update failures)",
-      "CRITICAL FIX: Increased retry count from 2 to 3 for channel content requests",
-      "CRITICAL FIX: Added delay mechanism between retry attempts to respect rate limits",
-      "CRITICAL FIX: Duration seconds now preserved correctly (11:32 shows as 11:32, not 11:00) on all thumbnails",
-      "CRITICAL FIX: Enhanced duration extraction regex to properly capture seconds in MM:SS and HH:MM:SS formats",
-      "Enhanced view count extraction with 8+ additional patterns for better display across all pages",
-      "Enhanced avatar extraction for channels/pornstars with improved pattern matching and fallbacks",
-      "Improved avatar detection to skip video thumbnails and focus on actual profile pictures",
-      "Better channel avatar extraction in home/search with enhanced context-aware patterns",
-      "Enhanced duration parsing with explicit comments for MM:SS vs HH:MM:SS format handling",
-      "All metadata (duration, views, avatars, uploaders) now display correctly on home and search pages",
-      "History thumbnails and durations fully preserved with comprehensive extraction patterns",
-      "Rate limiting delays now use exponential backoff (500ms, 1s, 2s, up to 8s max)",
-      "Better error handling for 429 responses with detailed logging for debugging"
-    ],
     "63": [
       "CRITICAL FIX: Made uploader name detection more permissive to show more channel/pornstar names instead of missing uploaders",
       "CRITICAL FIX: Enhanced video pattern detection to catch thumbnail timecode overlays on home, trending, and search pages",
