@@ -3609,7 +3609,7 @@ function loadAuthCookies() {
 function validateSession() {
     try {
         const headers = getAuthHeaders();
-        const response = http.GET(`${BASE_URL}/users/profile`, headers, false);
+        const response = makeRequestNoThrow(`${BASE_URL}/users/profile`, headers, 'validate session', false);
         
         if (response.code === 200 && response.body) {
             const isValid = response.body.includes('/users/logout') || 
@@ -3661,7 +3661,7 @@ function validateSession() {
 function fetchUserInfo() {
     try {
         const headers = getAuthHeaders();
-        const response = http.GET(`${BASE_URL}/users/account`, headers, false);
+        const response = makeRequestNoThrow(`${BASE_URL}/users/account`, headers, 'fetch user info', false);
         
         if (response.code === 200 && response.body) {
             const emailMatch = response.body.match(/<input[^>]*name="email"[^>]*value="([^"]+)"/i) ||
@@ -4066,9 +4066,9 @@ source.getUserSubscriptions = function() {
     const subscriptions = [];
     
     try {
-        // Fetch user subscriptions using authenticated client
+        // Fetch user subscriptions using authenticated client with rate limiting
         log("Fetching user subscriptions from /users/subscriptions");
-        const userSubsHtml = http.GET(`${BASE_URL}/users/subscriptions`, API_HEADERS, true);
+        const userSubsHtml = makeRequestNoThrow(`${BASE_URL}/users/subscriptions`, API_HEADERS, 'user subscriptions', true);
         
         if (!userSubsHtml.isOk) {
             log("Failed to fetch user subscriptions, user may not be logged in");
@@ -4083,9 +4083,9 @@ source.getUserSubscriptions = function() {
     }
     
     try {
-        // Fetch pornstar subscriptions using authenticated client
+        // Fetch pornstar subscriptions using authenticated client with rate limiting
         log("Fetching pornstar subscriptions from /users/subscriptions_pornstars");
-        const pornstarSubsHtml = http.GET(`${BASE_URL}/users/subscriptions_pornstars`, API_HEADERS, true);
+        const pornstarSubsHtml = makeRequestNoThrow(`${BASE_URL}/users/subscriptions_pornstars`, API_HEADERS, 'pornstar subscriptions', true);
         
         if (!pornstarSubsHtml.isOk) {
             log("Failed to fetch pornstar subscriptions");
@@ -4114,7 +4114,7 @@ source.getWatchHistory = function() {
         const historyUrl = USER_URLS.HISTORY;
         log("Fetching watch history from: " + historyUrl);
         
-        const response = http.GET(historyUrl, API_HEADERS, true);
+        const response = makeRequestNoThrow(historyUrl, API_HEADERS, 'watch history', true);
         
         if (!response.isOk) {
             log("getWatchHistory: Failed with status " + response.code + ", user may not be logged in");
@@ -4685,7 +4685,7 @@ source.syncRemoteWatchHistory = function(continuationToken) {
         
         log("Syncing remote watch history from: " + historyUrl);
         
-        const response = http.GET(historyUrl, API_HEADERS, true);
+        const response = makeRequestNoThrow(historyUrl, API_HEADERS, 'remote watch history', true);
         
         if (!response.isOk) {
             log("syncRemoteWatchHistory: Failed with status " + response.code + ", user may not be logged in");
@@ -4729,9 +4729,9 @@ source.getUserPlaylists = function() {
     log("Getting user playlists");
 
     try {
-        // Fetch playlists using authenticated client
+        // Fetch playlists using authenticated client with rate limiting
         log("Fetching playlists from /users/playlists");
-        const playlistsResp = http.GET(`${BASE_URL}/users/playlists`, API_HEADERS, true);
+        const playlistsResp = makeRequestNoThrow(`${BASE_URL}/users/playlists`, API_HEADERS, 'user playlists', true);
         
         if (!playlistsResp.isOk) {
             log("Failed to fetch playlists, user may not be logged in");
@@ -4995,7 +4995,7 @@ source.getHome = function(continuationToken) {
 source.searchSuggestions = function(query) {
     try {
         const suggestUrl = `${BASE_URL}/api/search/suggestions?q=${encodeURIComponent(query)}`;
-        const response = http.GET(suggestUrl, API_HEADERS, false);
+        const response = makeRequestNoThrow(suggestUrl, API_HEADERS, 'search suggestions', false);
 
         if (response.isOk && response.body) {
             try {
@@ -5828,7 +5828,7 @@ source.searchPlaylists = function(query, type, order, filters, continuationToken
                 const playlistsUrl = userPlaylistsSubsMatch ? `${BASE_URL}/users/playlists_subs` : `${BASE_URL}/users/playlists`;
                 log("Fetching playlists from: " + playlistsUrl);
                 
-                const response = http.GET(playlistsUrl, getAuthHeaders(), true);
+                const response = makeRequestNoThrow(playlistsUrl, getAuthHeaders(), 'user playlists search', true);
                 
                 if (!response.isOk) {
                     log("Failed to fetch user playlists: HTTP " + response.code);
@@ -6110,11 +6110,11 @@ source.getPlaylist = function(url) {
 
         log("Fetching playlist from: " + playlistUrl);
         
-        // Use authenticated request for playlist pages (must use true for authenticated client with cookies)
+        // Use authenticated request for playlist pages with rate limiting
         const authHeaders = getAuthHeaders();
         log("Using authenticated request with headers and cookies");
         
-        const response = http.GET(playlistUrl, authHeaders, true);
+        const response = makeRequestNoThrow(playlistUrl, authHeaders, 'playlist', true);
         
         if (!response.isOk) {
             log(`Playlist fetch failed with status ${response.code}`);
@@ -6361,7 +6361,7 @@ class SpankBangPlaylistVideosPager extends ContentPager {
             
             log("SpankBangPlaylistVideosPager: Fetching next page: " + nextUrl);
             
-            const response = http.GET(nextUrl, getAuthHeaders(), true);
+            const response = makeRequestNoThrow(nextUrl, getAuthHeaders(), 'playlist videos page', true);
             
             if (!response.isOk || !response.body || response.body.length < 100) {
                 log("SpankBangPlaylistVideosPager: No more pages or fetch failed");
