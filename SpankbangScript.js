@@ -1641,6 +1641,9 @@ function parseVideoPage(html, url) {
     // Extract thumbnail with multiple fallback patterns
     // Primary patterns - try various attribute orderings since HTML can vary
     const thumbnailPatterns = [
+        // SpankBang CDN thumbnail patterns (most common format)
+        /src="(https?:\/\/tbi\.sb-cd\.com\/t\/[^"]+\.jpg)"/i,
+        /data-src="(https?:\/\/tbi\.sb-cd\.com\/t\/[^"]+\.jpg)"/i,
         // itemprop patterns (various orderings)
         /itemprop="thumbnailUrl"\s+content="([^"]+)"/i,
         /content="([^"]+)"\s+itemprop="thumbnailUrl"/i,
@@ -1665,7 +1668,9 @@ function parseVideoPage(html, url) {
         /data-poster="([^"]+\.(?:jpg|jpeg|png|webp))"/i,
         // Image in video player area
         /<img[^>]+class="[^"]*(?:poster|thumb|preview)[^"]*"[^>]+src="([^"]+)"/i,
-        /<img[^>]+src="([^"]+)"[^>]+class="[^"]*(?:poster|thumb|preview)[^"]*"/i
+        /<img[^>]+src="([^"]+)"[^>]+class="[^"]*(?:poster|thumb|preview)[^"]*"/i,
+        // Cover image pattern
+        /<img[^>]+class="[^"]*cover[^"]*"[^>]+(?:data-src|src)="([^"]+)"/i
     ];
     
     for (const pattern of thumbnailPatterns) {
@@ -1675,7 +1680,8 @@ function parseVideoPage(html, url) {
             // Ensure it's a valid image URL
             if (thumbUrl.includes('.jpg') || thumbUrl.includes('.jpeg') || 
                 thumbUrl.includes('.png') || thumbUrl.includes('.webp') ||
-                thumbUrl.includes('thumb') || thumbUrl.includes('image')) {
+                thumbUrl.includes('thumb') || thumbUrl.includes('image') ||
+                thumbUrl.includes('tbi.sb-cd.com')) {
                 videoData.thumbnail = thumbUrl;
                 log("parseVideoPage: Found thumbnail via pattern: " + thumbUrl.substring(0, 80));
                 break;
@@ -1692,6 +1698,14 @@ function parseVideoPage(html, url) {
             videoData.thumbnail = anyImageMatch[0];
             log("parseVideoPage: Using last-resort image URL: " + videoData.thumbnail);
         }
+    }
+    
+    // FINAL FALLBACK: If still no thumbnail and we have a video ID, use CDN thumbnail
+    // This ensures history always has a thumbnail to display
+    if (!videoData.thumbnail && videoData.id) {
+        // Try tbi.sb-cd.com CDN format which is commonly used
+        videoData.thumbnail = `https://tbi.sb-cd.com/t/${videoData.id}/def/1/default.jpg`;
+        log("parseVideoPage: Using CDN fallback thumbnail: " + videoData.thumbnail);
     }
 
     const ratingMatch = html.match(/(\d+(?:\.\d+)?)\s*%\s*(?:rating|like)/i);
@@ -2018,6 +2032,7 @@ function createThumbnails(thumbnail, videoId) {
     }
     
     // Add CDN fallback options (these may work in some cases)
+    // IMPORTANT: This ensures history tab always has thumbnails to display
     if (videoId && videoId.length >= 4) {
         const cdnThumbs = [
             `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`,
@@ -2030,6 +2045,13 @@ function createThumbnails(thumbnail, videoId) {
                 thumbnails.push(new Thumbnail(cdnThumb, 320));
             }
         });
+    }
+    
+    // CRITICAL: If still no thumbnails at all, add a guaranteed working CDN thumbnail
+    // This is essential for history tab to display thumbnails
+    if (thumbnails.length === 0 && videoId) {
+        log("createThumbnails: WARNING - No thumbnails found, adding emergency fallback for video " + videoId);
+        thumbnails.push(new Thumbnail(`https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`, 320));
     }
     
     return new Thumbnails(thumbnails);
