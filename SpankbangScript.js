@@ -1900,6 +1900,15 @@ function createPlatformAuthor(uploader) {
     const authorUrl = uploader.url || "";
     const authorName = uploader.name || "";
 
+    // Log what we're creating for debugging
+    if (authorName && authorUrl) {
+        log(`createPlatformAuthor: Creating author "${authorName}" with URL: ${authorUrl}`);
+    } else if (authorName) {
+        log(`createPlatformAuthor: Creating author "${authorName}" with NO URL (will not be clickable)`);
+    } else {
+        log(`createPlatformAuthor: Creating EMPTY author (no name, no URL)`);
+    }
+
     return new PlatformAuthorLink(
         new PlatformID(PLATFORM, authorName, plugin.config.id),
         authorName,
@@ -1908,12 +1917,42 @@ function createPlatformAuthor(uploader) {
     );
 }
 
+function hasValidUploader(uploader) {
+    // Check if we have a real uploader with both name AND a valid URL
+    // Empty URL or name means no real uploader - don't make it clickable
+    if (!uploader) return false;
+    if (!uploader.name || uploader.name.trim().length === 0) return false;
+    if (!uploader.url || uploader.url.trim().length === 0) return false;
+    // Make sure URL is a valid internal scheme (not empty)
+    if (!uploader.url.startsWith('spankbang://')) return false;
+    return true;
+}
+
 function createPlatformVideo(videoData) {
+    const uploader = videoData.uploader || {};
+    
+    // CRITICAL: Only create author if we have a valid uploader with a URL
+    // If no real uploader exists, create an empty author that won't be clickable
+    let author;
+    if (hasValidUploader(uploader)) {
+        author = createPlatformAuthor(uploader);
+        log(`createPlatformVideo: Video ${videoData.id} has VALID uploader: "${uploader.name}"`);
+    } else {
+        // Create author with empty URL - Grayjay should not make this clickable
+        author = new PlatformAuthorLink(
+            new PlatformID(PLATFORM, "", plugin.config.id),
+            "", // Empty name
+            "", // Empty URL - CRITICAL: this should prevent clicking
+            ""  // Empty avatar
+        );
+        log(`createPlatformVideo: Video ${videoData.id} has NO valid uploader - using empty author`);
+    }
+    
     return new PlatformVideo({
         id: new PlatformID(PLATFORM, videoData.id || "", plugin.config.id),
         name: videoData.title || "Untitled",
         thumbnails: createThumbnails(videoData.thumbnail, videoData.id),
-        author: createPlatformAuthor(videoData.uploader || {}),
+        author: author,
         datetime: videoData.uploadDate || 0,
         duration: videoData.duration || 0,
         viewCount: videoData.views || 0,
@@ -1978,7 +2017,9 @@ function createVideoDetails(videoData, url) {
         id: new PlatformID(PLATFORM, videoData.id || "", plugin.config.id),
         name: videoData.title || "Untitled",
         thumbnails: createThumbnails(videoData.thumbnail, videoData.id),
-        author: createPlatformAuthor(videoData.uploader || {}),
+        author: hasValidUploader(videoData.uploader) 
+            ? createPlatformAuthor(videoData.uploader) 
+            : new PlatformAuthorLink(new PlatformID(PLATFORM, "", plugin.config.id), "", "", ""),
         datetime: videoData.uploadDate || 0,
         duration: videoData.duration || 0,
         viewCount: videoData.views || 0,
@@ -2127,9 +2168,16 @@ function parseSearchResults(html) {
                 log(`parseSearchResults: Video ${videoId} has uploader: "${uploader.name}", url: "${uploader.url}"`);
             }
             
+            // VERBOSE DEBUG: Log first 2 blocks completely for debugging homepage HTML structure
+            if (videos.length < 2) {
+                log(`parseSearchResults: ===== DEBUG VIDEO ${videoId} BLOCK (first 800 chars) =====`);
+                log(block.substring(0, 800).replace(/[\n\r]+/g, ' '));
+                log(`parseSearchResults: ===== END DEBUG BLOCK =====`);
+            }
+            
             // LOG extracted data for debugging
-            if (videos.length < 3) {
-                log(`parseSearchResults: Video ${videoId}: title="${title}", duration=${durationSeconds}s, views=${views}, uploader="${uploader.name || 'NONE'}"`);
+            if (videos.length < 5) {
+                log(`parseSearchResults: Video ${videoId}: title="${title}", duration=${durationSeconds}s, views=${views}, uploader="${uploader.name || 'NONE'}", uploaderUrl="${uploader.url || 'NONE'}"`);
             }
 
             videos.push({
