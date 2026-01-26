@@ -6165,7 +6165,7 @@ source.isContentDetailsUrl = function(url) {
 
 source.getContentDetails = function(url) {
     try {
-        log("getContentDetails called with URL: " + url);
+        log("getContentDetails: Called with URL: " + url);
         
         // Handle video-in-playlist URLs - convert to standard video URL
         // e.g., https://spankbang.com/dqd68-svhe7y/playlist/asmr+joi -> https://spankbang.com/svhe7y/video/...
@@ -6175,7 +6175,7 @@ source.getContentDetails = function(url) {
             const playlistSlug = videoInPlaylistMatch[3];
             // We can use the playlist URL as-is since SpankBang serves video details
             // Or convert to standard video URL format
-            log("Detected video-in-playlist URL, video ID: " + videoId);
+            log("getContentDetails: Detected video-in-playlist URL, video ID: " + videoId);
         }
         
         const html = makeRequest(url, API_HEADERS, 'video details');
@@ -6183,13 +6183,31 @@ source.getContentDetails = function(url) {
         
         const videoData = parseVideoPage(html, url);
         
-        // Log critical metadata for debugging history issues
-        log("getContentDetails: Parsed video - id=" + videoData.id + 
-            ", duration=" + videoData.duration + "s" +
-            ", thumbnail=" + (videoData.thumbnail ? "present (" + videoData.thumbnail.substring(0, 50) + "...)" : "MISSING") +
-            ", title=" + (videoData.title ? videoData.title.substring(0, 30) : "MISSING"));
+        // CRITICAL: Log ALL fields for debugging history tracking
+        log("getContentDetails: Parsed video data:");
+        log("  - id: " + (videoData.id || "MISSING/EMPTY"));
+        log("  - title: " + (videoData.title ? videoData.title.substring(0, 50) : "MISSING"));
+        log("  - duration: " + (videoData.duration || 0) + "s");
+        log("  - thumbnail: " + (videoData.thumbnail ? "present" : "MISSING"));
+        log("  - url: " + (videoData.url || "MISSING"));
+        log("  - views: " + (videoData.views || 0));
+        log("  - uploadDate: " + (videoData.uploadDate || 0));
+        log("  - sources count: " + Object.keys(videoData.sources || {}).length);
         
-        return createVideoDetails(videoData, url);
+        // Validate critical fields for history tracking
+        if (!videoData.id || videoData.id.trim().length === 0) {
+            log("getContentDetails: CRITICAL ERROR - Video ID is empty! History tracking WILL fail");
+        }
+        if (!videoData.thumbnail || videoData.thumbnail.trim().length === 0) {
+            log("getContentDetails: WARNING - Thumbnail is missing");
+        }
+        if (!videoData.duration || videoData.duration === 0) {
+            log("getContentDetails: WARNING - Duration is 0 or missing");
+        }
+        
+        const details = createVideoDetails(videoData, url);
+        log("getContentDetails: Successfully created video details for id=" + videoData.id);
+        return details;
 
     } catch (error) {
         log("getContentDetails ERROR: " + error.message);
@@ -6893,4 +6911,4 @@ class SpankBangHistoryPager extends ContentPager {
     }
 }
 
-log("SpankBang plugin loaded - v64 (history debug)");
+log("SpankBang plugin loaded - v65 (history tracking debug)");
