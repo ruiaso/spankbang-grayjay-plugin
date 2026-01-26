@@ -2170,11 +2170,33 @@ function parseSearchResults(html) {
                 log(`parseSearchResults: Video ${videoId} has uploader: "${uploader.name}", url: "${uploader.url}"`);
             }
             
-            // VERBOSE DEBUG: Log first 2 blocks completely for debugging homepage HTML structure
-            if (videos.length < 2) {
-                log(`parseSearchResults: ===== DEBUG VIDEO ${videoId} BLOCK (first 800 chars) =====`);
-                log(block.substring(0, 800).replace(/[\n\r]+/g, ' '));
-                log(`parseSearchResults: ===== END DEBUG BLOCK =====`);
+            // VERBOSE DEBUG: For first 3 videos, dump the ENTIRE block and analyze links
+            if (videos.length < 3) {
+                log(`parseSearchResults: ===== FULL DEBUG VIDEO ${videoId} =====`);
+                log(`Block length: ${block.length} chars`);
+                
+                // Log the full block in chunks (Grayjay may truncate logs)
+                const chunkSize = 1500;
+                for (let i = 0; i < Math.min(block.length, 6000); i += chunkSize) {
+                    log(`BLOCK CHUNK ${i}-${i+chunkSize}: ${block.substring(i, i + chunkSize).replace(/[\n\r]+/g, ' ')}`);
+                }
+                
+                // Find ALL links in this block
+                const allLinks = block.match(/href="[^"]+"/gi) || [];
+                log(`ALL LINKS IN BLOCK: ${allLinks.join(' | ')}`);
+                
+                // Specifically look for channel/profile/pornstar links
+                const channelLinks = block.match(/href="\/[a-z0-9]+\/channel\/[^"]+"/gi) || [];
+                const profileLinks = block.match(/href="\/profile\/[^"]+"/gi) || [];
+                const pornstarLinks = block.match(/href="\/[a-z0-9]+\/pornstar\/[^"]+"/gi) || [];
+                const tagLinks = block.match(/href="\/s\/[^"]+"/gi) || [];
+                
+                log(`CHANNEL LINKS: ${channelLinks.length > 0 ? channelLinks.join(' | ') : 'NONE'}`);
+                log(`PROFILE LINKS: ${profileLinks.length > 0 ? profileLinks.join(' | ') : 'NONE'}`);
+                log(`PORNSTAR LINKS: ${pornstarLinks.length > 0 ? pornstarLinks.join(' | ') : 'NONE'}`);
+                log(`TAG LINKS (/s/): ${tagLinks.length > 0 ? tagLinks.join(' | ') : 'NONE'}`);
+                
+                log(`parseSearchResults: ===== END FULL DEBUG =====`);
             }
             
             // LOG extracted data for debugging
