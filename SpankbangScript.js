@@ -170,12 +170,11 @@ function makeRequest(url, headers = null, context = 'request', useAuth = false) 
         const requestHeaders = headers || getAuthHeaders();
         const response = http.GET(url, requestHeaders, useAuth);
         if (!response.isOk) {
-            // Handle retryable errors: 429 (rate limit), 408 (timeout), 503 (service unavailable), 502 (bad gateway)
-            const retryableCodes = [429, 408, 503, 502];
-            if (retryableCodes.includes(response.code)) {
+            // If we get 429, add exponential backoff with multiple retries
+            if (response.code === 429) {
                 localConfig.consecutiveErrors++;
                 const waitTime = Math.min(3000 * localConfig.consecutiveErrors, 10000); // 3s, 6s, 9s, max 10s
-                log(`Server error (${response.code}), attempt ${localConfig.consecutiveErrors}, waiting ${waitTime}ms before retry...`);
+                log(`Rate limit hit (429), attempt ${localConfig.consecutiveErrors}, waiting ${waitTime}ms before retry...`);
                 sleep(waitTime);
                 localConfig.requestDelay = Math.min(localConfig.requestDelay * 2, 2000); // Increase delay up to 2s
                 
@@ -212,12 +211,11 @@ function makeRequestNoThrow(url, headers = null, context = 'request', useAuth = 
         const requestHeaders = headers || getAuthHeaders();
         const response = http.GET(url, requestHeaders, useAuth);
         
-        // Handle retryable errors: 429 (rate limit), 408 (timeout), 503 (service unavailable), 502 (bad gateway)
-        const retryableCodes = [429, 408, 503, 502];
-        if (!response.isOk && retryableCodes.includes(response.code)) {
+        // If we get 429, add exponential backoff and retry
+        if (!response.isOk && response.code === 429) {
             localConfig.consecutiveErrors++;
             const waitTime = Math.min(3000 * localConfig.consecutiveErrors, 10000); // 3s, 6s, 9s, max 10s
-            log(`Server error (${response.code}), attempt ${localConfig.consecutiveErrors}, waiting ${waitTime}ms before retry...`);
+            log(`Rate limit hit (429), attempt ${localConfig.consecutiveErrors}, waiting ${waitTime}ms before retry...`);
             sleep(waitTime);
             localConfig.requestDelay = Math.min(localConfig.requestDelay * 2, 2000); // Increase delay up to 2s
             
@@ -2037,27 +2035,6 @@ function hasValidUploader(uploader) {
 }
 
 function createPlatformVideo(videoData) {
-    // CRITICAL: Validate input to prevent null/undefined errors
-    if (!videoData) {
-        log("createPlatformVideo: ERROR - videoData is null/undefined!");
-        // Return a minimal valid video object to prevent crashes
-        return new PlatformVideo({
-            id: new PlatformID(PLATFORM, "unknown", plugin.config.id),
-            name: "Unknown Video",
-            thumbnails: new Thumbnails([]),
-            author: new PlatformAuthorLink(new PlatformID(PLATFORM, "", plugin.config.id), "", "", ""),
-            datetime: 0,
-            duration: 0,
-            viewCount: 0,
-            url: CONFIG.EXTERNAL_URL_BASE,
-            isLive: false
-        });
-    }
-    
-    if (!videoData.id || videoData.id.trim().length === 0) {
-        log("createPlatformVideo: WARNING - video has empty ID! title=" + (videoData.title || "none"));
-    }
-    
     const uploader = videoData.uploader || {};
     
     // CRITICAL: Only create author if we have a valid uploader with a URL
@@ -2144,11 +2121,6 @@ function createVideoDetails(videoData, url) {
         description += "Related Playlists: " + playlistLinks;
     }
 
-    // CRITICAL: Ensure video ID is valid for history tracking
-    if (!videoData.id || videoData.id.trim().length === 0) {
-        log("createVideoDetails: WARNING - empty video ID detected, history tracking may fail");
-    }
-
     const details = new PlatformVideoDetails({
         id: new PlatformID(PLATFORM, videoData.id || "", plugin.config.id),
         name: videoData.title || "Untitled",
@@ -2168,7 +2140,7 @@ function createVideoDetails(videoData, url) {
         rating: videoData.rating ? new RatingScaler(videoData.rating) : null
     });
     
-    log("createVideoDetails: Created details with id=" + (videoData.id || "MISSING") + ", duration=" + (videoData.duration || 0) + "s, thumbnail=" + (videoData.thumbnail ? "present" : "MISSING"));
+    log("createVideoDetails: Created details with duration=" + (videoData.duration || 0) + "s, thumbnail=" + videoData.thumbnail);
 
     details.getContentRecommendations = function() {
         return source.getContentRecommendations(url);
@@ -4440,7 +4412,7 @@ source.getWatchHistory = function() {
         // Use authenticated request directly (same pattern as getUserSubscriptions)
         // Don't check isLoggedIn() as it may fail even with valid cookies in the http client
         const historyUrl = USER_URLS.HISTORY;
-        log("getWatchHistory: Fetching from: " + historyUrl);
+        log("Fetching watch history from: " + historyUrl);
         
         const response = makeRequestNoThrow(historyUrl, API_HEADERS, 'watch history', true);
         
@@ -4459,45 +4431,20 @@ source.getWatchHistory = function() {
         log("getWatchHistory: HTML length = " + html.length);
         
         let videos = parseSearchResults(html);
-        log("getWatchHistory: parseSearchResults returned " + videos.length + " videos");
         
         if (videos.length === 0) {
             videos = parseHistoryPage(html);
-            log("getWatchHistory: parseHistoryPage returned " + videos.length + " videos");
         }
         
         if (videos.length === 0) {
             log("getWatchHistory: No videos found. HTML snippet (first 500 chars): " + html.substring(0, 500).replace(/[\n\r]/g, ' '));
         }
         
-        // Validate and log each video before creating PlatformVideo
-        log("getWatchHistory: Validating " + videos.length + " videos...");
-        const validVideos = [];
-        for (let i = 0; i < videos.length; i++) {
-            const v = videos[i];
-            if (!v) {
-                log("getWatchHistory: Video at index " + i + " is NULL - skipping");
-                continue;
-            }
-            if (!v.id || v.id.trim().length === 0) {
-                log("getWatchHistory: Video at index " + i + " has EMPTY ID - skipping (title: " + (v.title || "no title") + ")");
-                continue;
-            }
-            if (!v.url || v.url.trim().length === 0) {
-                log("getWatchHistory: Video " + v.id + " has EMPTY URL - fixing");
-                v.url = `${CONFIG.EXTERNAL_URL_BASE}/${v.id}/video/`;
-            }
-            log("getWatchHistory: Video " + i + " valid: id=" + v.id + ", duration=" + v.duration + ", title=" + (v.title || "").substring(0, 30));
-            validVideos.push(v);
-        }
-        
-        log("getWatchHistory: " + validVideos.length + " valid videos out of " + videos.length);
+        log("getWatchHistory found " + videos.length + " videos");
         
         // Return full video objects (PlatformVideo) instead of just URLs
         // This ensures thumbnails, duration, and other metadata are preserved in history
-        const platformVideos = validVideos.map(v => createPlatformVideo(v));
-        log("getWatchHistory: Returning " + platformVideos.length + " platform videos");
-        return platformVideos;
+        return videos.map(v => createPlatformVideo(v));
 
     } catch (error) {
         log("getWatchHistory error: " + error.message);
@@ -4510,12 +4457,6 @@ function parseHistoryPage(html) {
     const seenIds = new Set();
     
     log("parseHistoryPage: Starting parse, HTML length = " + html.length);
-    
-    // Debug: Log a sample of the HTML to understand the structure
-    if (html.length > 0) {
-        const sampleStart = html.indexOf('video-item') > -1 ? Math.max(0, html.indexOf('video-item') - 100) : 0;
-        log("parseHistoryPage: HTML sample around video-item: " + html.substring(sampleStart, sampleStart + 500).replace(/[\n\r]/g, ' '));
-    }
     
     // SpankBang history page specific patterns - they use "video-item" and "thumb" classes
     const videoItemPatterns = [
@@ -5042,7 +4983,7 @@ source.syncRemoteWatchHistory = function(continuationToken) {
             ? `${USER_URLS.HISTORY}/${page}/`
             : USER_URLS.HISTORY;
         
-        log("syncRemoteWatchHistory: Fetching page " + page + " from: " + historyUrl);
+        log("Syncing remote watch history from: " + historyUrl);
         
         const response = makeRequestNoThrow(historyUrl, API_HEADERS, 'remote watch history', true);
         
@@ -5061,43 +5002,21 @@ source.syncRemoteWatchHistory = function(continuationToken) {
         log("syncRemoteWatchHistory: HTML length = " + html.length);
         
         let videos = parseSearchResults(html);
-        log("syncRemoteWatchHistory: parseSearchResults returned " + videos.length + " videos");
         
         if (videos.length === 0) {
             videos = parseHistoryPage(html);
-            log("syncRemoteWatchHistory: parseHistoryPage returned " + videos.length + " videos");
         }
         
         if (videos.length === 0) {
             log("syncRemoteWatchHistory: No videos found. HTML snippet (first 500 chars): " + html.substring(0, 500).replace(/[\n\r]/g, ' '));
         }
         
-        // Validate videos before converting to platform videos
-        log("syncRemoteWatchHistory: Validating " + videos.length + " videos...");
-        const validVideos = [];
-        for (let i = 0; i < videos.length; i++) {
-            const v = videos[i];
-            if (!v) {
-                log("syncRemoteWatchHistory: Video at index " + i + " is NULL - skipping");
-                continue;
-            }
-            if (!v.id || v.id.trim().length === 0) {
-                log("syncRemoteWatchHistory: Video at index " + i + " has EMPTY ID - skipping");
-                continue;
-            }
-            if (!v.url || v.url.trim().length === 0) {
-                v.url = `${CONFIG.EXTERNAL_URL_BASE}/${v.id}/video/`;
-            }
-            validVideos.push(v);
-        }
-        log("syncRemoteWatchHistory: " + validVideos.length + " valid videos");
+        const platformVideos = videos.map(v => createPlatformVideo(v));
         
-        const platformVideos = validVideos.map(v => createPlatformVideo(v));
-        
-        const hasMore = validVideos.length >= 20;
+        const hasMore = videos.length >= 20;
         const nextToken = hasMore ? (page + 1).toString() : null;
         
-        log("syncRemoteWatchHistory: Returning " + platformVideos.length + " videos, hasMore: " + hasMore);
+        log("syncRemoteWatchHistory found " + videos.length + " videos, hasMore: " + hasMore);
         return new SpankBangHistoryPager(platformVideos, hasMore, { continuationToken: nextToken });
 
     } catch (error) {
@@ -5359,23 +5278,8 @@ source.getHome = function(continuationToken) {
         const page = continuationToken ? parseInt(continuationToken) : 1;
         const url = `${BASE_URL}/trending_videos/${page}/`;
 
-        log("getHome: Fetching page " + page + " from " + url);
         const html = makeRequest(url, API_HEADERS, 'home content');
         const videos = parseSearchResults(html);
-        
-        // Log uploader stats for debugging
-        let withUploader = 0;
-        let withoutUploader = 0;
-        videos.forEach(v => {
-            if (v.uploader && v.uploader.name && v.uploader.url) {
-                withUploader++;
-            } else {
-                withoutUploader++;
-                log("getHome: Video " + v.id + " (" + (v.title || "").substring(0, 30) + "...) has NO uploader");
-            }
-        });
-        log("getHome: Parsed " + videos.length + " videos - " + withUploader + " with uploader, " + withoutUploader + " without");
-        
         const platformVideos = videos.map(v => createPlatformVideo(v));
 
         const hasMore = videos.length >= 20;
@@ -5775,18 +5679,7 @@ source.getCreators = function(continuationToken) {
 };
 
 source.isChannelUrl = function(url) {
-    // CRITICAL: Empty or whitespace-only URLs should return false immediately
-    // This prevents Grayjay from trying to open empty author links
-    if (!url || typeof url !== 'string') {
-        log("isChannelUrl: URL is null/undefined/not-string, returning false");
-        return false;
-    }
-    
-    const trimmedUrl = url.trim();
-    if (trimmedUrl.length === 0) {
-        log("isChannelUrl: Empty URL after trim, returning false");
-        return false;
-    }
+    if (!url || typeof url !== 'string') return false;
 
     if (REGEX_PATTERNS.urls.channelInternal.test(url)) return true;
     if (REGEX_PATTERNS.urls.profileInternal.test(url)) return true;
@@ -5804,7 +5697,6 @@ source.isChannelUrl = function(url) {
     if (REGEX_PATTERNS.urls.pornstarSimple.test(url)) return true;
     if (REGEX_PATTERNS.urls.channelS.test(url)) return true;
 
-    log("isChannelUrl: URL '" + url.substring(0, 50) + "' did not match any pattern, returning false");
     return false;
 };
 
@@ -5812,20 +5704,12 @@ source.getChannel = function(url) {
     try {
         // CRITICAL: Early return for empty/invalid URLs
         // This prevents errors when Grayjay tries to open empty author links
-        log("getChannel: Received URL type=" + typeof url + ", value='" + (url || 'NULL') + "'");
-        
-        if (!url || typeof url !== 'string') {
-            log("getChannel: URL is null/undefined/not-string - throwing");
+        if (!url || url.trim().length === 0) {
+            log("getChannel: Empty URL received - returning null");
             throw new ScriptException("No channel URL provided");
         }
         
-        const trimmedUrl = url.trim();
-        if (trimmedUrl.length === 0) {
-            log("getChannel: Empty URL after trim - throwing");
-            throw new ScriptException("Empty channel URL provided");
-        }
-        
-        log("getChannel: Called with valid URL: " + url);
+        log("getChannel: Called with URL: " + url);
         
         const result = extractChannelId(url);
         let profileUrl;
@@ -6013,15 +5897,15 @@ source.getSearchChannelContentsCapabilities = function() {
 
 source.getChannelContents = function(url, type, order, filters, continuationToken) {
     try {
-        log("getChannelContents called with URL: " + url + ", type: " + type + ", page: " + (continuationToken || "1"));
+        log("getChannelContents called with URL: " + url + ", page: " + (continuationToken || "1"));
         const result = extractChannelId(url);
-        log("getChannelContents: Extracted channel type: " + result.type + ", id: " + result.id);
+        log("Extracted channel type: " + result.type + ", id: " + result.id);
         
         const page = continuationToken ? parseInt(continuationToken) : 1;
 
         let profileUrl;
         if (result.type === 'category') {
-            // Handle categories/tags - these DO need trailing slash
+            // Handle categories/tags
             if (page > 1) {
                 profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/s/${result.id}/${page}/`;
             } else {
@@ -6033,33 +5917,33 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
                 resolvedShortId = resolvePornstarShortId(result.id);
             }
             
-            // Pornstar URLs - NO trailing slash
             if (resolvedShortId) {
                 if (page > 1) {
-                    profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${resolvedShortId}/pornstar/${result.id}/${page}`;
+                    profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${resolvedShortId}/pornstar/${result.id}/${page}/`;
                 } else {
-                    profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${resolvedShortId}/pornstar/${result.id}`;
+                    profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${resolvedShortId}/pornstar/${result.id}/`;
                 }
             } else {
                 if (page > 1) {
-                    profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/pornstar/${result.id}/${page}`;
+                    profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/pornstar/${result.id}/${page}/`;
                 } else {
-                    profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/pornstar/${result.id}`;
+                    profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/pornstar/${result.id}/`;
                 }
             }
         } else if (result.type === 'channel') {
             const [shortId, channelName] = result.id.split(':');
             if (page > 1) {
-                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${shortId}/channel/${channelName}/${page}`;
+                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${shortId}/channel/${channelName}/${page}/`;
             } else {
-                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${shortId}/channel/${channelName}`;
+                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${shortId}/channel/${channelName}/`;
             }
         } else {
-            // For user profiles - NO trailing slash (SpankBang returns 404 with trailing slash)
+            // For user profiles, try /profile/xxx/ first (without /videos/)
+            // The /videos/ suffix may not exist for all profiles
             if (page > 1) {
-                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/${page}`;
+                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/${page}/`;
             } else {
-                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}`;
+                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/`;
             }
         }
 
@@ -6078,23 +5962,20 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
         if (!response.isOk && response.code === 404 && result.type === 'profile') {
             log("Profile URL failed, trying alternative formats...");
             
-            // Try with /videos suffix (NO trailing slash)
+            // Try with /videos/ suffix
             const altUrl1 = page > 1 
-                ? `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos/${page}`
-                : `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos`;
+                ? `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos/${page}/`
+                : `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos/`;
             log("Trying alternative URL: " + altUrl1);
             response = makeRequestNoThrow(altUrl1, API_HEADERS, 'channel contents alt1', false);
             
-            // If still fails, try /s/ URL format (search-style profile) - but this may show wrong results
-            // so we should NOT fall back to this as it shows trending, not profile videos
+            // If still fails, try /s/ URL format (search-style profile)
             if (!response.isOk && response.code === 404) {
-                log("Profile not found at any URL format - profile may not exist or have videos");
-                // DO NOT fall back to /s/ URL as it shows trending videos, not profile videos
-                // Return empty results instead
-                return new SpankBangChannelContentPager([], false, {
-                    channelUrl: url,
-                    continuationToken: null
-                });
+                const altUrl2 = page > 1
+                    ? `${CONFIG.EXTERNAL_URL_BASE}/s/${result.id}/${page}/`
+                    : `${CONFIG.EXTERNAL_URL_BASE}/s/${result.id}/`;
+                log("Trying /s/ URL: " + altUrl2);
+                response = makeRequestNoThrow(altUrl2, API_HEADERS, 'channel contents alt2', false);
             }
         }
         
@@ -6119,19 +6000,7 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
         
         const html = response.body;
         const videos = parseSearchResults(html);
-        
-        // Log uploader stats for debugging channel content
-        let withUploader = 0;
-        let withoutUploader = 0;
-        videos.forEach(v => {
-            if (v.uploader && v.uploader.name && v.uploader.url) {
-                withUploader++;
-            } else {
-                withoutUploader++;
-                log("getChannelContents: Video " + v.id + " has NO uploader");
-            }
-        });
-        log("getChannelContents: Parsed " + videos.length + " videos - " + withUploader + " with uploader, " + withoutUploader + " without");
+        log("Parsed " + videos.length + " videos from channel contents");
         
         const platformVideos = videos.map(v => createPlatformVideo(v));
 
@@ -6170,7 +6039,7 @@ source.isContentDetailsUrl = function(url) {
 
 source.getContentDetails = function(url) {
     try {
-        log("getContentDetails: Called with URL: " + url);
+        log("getContentDetails called with URL: " + url);
         
         // Handle video-in-playlist URLs - convert to standard video URL
         // e.g., https://spankbang.com/dqd68-svhe7y/playlist/asmr+joi -> https://spankbang.com/svhe7y/video/...
@@ -6180,7 +6049,7 @@ source.getContentDetails = function(url) {
             const playlistSlug = videoInPlaylistMatch[3];
             // We can use the playlist URL as-is since SpankBang serves video details
             // Or convert to standard video URL format
-            log("getContentDetails: Detected video-in-playlist URL, video ID: " + videoId);
+            log("Detected video-in-playlist URL, video ID: " + videoId);
         }
         
         const html = makeRequest(url, API_HEADERS, 'video details');
@@ -6188,31 +6057,13 @@ source.getContentDetails = function(url) {
         
         const videoData = parseVideoPage(html, url);
         
-        // CRITICAL: Log ALL fields for debugging history tracking
-        log("getContentDetails: Parsed video data:");
-        log("  - id: " + (videoData.id || "MISSING/EMPTY"));
-        log("  - title: " + (videoData.title ? videoData.title.substring(0, 50) : "MISSING"));
-        log("  - duration: " + (videoData.duration || 0) + "s");
-        log("  - thumbnail: " + (videoData.thumbnail ? "present" : "MISSING"));
-        log("  - url: " + (videoData.url || "MISSING"));
-        log("  - views: " + (videoData.views || 0));
-        log("  - uploadDate: " + (videoData.uploadDate || 0));
-        log("  - sources count: " + Object.keys(videoData.sources || {}).length);
+        // Log critical metadata for debugging history issues
+        log("getContentDetails: Parsed video - id=" + videoData.id + 
+            ", duration=" + videoData.duration + "s" +
+            ", thumbnail=" + (videoData.thumbnail ? "present (" + videoData.thumbnail.substring(0, 50) + "...)" : "MISSING") +
+            ", title=" + (videoData.title ? videoData.title.substring(0, 30) : "MISSING"));
         
-        // Validate critical fields for history tracking
-        if (!videoData.id || videoData.id.trim().length === 0) {
-            log("getContentDetails: CRITICAL ERROR - Video ID is empty! History tracking WILL fail");
-        }
-        if (!videoData.thumbnail || videoData.thumbnail.trim().length === 0) {
-            log("getContentDetails: WARNING - Thumbnail is missing");
-        }
-        if (!videoData.duration || videoData.duration === 0) {
-            log("getContentDetails: WARNING - Duration is 0 or missing");
-        }
-        
-        const details = createVideoDetails(videoData, url);
-        log("getContentDetails: Successfully created video details for id=" + videoData.id);
-        return details;
+        return createVideoDetails(videoData, url);
 
     } catch (error) {
         log("getContentDetails ERROR: " + error.message);
@@ -6916,4 +6767,4 @@ class SpankBangHistoryPager extends ContentPager {
     }
 }
 
-log("SpankBang plugin loaded - v67 (profile URL fix)");
+log("SpankBang plugin loaded - v63");
