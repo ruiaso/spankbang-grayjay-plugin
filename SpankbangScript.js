@@ -581,16 +581,29 @@ function extractViewCountFromContext(html) {
     if (!html) return 0;
 
     // PRIORITY 1: Look for data-testid="views" (SpankBang's new structure)
-    const dataTestIdPattern = /<span[^>]*data-testid=["']views["'][^>]*>[\s\S]*?(\d+(?:[,.]\d+)?[KMB]?)/i;
+    // The view count number appears AFTER the icon span, so we need to look past it
+    const dataTestIdPattern = /<span[^>]*data-testid=["']views["'][^>]*>[\s\S]*?<\/svg><\/span>[\s\S]*?(\d+(?:[,.]\d+)?[KMB]?)/i;
     const testIdMatch = html.match(dataTestIdPattern);
     if (testIdMatch && testIdMatch[1]) {
         const parsed = parseViewCount(testIdMatch[1].trim());
         if (parsed > 0) {
+            log(`extractViewCountFromContext: Found views via data-testid: ${testIdMatch[1]} = ${parsed}`);
             return parsed;
         }
     }
 
-    // PRIORITY 2: Look for views in various patterns
+    // PRIORITY 2: Simpler pattern - just find numbers near "views" text
+    const nearViewsPattern = /(\d+(?:[,.]\d+)?[KMB]?)\s*<\/span>\s*<\/span>\s*<span[^>]*>\s*views?\b/i;
+    const nearMatch = html.match(nearViewsPattern);
+    if (nearMatch && nearMatch[1]) {
+        const parsed = parseViewCount(nearMatch[1].trim());
+        if (parsed > 0) {
+            log(`extractViewCountFromContext: Found views near 'views' text: ${nearMatch[1]} = ${parsed}`);
+            return parsed;
+        }
+    }
+
+    // PRIORITY 3: Look for patterns with "views" word
     const patterns = [
         // Class-based patterns
         /<span[^>]*class=["'][^"']*(?:views?|view-count)[^"']*["'][^>]*>([^<]+)<\/span>/i,
@@ -2026,16 +2039,6 @@ function parseSearchResults(html) {
             });
 
             const views = extractViewCountFromContext(block);
-            
-            // DEBUG: Log what we're extracting for first few videos
-            if (videos.length < 3) {
-                log(`parseSearchResults DEBUG Video ${videoId}:`);
-                log(`  - Title: "${title}"`);
-                log(`  - Duration: ${durationSeconds}s`);
-                log(`  - Views extracted: ${views}`);
-                log(`  - Block length: ${block.length} chars`);
-                log(`  - Block sample (first 2000 chars): ${block.substring(0, 2000).replace(/\s+/g, ' ')}`);
-            }
 
             let uploadDate = 0;
             const datePatterns = [
