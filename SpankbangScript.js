@@ -876,7 +876,13 @@ function extractUploaderFromVideoToolbar(html) {
 
     const uploaderPatterns = [
         {
-            // PRIORITY 0: Profile with avatar (MOST ACCURATE for user uploads)
+            // PRIORITY 0: Profile with class="ul" and span.name (SpankBang video page structure)
+            // <a href="/profile/username" class="ul">...<span class="name">Username</span>...</a>
+            pattern: /<a[^>]*href="\/profile\/([^"\/]+)"[^>]*class="[^"]*ul[^"]*"[^>]*>[\s\S]*?<span[^>]*class="[^"]*name[^"]*"[^>]*>([^<]+)<\/span>/i,
+            type: 'profile_ul'
+        },
+        {
+            // Profile with avatar (MOST ACCURATE for user uploads)
             pattern: /<a[^>]*href="\/profile\/([^"\/]+)\/?\"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?<span[^>]*class="[^"]*name[^"]*"[^>]*>([^<]+)<\/span>/i,
             type: 'profile'
         },
@@ -884,6 +890,11 @@ function extractUploaderFromVideoToolbar(html) {
             // Profile with title attribute
             pattern: /<a[^>]*href="\/profile\/([^"\/]+)\/?\"[^>]*title="([^"]+)"[^>]*>/i,
             type: 'profile_title'
+        },
+        {
+            // Profile with span.name inside (no trailing slash required)
+            pattern: /<a[^>]*href="\/profile\/([^"\/]+)"[^>]*>[\s\S]*?<span[^>]*class="[^"]*name[^"]*"[^>]*>([^<]+)<\/span>/i,
+            type: 'profile_name_span'
         },
         {
             // Profile in uploader/user context
@@ -946,6 +957,17 @@ function extractUploaderFromVideoToolbar(html) {
                     uploader.avatar = extractAvatarFromHtml(searchHtml);
                     log("extractUploaderFromVideoToolbar: Found PROFILE (title): " + uploader.name);
                     return uploader;
+                }
+                
+                // Handle profile_ul and profile_name_span types (new SpankBang video page structure)
+                if (type === 'profile_ul' || type === 'profile_name_span') {
+                    uploader.name = match[2].replace(/<[^>]*>/g, '').trim();
+                    uploader.url = `spankbang://profile/${match[1]}`;
+                    uploader.avatar = extractAvatarFromHtml(searchHtml);
+                    if (uploader.name && uploader.name.length > 0) {
+                        log("extractUploaderFromVideoToolbar: Found PROFILE (" + type + "): " + uploader.name);
+                        return uploader;
+                    }
                 }
                 
                 if (type === 'profile' || type === 'profile_span' || type === 'profile_simple') {
@@ -1017,6 +1039,10 @@ function extractUploaderFromVideoToolbar(html) {
 
     // PRIORITY 0: Try profile patterns FIRST (most accurate for user uploads)
     const simpleProfilePatterns = [
+        // SpankBang video page: <a href="/profile/username" class="ul"><span class="name">Username</span></a>
+        /<a[^>]*href="\/profile\/([^"\/]+)"[^>]*class="[^"]*ul[^"]*"[^>]*>[\s\S]*?<span[^>]*class="[^"]*name[^"]*"[^>]*>([^<]+)<\/span>/i,
+        // Profile with span.name inside
+        /<a[^>]*href="\/profile\/([^"\/]+)"[^>]*>[\s\S]*?<span[^>]*class="[^"]*name[^"]*"[^>]*>([^<]+)<\/span>/i,
         /href="\/profile\/([^"]+)"[^>]*title="([^"]+)"/i,
         /<a[^>]*title="([^"]+)"[^>]*href="\/profile\/([^"]+)"/i,
         /<a[^>]*class="[^"]*n[^"]*"[^>]*href="\/profile\/([^"]+)"[^>]*>([^<]+)<\/a>/i,
@@ -1251,11 +1277,19 @@ function extractUploaderFromSearchResult(block) {
 
     // PRIORITY 0: Look for PROFILE links FIRST (most accurate for user uploads)
     // SpankBang NEW structure: <a href="/profile/username/"><span class="...">Name</span></a>
+    // Also check for data-badge="profile" pattern
     const profileWithSpanPatterns = [
+        // Profile with data-badge="profile" indicator 
+        /<span[^>]*data-badge=["']profile["'][^>]*>[\s\S]*?<a[^>]*href="\/profile\/([^"\/]+)"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/i,
+        // Profile with data-testid="title"
         /<a[^>]*data-testid="title"[^>]*href="\/profile\/([^"\/]+)\/?\"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>[\s\S]*?<\/a>/i,
         /<a[^>]*href="\/profile\/([^"\/]+)\/?\"[^>]*data-testid="title"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>[\s\S]*?<\/a>/i,
+        // Profile with text class
         /<a[^>]*href="\/profile\/([^"\/]+)\/?\"[^>]*>[\s\S]*?<span[^>]*class="[^"]*text-[^"]*"[^>]*>([^<]+)<\/span>/i,
-        /<a[^>]*href="\/profile\/([^"\/]+)\/?\"[^>]*>\s*<span[^>]*>([^<]+)<\/span>/i
+        // Simple profile with span
+        /<a[^>]*href="\/profile\/([^"\/]+)\/?\"[^>]*>\s*<span[^>]*>([^<]+)<\/span>/i,
+        // Profile with name class span
+        /<a[^>]*href="\/profile\/([^"\/]+)"[^>]*>[\s\S]*?<span[^>]*class="[^"]*name[^"]*"[^>]*>([^<]+)<\/span>/i
     ];
 
     for (const pattern of profileWithSpanPatterns) {
@@ -5938,12 +5972,12 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
                 profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${shortId}/channel/${channelName}/`;
             }
         } else {
-            // For user profiles, try /profile/xxx/ first (without /videos/)
-            // The /videos/ suffix may not exist for all profiles
+            // For user profiles - SpankBang does NOT want trailing slashes for profile URLs
+            // Correct format: /profile/username or /profile/username/videos (no trailing slash!)
             if (page > 1) {
-                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/${page}/`;
+                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos/${page}`;
             } else {
-                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/`;
+                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos`;
             }
         }
 
@@ -5962,18 +5996,18 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
         if (!response.isOk && response.code === 404 && result.type === 'profile') {
             log("Profile URL failed, trying alternative formats...");
             
-            // Try with /videos/ suffix
+            // Try without /videos/ suffix (just /profile/username)
             const altUrl1 = page > 1 
-                ? `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos/${page}/`
-                : `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos/`;
+                ? `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/${page}`
+                : `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}`;
             log("Trying alternative URL: " + altUrl1);
             response = makeRequestNoThrow(altUrl1, API_HEADERS, 'channel contents alt1', false);
             
             // If still fails, try /s/ URL format (search-style profile)
             if (!response.isOk && response.code === 404) {
                 const altUrl2 = page > 1
-                    ? `${CONFIG.EXTERNAL_URL_BASE}/s/${result.id}/${page}/`
-                    : `${CONFIG.EXTERNAL_URL_BASE}/s/${result.id}/`;
+                    ? `${CONFIG.EXTERNAL_URL_BASE}/s/${result.id}/${page}`
+                    : `${CONFIG.EXTERNAL_URL_BASE}/s/${result.id}`;
                 log("Trying /s/ URL: " + altUrl2);
                 response = makeRequestNoThrow(altUrl2, API_HEADERS, 'channel contents alt2', false);
             }
