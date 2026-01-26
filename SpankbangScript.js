@@ -1214,6 +1214,28 @@ function extractUploaderFromSearchResult(block) {
     }
 
     // PRIORITY 0: Look for PROFILE links FIRST (most accurate for user uploads)
+    // SpankBang NEW structure: <a href="/profile/username/"><span class="...">Name</span></a>
+    const profileWithSpanPatterns = [
+        /<a[^>]*data-testid="title"[^>]*href="\/profile\/([^"\/]+)\/?\"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>[\s\S]*?<\/a>/i,
+        /<a[^>]*href="\/profile\/([^"\/]+)\/?\"[^>]*data-testid="title"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>[\s\S]*?<\/a>/i,
+        /<a[^>]*href="\/profile\/([^"\/]+)\/?\"[^>]*>[\s\S]*?<span[^>]*class="[^"]*text-[^"]*"[^>]*>([^<]+)<\/span>/i,
+        /<a[^>]*href="\/profile\/([^"\/]+)\/?\"[^>]*>\s*<span[^>]*>([^<]+)<\/span>/i
+    ];
+
+    for (const pattern of profileWithSpanPatterns) {
+        const match = block.match(pattern);
+        if (match && match[2]) {
+            const name = match[2].replace(/<[^>]*>/g, '').trim();
+            if (name && name.length > 0 && name.length < 100 && !isLikelyBadUploaderName(name)) {
+                uploader.name = name;
+                uploader.url = `spankbang://profile/${match[1]}`;
+                uploader.avatar = extractAvatarFromHtml(block);
+                log(`extractUploaderFromSearchResult: Found PROFILE (span pattern): "${name}" -> ${uploader.url}`);
+                return uploader;
+            }
+        }
+    }
+
     const profileWithAvatarPatterns = [
         /<a[^>]*href="\/profile\/([^"\/]+)\/?\"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?<span[^>]*>([^<]+)<\/span>/i,
         /<a[^>]*href="\/profile\/([^"\/]+)\/?\"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?([^<>]+)<\/a>/i
@@ -1260,6 +1282,29 @@ function extractUploaderFromSearchResult(block) {
     }
 
     // PRIORITY 1: Look for explicit pornstar links
+    // SpankBang NEW structure: <a href="/shortId/pornstar/name/"><span class="...">Name</span></a>
+    const pornstarWithSpanPatterns = [
+        /<a[^>]*data-testid="title"[^>]*href="\/([a-z0-9]+)\/pornstar\/([^"\/]+)\/?\"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>[\s\S]*?<\/a>/i,
+        /<a[^>]*href="\/([a-z0-9]+)\/pornstar\/([^"\/]+)\/?\"[^>]*data-testid="title"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>[\s\S]*?<\/a>/i,
+        /<a[^>]*href="\/([a-z0-9]+)\/pornstar\/([^"\/]+)\/?\"[^>]*>[\s\S]*?<span[^>]*class="[^"]*text-[^"]*"[^>]*>([^<]+)<\/span>/i,
+        /<a[^>]*href="\/([a-z0-9]+)\/pornstar\/([^"\/]+)\/?\"[^>]*>\s*<span[^>]*>([^<]+)<\/span>/i
+    ];
+
+    for (const pattern of pornstarWithSpanPatterns) {
+        const match = block.match(pattern);
+        if (match && match[3]) {
+            const name = match[3].replace(/<[^>]*>/g, '').trim();
+            const pornstarSlug = match[2].replace(/\/$/, '');
+            if (name && name.length > 0 && name.length < 100 && !isLikelyBadUploaderName(name)) {
+                uploader.name = name;
+                uploader.url = `spankbang://profile/pornstar:${pornstarSlug}`;
+                uploader.avatar = extractPornstarAvatarFromHtml(block, pornstarSlug);
+                log(`extractUploaderFromSearchResult: Found PORNSTAR (span pattern): "${name}" -> ${uploader.url}`);
+                return uploader;
+            }
+        }
+    }
+
     const pornstarWithAvatarPatterns = [
         /<a[^>]*href="\/([a-z0-9]+)\/pornstar\/([^"]+)"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?<span[^>]*>([^<]+)<\/span>/i,
         /<a[^>]*href="\/([a-z0-9]+)\/pornstar\/([^"]+)"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?([^<>]+)<\/a>/i
@@ -1303,6 +1348,31 @@ function extractUploaderFromSearchResult(block) {
     }
 
     // PRIORITY 2: Look for channel links (but NOT tag links /s/...)
+    // SpankBang NEW structure: <a href="/shortId/channel/name/"><span class="...">Channel Name</span></a>
+    const channelWithSpanPatterns = [
+        // New SpankBang structure: channel link with name in span
+        /<a[^>]*data-testid="title"[^>]*href="\/([a-z0-9]+)\/channel\/([^"\/]+)\/?\"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>[\s\S]*?<\/a>/i,
+        /<a[^>]*href="\/([a-z0-9]+)\/channel\/([^"\/]+)\/?\"[^>]*data-testid="title"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>[\s\S]*?<\/a>/i,
+        // Generic channel link with span inside
+        /<a[^>]*href="\/([a-z0-9]+)\/channel\/([^"\/]+)\/?\"[^>]*>[\s\S]*?<span[^>]*class="[^"]*text-[^"]*"[^>]*>([^<]+)<\/span>/i,
+        /<a[^>]*href="\/([a-z0-9]+)\/channel\/([^"\/]+)\/?\"[^>]*>\s*<span[^>]*>([^<]+)<\/span>/i
+    ];
+
+    for (const pattern of channelWithSpanPatterns) {
+        const match = block.match(pattern);
+        if (match && match[3]) {
+            const name = match[3].replace(/<[^>]*>/g, '').trim();
+            const channelSlug = match[2].replace(/\/$/, '');
+            if (name && name.length > 0 && name.length < 100 && !isLikelyBadUploaderName(name, channelSlug)) {
+                uploader.name = name;
+                uploader.url = `spankbang://channel/${match[1]}:${channelSlug}`;
+                uploader.avatar = ""; // Will be fetched separately
+                log(`extractUploaderFromSearchResult: Found CHANNEL (span pattern): "${name}" -> ${uploader.url}`);
+                return uploader;
+            }
+        }
+    }
+
     const channelWithAvatarPatterns = [
         /<a[^>]*href="\/([a-z0-9]+)\/channel\/([^"]+)"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?<span[^>]*>([^<]+)<\/span>/i,
         /<a[^>]*href="\/([a-z0-9]+)\/channel\/([^"]+)"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?([^<>]+)<\/a>/i
