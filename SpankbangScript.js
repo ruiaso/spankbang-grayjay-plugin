@@ -578,56 +578,20 @@ function extractBestDurationSecondsFromContext(html, opts = {}) {
 }
 
 function extractViewCountFromContext(html) {
-    if (!html) return 0;
+    if (!html || typeof html !== 'string') return 0;
 
-    // PRIORITY 1: Look for data-testid="views" (SpankBang's new structure)
-    // The view count number appears AFTER the icon span, so we need to look past it
-    const dataTestIdPattern = /<span[^>]*data-testid=["']views["'][^>]*>[\s\S]*?<\/svg><\/span>[\s\S]*?(\d+(?:[,.]\d+)?[KMB]?)/i;
-    const testIdMatch = html.match(dataTestIdPattern);
-    if (testIdMatch && testIdMatch[1]) {
-        const parsed = parseViewCount(testIdMatch[1].trim());
-        if (parsed > 0) {
-            return parsed;
-        }
-    }
-
-    // PRIORITY 2: SpankBang specific - look for spans with class "v" (views) containing numbers
-    const spanVPattern = /<span[^>]*class=["'][^"']*\bv\b[^"']*["'][^>]*>([^<]*\d+[^<]*)<\/span>/gi;
-    let spanVMatch;
-    while ((spanVMatch = spanVPattern.exec(html)) !== null) {
-        const text = spanVMatch[1].replace(/<[^>]*>/g, '').trim();
-        // Must contain a number
-        if (/\d/.test(text)) {
-            const parsed = parseViewCount(text);
-            if (parsed > 0) {
-                return parsed;
-            }
-        }
-    }
-
-    // PRIORITY 3: Simpler pattern - just find numbers near "views" text
-    const nearViewsPattern = /(\d+(?:[,.]\d+)?[KMB]?)\s*<\/span>\s*<\/span>\s*<span[^>]*>\s*views?\b/i;
-    const nearMatch = html.match(nearViewsPattern);
-    if (nearMatch && nearMatch[1]) {
-        const parsed = parseViewCount(nearMatch[1].trim());
-        if (parsed > 0) {
-            return parsed;
-        }
-    }
-
-    // PRIORITY 4: Look for eye icon followed by number (common video view pattern)
-    const eyeIconPattern = /(?:eye|visibility|views?)[^>]*>[\s\S]{0,50}?(\d+(?:[,.]\d+)?[KMB]?)/i;
-    const eyeMatch = html.match(eyeIconPattern);
-    if (eyeMatch && eyeMatch[1]) {
-        const parsed = parseViewCount(eyeMatch[1].trim());
-        if (parsed > 0) {
-            return parsed;
-        }
-    }
-
-    // PRIORITY 5: Look for patterns with "views" word
     const patterns = [
-        // Class-based patterns
+        // Data attributes - most reliable
+        /data-views=["']([^"']+)["']/i,
+        /data-viewcount=["']([^"']+)["']/i,
+        /data-view-count=["']([^"']+)["']/i,
+        
+        // JSON-LD and meta data
+        /"interactionCount"\s*:\s*"?(\d+(?:[,.]\d+)?[KMB]?)"?/i,
+        /"viewCount"\s*:\s*"?(\d+(?:[,.]\d+)?[KMB]?)"?/i,
+        
+        // Span elements with view classes
+        /<span[^>]*class=["'][^"']*\bv\b[^"']*["'][^>]*>([^<]+)<\/span>/i,
         /<span[^>]*class=["'][^"']*(?:views?|view-count)[^"']*["'][^>]*>([^<]+)<\/span>/i,
         
         // Generic view patterns with word boundaries
@@ -848,31 +812,11 @@ function extractUploaderFromVideoToolbar(html) {
         avatar: ""
     };
 
-    // DEBUG: Log what HTML sections we're searching
     const toolbarMatch = html.match(/<ul[^>]*class="[^"]*video_toolbar[^"]*"[^>]*>([\s\S]*?)<\/ul>/i);
-    const toolbarHtml = toolbarMatch ? toolbarMatch[1] : "";
+    const toolbarHtml = toolbarMatch ? toolbarMatch[1] : html;
     
     const infoSectionMatch = html.match(/<div[^>]*class="[^"]*info[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/i);
     const infoHtml = infoSectionMatch ? infoSectionMatch[1] : "";
-
-    // NEW: Look for uploader-specific section in SpankBang's new structure
-    // The uploader info is in a div with data-testid="uploader" or class containing "uploader"
-    const uploaderSectionMatch = html.match(/<div[^>]*(?:data-testid="uploader"|class="[^"]*uploader[^"]*")[^>]*>([\s\S]*?)<\/div>/i);
-    const uploaderHtml = uploaderSectionMatch ? uploaderSectionMatch[1] : "";
-    
-    // Also look for the video info section
-    const videoInfoMatch = html.match(/<div[^>]*class="[^"]*video-info[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
-    const videoInfoHtml = videoInfoMatch ? videoInfoMatch[1] : "";
-    
-    log("extractUploaderFromVideoToolbar: toolbarHtml length=" + toolbarHtml.length + ", infoHtml length=" + infoHtml.length + ", uploaderHtml length=" + uploaderHtml.length);
-    
-    // DEBUG: Find ALL profile links in the page to understand what's available
-    const allProfileLinks = html.match(/href="\/profile\/[^"]+"/gi) || [];
-    const allChannelLinks = html.match(/href="\/[a-z0-9]+\/channel\/[^"]+"/gi) || [];
-    log("extractUploaderFromVideoToolbar: Found " + allProfileLinks.length + " profile links and " + allChannelLinks.length + " channel links in full HTML");
-    if (allProfileLinks.length > 0) {
-        log("extractUploaderFromVideoToolbar: First 3 profile links: " + allProfileLinks.slice(0, 3).join(' | '));
-    }
 
     const uploaderPatterns = [
         {
@@ -914,26 +858,13 @@ function extractUploaderFromVideoToolbar(html) {
         {
             pattern: /<a[^>]*href="\/([a-z0-9]+)\/pornstar\/([^"\/]+)\/?\"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?([^<>]+)<\/a>/i,
             type: 'pornstar'
-        },
-        {
-            // NEW: Simple profile link with span (SpankBang new structure)
-            pattern: /<a[^>]*href="\/profile\/([^"\/]+)\/?\"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/i,
-            type: 'profile_span'
-        },
-        {
-            // NEW: Profile link as the first link in an uploader context
-            pattern: /<a[^>]*href="\/profile\/([^"\/]+)\/?\"[^>]*>([^<]+)<\/a>/i,
-            type: 'profile_simple'
         }
     ];
 
-    // IMPORTANT: Search uploader-specific sections FIRST, then general HTML
-    // This ensures we find the ACTUAL uploader, not related video channels
-    const searchHtmls = [uploaderHtml, videoInfoHtml, toolbarHtml, infoHtml];
+    const searchHtmls = [toolbarHtml, infoHtml, html];
     
-    // First pass: Search in specific uploader sections
     for (const searchHtml of searchHtmls) {
-        if (!searchHtml || searchHtml.length < 10) continue;
+        if (!searchHtml) continue;
         
         for (const { pattern, type } of uploaderPatterns) {
             const match = searchHtml.match(pattern);
@@ -941,6 +872,7 @@ function extractUploaderFromVideoToolbar(html) {
                 let avatarUrl = "";
                 
                 if (type === 'profile_title') {
+                    // Profile title attribute pattern: match[1]=profileSlug, match[2]=title
                     uploader.name = match[2].trim();
                     uploader.url = `spankbang://profile/${match[1]}`;
                     uploader.avatar = extractAvatarFromHtml(searchHtml);
@@ -948,27 +880,28 @@ function extractUploaderFromVideoToolbar(html) {
                     return uploader;
                 }
                 
-                if (type === 'profile' || type === 'profile_span' || type === 'profile_simple') {
-                    const nameIndex = type === 'profile' ? 3 : 2;
-                    uploader.name = (match[nameIndex] || match[1]).replace(/<[^>]*>/g, '').trim();
+                if (type === 'profile') {
+                    // Profile pattern: match[1]=profileSlug, match[2]=avatar, match[3]=name
+                    uploader.name = (match[3] || match[1]).replace(/<[^>]*>/g, '').trim();
                     uploader.url = `spankbang://profile/${match[1]}`;
-                    if (type === 'profile' && match[2]) {
-                        avatarUrl = match[2];
-                        if (avatarUrl.startsWith('//')) avatarUrl = `https:${avatarUrl}`;
-                        else if (!avatarUrl.startsWith('http')) avatarUrl = `https://spankbang.com${avatarUrl}`;
+                    avatarUrl = match[2] || "";
+                    if (avatarUrl.startsWith('//')) {
+                        avatarUrl = `https:${avatarUrl}`;
+                    } else if (avatarUrl && !avatarUrl.startsWith('http')) {
+                        avatarUrl = `https://spankbang.com${avatarUrl}`;
                     }
                     uploader.avatar = avatarUrl || extractAvatarFromHtml(searchHtml);
                     if (uploader.name && uploader.name.length > 0) {
-                        log("extractUploaderFromVideoToolbar: Found PROFILE (" + type + "): " + uploader.name);
+                        log("extractUploaderFromVideoToolbar: Found PROFILE: " + uploader.name);
                         return uploader;
                     }
                 }
                 
                 if (type === 'channel_title') {
+                    // Title attribute pattern: match[1]=shortId, match[2]=slug, match[3]=title
                     uploader.name = match[3].trim();
                     uploader.url = `spankbang://channel/${match[1]}:${match[2]}`;
                     uploader.avatar = extractChannelAvatarNearLink(searchHtml, match[1], match[2]) || extractAvatarFromHtml(searchHtml);
-                    log("extractUploaderFromVideoToolbar: Found CHANNEL (title): " + uploader.name);
                     return uploader;
                 }
                 
@@ -1058,11 +991,6 @@ function extractUploaderFromVideoToolbar(html) {
         }
     }
 
-    // IMPORTANT: Only search for channels in full HTML if no profile was found
-    // Profiles take priority because they represent actual uploaders
-    // Channels in full HTML are often from related videos, not the actual uploader
-    log("extractUploaderFromVideoToolbar: No profile found, checking for channels (may be from related videos)");
-    
     const simpleChannelPatterns = [
         // Priority 1: Title attribute (most reliable for channel name)
         /href="\/([a-z0-9]+)\/channel\/([^"]+)"[^>]*title="([^"]+)"/i,
@@ -1214,64 +1142,16 @@ function fetchUploaderAvatarIfNeeded(uploader, html) {
 }
 
 function extractUploaderFromSearchResult(block) {
-    // CRITICAL: SpankBang's home page often shows TAGS instead of uploaders
-    // We need to SKIP anything marked with data-badge="tag" or /s/ links
-    
+    // CRITICAL: ALWAYS find an uploader - profiles, pornstars, or channels
+    // Priority: Profile > Pornstar > Channel (profiles are most accurate)
+
     const uploader = {
         name: "",
         url: "",
         avatar: ""
     };
 
-    // FIRST: Check if this block has REAL uploader info (not tags)
-    // Real uploaders have channel/profile/pornstar links with specific URL patterns:
-    // - /profile/username
-    // - /shortId/channel/channelname
-    // - /shortId/pornstar/pornstarname
-    // Tags use /s/tagname/ format which should NOT be treated as uploaders
-    
-    // Check for real uploader patterns
-    const hasRealUploader = /<a[^>]*href=["']\/(?:profile\/[^"\/]+|[a-z0-9]+\/(?:channel|pornstar)\/[^"]+)["']/i.test(block);
-    
-    // Check for tag patterns
-    const hasTagBadge = /<span[^>]*data-badge=["']tag["'][^>]*>/i.test(block);
-    const hasOnlyTagLinks = /<a[^>]*href=["']\/s\/[^"]+["']/i.test(block) && !hasRealUploader;
-    
-    // Skip if we detect this is a tag-only block (no real uploader links)
-    if (!hasRealUploader && (hasTagBadge || hasOnlyTagLinks)) {
-        log("extractUploaderFromSearchResult: Block only has tags or /s/ links, no real uploader");
-        return uploader; // Return empty - no uploader available
-    }
-    
-    // Additional check: if a block has /s/ links but NO real uploader links, skip it
-    if (!hasRealUploader) {
-        log("extractUploaderFromSearchResult: No real uploader link patterns found in block");
-        return uploader;
-    }
-
     // PRIORITY 0: Look for PROFILE links FIRST (most accurate for user uploads)
-    // SpankBang NEW structure: <a href="/profile/username/"><span class="...">Name</span></a>
-    const profileWithSpanPatterns = [
-        /<a[^>]*data-testid="title"[^>]*href="\/profile\/([^"\/]+)\/?\"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>[\s\S]*?<\/a>/i,
-        /<a[^>]*href="\/profile\/([^"\/]+)\/?\"[^>]*data-testid="title"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>[\s\S]*?<\/a>/i,
-        /<a[^>]*href="\/profile\/([^"\/]+)\/?\"[^>]*>[\s\S]*?<span[^>]*class="[^"]*text-[^"]*"[^>]*>([^<]+)<\/span>/i,
-        /<a[^>]*href="\/profile\/([^"\/]+)\/?\"[^>]*>\s*<span[^>]*>([^<]+)<\/span>/i
-    ];
-
-    for (const pattern of profileWithSpanPatterns) {
-        const match = block.match(pattern);
-        if (match && match[2]) {
-            const name = match[2].replace(/<[^>]*>/g, '').trim();
-            if (name && name.length > 0 && name.length < 100 && !isLikelyBadUploaderName(name)) {
-                uploader.name = name;
-                uploader.url = `spankbang://profile/${match[1]}`;
-                uploader.avatar = extractAvatarFromHtml(block);
-                log(`extractUploaderFromSearchResult: Found PROFILE (span pattern): "${name}" -> ${uploader.url}`);
-                return uploader;
-            }
-        }
-    }
-
     const profileWithAvatarPatterns = [
         /<a[^>]*href="\/profile\/([^"\/]+)\/?\"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?<span[^>]*>([^<]+)<\/span>/i,
         /<a[^>]*href="\/profile\/([^"\/]+)\/?\"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?([^<>]+)<\/a>/i
@@ -1318,29 +1198,6 @@ function extractUploaderFromSearchResult(block) {
     }
 
     // PRIORITY 1: Look for explicit pornstar links
-    // SpankBang NEW structure: <a href="/shortId/pornstar/name/"><span class="...">Name</span></a>
-    const pornstarWithSpanPatterns = [
-        /<a[^>]*data-testid="title"[^>]*href="\/([a-z0-9]+)\/pornstar\/([^"\/]+)\/?\"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>[\s\S]*?<\/a>/i,
-        /<a[^>]*href="\/([a-z0-9]+)\/pornstar\/([^"\/]+)\/?\"[^>]*data-testid="title"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>[\s\S]*?<\/a>/i,
-        /<a[^>]*href="\/([a-z0-9]+)\/pornstar\/([^"\/]+)\/?\"[^>]*>[\s\S]*?<span[^>]*class="[^"]*text-[^"]*"[^>]*>([^<]+)<\/span>/i,
-        /<a[^>]*href="\/([a-z0-9]+)\/pornstar\/([^"\/]+)\/?\"[^>]*>\s*<span[^>]*>([^<]+)<\/span>/i
-    ];
-
-    for (const pattern of pornstarWithSpanPatterns) {
-        const match = block.match(pattern);
-        if (match && match[3]) {
-            const name = match[3].replace(/<[^>]*>/g, '').trim();
-            const pornstarSlug = match[2].replace(/\/$/, '');
-            if (name && name.length > 0 && name.length < 100 && !isLikelyBadUploaderName(name)) {
-                uploader.name = name;
-                uploader.url = `spankbang://profile/pornstar:${pornstarSlug}`;
-                uploader.avatar = extractPornstarAvatarFromHtml(block, pornstarSlug);
-                log(`extractUploaderFromSearchResult: Found PORNSTAR (span pattern): "${name}" -> ${uploader.url}`);
-                return uploader;
-            }
-        }
-    }
-
     const pornstarWithAvatarPatterns = [
         /<a[^>]*href="\/([a-z0-9]+)\/pornstar\/([^"]+)"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?<span[^>]*>([^<]+)<\/span>/i,
         /<a[^>]*href="\/([a-z0-9]+)\/pornstar\/([^"]+)"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?([^<>]+)<\/a>/i
@@ -1383,32 +1240,7 @@ function extractUploaderFromSearchResult(block) {
         }
     }
 
-    // PRIORITY 2: Look for channel links (but NOT tag links /s/...)
-    // SpankBang NEW structure: <a href="/shortId/channel/name/"><span class="...">Channel Name</span></a>
-    const channelWithSpanPatterns = [
-        // New SpankBang structure: channel link with name in span
-        /<a[^>]*data-testid="title"[^>]*href="\/([a-z0-9]+)\/channel\/([^"\/]+)\/?\"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>[\s\S]*?<\/a>/i,
-        /<a[^>]*href="\/([a-z0-9]+)\/channel\/([^"\/]+)\/?\"[^>]*data-testid="title"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>[\s\S]*?<\/a>/i,
-        // Generic channel link with span inside
-        /<a[^>]*href="\/([a-z0-9]+)\/channel\/([^"\/]+)\/?\"[^>]*>[\s\S]*?<span[^>]*class="[^"]*text-[^"]*"[^>]*>([^<]+)<\/span>/i,
-        /<a[^>]*href="\/([a-z0-9]+)\/channel\/([^"\/]+)\/?\"[^>]*>\s*<span[^>]*>([^<]+)<\/span>/i
-    ];
-
-    for (const pattern of channelWithSpanPatterns) {
-        const match = block.match(pattern);
-        if (match && match[3]) {
-            const name = match[3].replace(/<[^>]*>/g, '').trim();
-            const channelSlug = match[2].replace(/\/$/, '');
-            if (name && name.length > 0 && name.length < 100 && !isLikelyBadUploaderName(name, channelSlug)) {
-                uploader.name = name;
-                uploader.url = `spankbang://channel/${match[1]}:${channelSlug}`;
-                uploader.avatar = ""; // Will be fetched separately
-                log(`extractUploaderFromSearchResult: Found CHANNEL (span pattern): "${name}" -> ${uploader.url}`);
-                return uploader;
-            }
-        }
-    }
-
+    // PRIORITY 2: Look for channel links
     const channelWithAvatarPatterns = [
         /<a[^>]*href="\/([a-z0-9]+)\/channel\/([^"]+)"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?<span[^>]*>([^<]+)<\/span>/i,
         /<a[^>]*href="\/([a-z0-9]+)\/channel\/([^"]+)"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?([^<>]+)<\/a>/i
@@ -1454,8 +1286,102 @@ function extractUploaderFromSearchResult(block) {
         }
     }
 
-    // If we couldn't find any real uploader, return empty (don't use tags)
-    log("WARNING: extractUploaderFromSearchResult could not find any uploader");
+    // Look for ANY uploader-related spans or text with nearby links
+    const userSpanPatterns = [
+        /<span[^>]*class="[^"]*(?:user|uploader|author|name|n)[^"]*"[^>]*>([^<]+)<\/span>/i,
+        /<div[^>]*class="[^"]*(?:user|uploader|author|name)[^"]*"[^>]*>([^<]+)<\/div>/i,
+        /<p[^>]*class="[^"]*(?:user|uploader|author|name)[^"]*"[^>]*>([^<]+)<\/p>/i
+    ];
+
+    for (const spanPattern of userSpanPatterns) {
+        const spanMatch = block.match(spanPattern);
+        if (spanMatch && spanMatch[1]) {
+            const name = spanMatch[1].trim();
+            if (name && name.length > 2 && name.length < 100 && !isLikelyBadUploaderName(name)) {
+                uploader.name = name;
+                
+                // Try to find associated URL - PRIORITIZE PROFILES
+                const nearbyHrefProfile = block.match(/href="\/profile\/([^"\/]+)\/?"/i);
+                if (nearbyHrefProfile) {
+                    uploader.url = `spankbang://profile/${nearbyHrefProfile[1]}`;
+                    uploader.avatar = extractAvatarFromHtml(block);
+                    log("extractUploaderFromSearchResult: Found PROFILE from span: " + name);
+                    return uploader;
+                }
+                
+                const nearbyHrefPornstar = block.match(/href="\/([a-z0-9]+)\/pornstar\/([^"]+)"/i);
+                if (nearbyHrefPornstar) {
+                    uploader.url = `spankbang://profile/pornstar:${nearbyHrefPornstar[2]}`;
+                    uploader.avatar = extractPornstarAvatarFromHtml(block, nearbyHrefPornstar[2]);
+                    return uploader;
+                }
+                
+                const nearbyHrefChannel = block.match(/href="\/([a-z0-9]+)\/channel\/([^"]+)"/i);
+                if (nearbyHrefChannel) {
+                    uploader.url = `spankbang://channel/${nearbyHrefChannel[1]}:${nearbyHrefChannel[2]}`;
+                    uploader.avatar = extractChannelAvatarNearLink(block, nearbyHrefChannel[1], nearbyHrefChannel[2]);
+                    return uploader;
+                }
+                
+                // Even without a URL, return the name (better than nothing)
+                return uploader;
+            }
+        }
+    }
+
+    // Final fallback: look for any links and use less strict validation
+    // PRIORITIZE PROFILES FIRST
+    const profileLinkMatch = block.match(/href="\/profile\/([^"\/]+)\/?"/i);
+    if (profileLinkMatch) {
+        const slug = profileLinkMatch[1];
+        const formattedName = slug.replace(/[+_-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        if (formattedName.length > 2 && !isLikelyBadUploaderName(formattedName)) {
+            uploader.name = formattedName;
+            uploader.url = `spankbang://profile/${slug}`;
+            uploader.avatar = extractAvatarFromHtml(block);
+            log("extractUploaderFromSearchResult: Found PROFILE fallback: " + formattedName);
+            return uploader;
+        }
+    }
+    
+    const anyLinkMatch = block.match(/href="\/([a-z0-9]+)\/(channel|pornstar)\/([^"\/]+)\/?"/i);
+    if (anyLinkMatch) {
+        const type = anyLinkMatch[2];
+        const slug = anyLinkMatch[3];
+        
+        // Try to extract name from title attribute or nearby context
+        const titleMatch = block.match(new RegExp(`href="[^"]*${type}/${slug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^"]*"[^>]*title="([^"]+)"`, 'i'));
+        if (titleMatch && titleMatch[1]) {
+            const name = titleMatch[1].trim();
+            if (!isLikelyBadUploaderName(name, slug)) {
+                uploader.name = name;
+                if (type === 'channel') {
+                    uploader.url = `spankbang://channel/${anyLinkMatch[1]}:${slug}`;
+                } else {
+                    uploader.url = `spankbang://profile/pornstar:${slug}`;
+                }
+                return uploader;
+            }
+        }
+        
+        // Use formatted slug as fallback
+        const formattedName = slug.replace(/[+_-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        if (formattedName.length > 2 && !isLikelyBadUploaderName(formattedName)) {
+            uploader.name = formattedName;
+            if (type === 'channel') {
+                uploader.url = `spankbang://channel/${anyLinkMatch[1]}:${slug}`;
+            } else {
+                uploader.url = `spankbang://profile/pornstar:${slug}`;
+            }
+            return uploader;
+        }
+    }
+
+    // If we still have nothing, return placeholder so video at least shows SOMETHING
+    if (!uploader.name) {
+        log("WARNING: extractUploaderFromSearchResult could not find any uploader");
+    }
+    
     return uploader;
 }
 
@@ -2006,15 +1932,6 @@ function createPlatformAuthor(uploader) {
     const authorUrl = uploader.url || "";
     const authorName = uploader.name || "";
 
-    // Log what we're creating for debugging
-    if (authorName && authorUrl) {
-        log(`createPlatformAuthor: Creating author "${authorName}" with URL: ${authorUrl}`);
-    } else if (authorName) {
-        log(`createPlatformAuthor: Creating author "${authorName}" with NO URL (will not be clickable)`);
-    } else {
-        log(`createPlatformAuthor: Creating EMPTY author (no name, no URL)`);
-    }
-
     return new PlatformAuthorLink(
         new PlatformID(PLATFORM, authorName, plugin.config.id),
         authorName,
@@ -2023,44 +1940,12 @@ function createPlatformAuthor(uploader) {
     );
 }
 
-function hasValidUploader(uploader) {
-    // Check if we have a real uploader with both name AND a valid URL
-    // Empty URL or name means no real uploader - don't make it clickable
-    if (!uploader) return false;
-    if (!uploader.name || uploader.name.trim().length === 0) return false;
-    if (!uploader.url || uploader.url.trim().length === 0) return false;
-    // Make sure URL is a valid internal scheme (not empty)
-    if (!uploader.url.startsWith('spankbang://')) return false;
-    return true;
-}
-
 function createPlatformVideo(videoData) {
-    const uploader = videoData.uploader || {};
-    
-    // CRITICAL: Only create author if we have a valid uploader with a URL
-    // If no real uploader exists, create an author that Grayjay won't make clickable
-    let author;
-    if (hasValidUploader(uploader)) {
-        author = createPlatformAuthor(uploader);
-        log(`createPlatformVideo: Video ${videoData.id} has VALID uploader: "${uploader.name}"`);
-    } else {
-        // No valid uploader - create author with NO URL at all
-        // Grayjay should not make this clickable when URL is empty
-        // Using PLATFORM as name tells users this is platform content (no specific uploader)
-        author = new PlatformAuthorLink(
-            new PlatformID(PLATFORM, PLATFORM, plugin.config.id),
-            "", // Empty name - should hide the element
-            "", // Empty URL - CRITICAL: prevents Grayjay from making this clickable
-            ""  // Empty avatar
-        );
-        log(`createPlatformVideo: Video ${videoData.id} has NO valid uploader - empty author created`);
-    }
-    
     return new PlatformVideo({
         id: new PlatformID(PLATFORM, videoData.id || "", plugin.config.id),
         name: videoData.title || "Untitled",
         thumbnails: createThumbnails(videoData.thumbnail, videoData.id),
-        author: author,
+        author: createPlatformAuthor(videoData.uploader || {}),
         datetime: videoData.uploadDate || 0,
         duration: videoData.duration || 0,
         viewCount: videoData.views || 0,
@@ -2125,9 +2010,7 @@ function createVideoDetails(videoData, url) {
         id: new PlatformID(PLATFORM, videoData.id || "", plugin.config.id),
         name: videoData.title || "Untitled",
         thumbnails: createThumbnails(videoData.thumbnail, videoData.id),
-        author: hasValidUploader(videoData.uploader) 
-            ? createPlatformAuthor(videoData.uploader) 
-            : new PlatformAuthorLink(new PlatformID(PLATFORM, "", plugin.config.id), "", "", ""),
+        author: createPlatformAuthor(videoData.uploader || {}),
         datetime: videoData.uploadDate || 0,
         duration: videoData.duration || 0,
         viewCount: videoData.views || 0,
@@ -2209,36 +2092,8 @@ function parseSearchResults(html) {
             
             const videoSlug = linkMatch[2];
 
-            // Enhanced thumbnail extraction with multiple fallback patterns
-            let thumbnail = "";
-            const thumbPatterns = [
-                // SpankBang CDN patterns (most common)
-                /(?:data-src|src)="(https?:\/\/[^"]*tbi\.sb-cd\.com[^"]+)"/i,
-                /(?:data-src|src)="(https?:\/\/[^"]*sb-cd\.com[^"]+)"/i,
-                /(?:data-src|src)="(https?:\/\/[^"]*cdn\.spankbang[^"]+)"/i,
-                // Generic image patterns with extensions
-                /(?:data-src|lazy-src|data-original)="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i,
-                /src="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i,
-                // Background image patterns
-                /style="[^"]*background[^:]*:\s*url\(['"]?(https?:\/\/[^'")\s]+)['"]?\)/i
-            ];
-            
-            for (const thumbPattern of thumbPatterns) {
-                const thumbMatch = block.match(thumbPattern);
-                if (thumbMatch && thumbMatch[1]) {
-                    const url = thumbMatch[1];
-                    // Skip avatar/profile images
-                    if (!url.includes('avatar') && !url.includes('pornstarimg') && !url.includes('icon')) {
-                        thumbnail = url;
-                        break;
-                    }
-                }
-            }
-            
-            // Fallback to default CDN thumbnail if no valid thumbnail found
-            if (!thumbnail || thumbnail.length < 10) {
-                thumbnail = `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
-            }
+            const thumbMatch = block.match(/(?:data-src|src)="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/);
+            const thumbnail = thumbMatch ? thumbMatch[1] : `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
 
             const titleMatch = block.match(/title="([^"]+)"/);
             let title = titleMatch ? titleMatch[1] : "Unknown";
@@ -2271,43 +2126,9 @@ function parseSearchResults(html) {
 
             const uploader = extractUploaderFromSearchResult(block);
             
-            // LOG: Show what uploader was extracted
-            if (uploader.name && uploader.name.length > 0) {
-                log(`parseSearchResults: Video ${videoId} has uploader: "${uploader.name}", url: "${uploader.url}"`);
-            }
-            
-            // VERBOSE DEBUG: For first 3 videos, dump the ENTIRE block and analyze links
-            if (videos.length < 3) {
-                log(`parseSearchResults: ===== FULL DEBUG VIDEO ${videoId} =====`);
-                log(`Block length: ${block.length} chars`);
-                
-                // Log the full block in chunks (Grayjay may truncate logs)
-                const chunkSize = 1500;
-                for (let i = 0; i < Math.min(block.length, 6000); i += chunkSize) {
-                    log(`BLOCK CHUNK ${i}-${i+chunkSize}: ${block.substring(i, i + chunkSize).replace(/[\n\r]+/g, ' ')}`);
-                }
-                
-                // Find ALL links in this block
-                const allLinks = block.match(/href="[^"]+"/gi) || [];
-                log(`ALL LINKS IN BLOCK: ${allLinks.join(' | ')}`);
-                
-                // Specifically look for channel/profile/pornstar links
-                const channelLinks = block.match(/href="\/[a-z0-9]+\/channel\/[^"]+"/gi) || [];
-                const profileLinks = block.match(/href="\/profile\/[^"]+"/gi) || [];
-                const pornstarLinks = block.match(/href="\/[a-z0-9]+\/pornstar\/[^"]+"/gi) || [];
-                const tagLinks = block.match(/href="\/s\/[^"]+"/gi) || [];
-                
-                log(`CHANNEL LINKS: ${channelLinks.length > 0 ? channelLinks.join(' | ') : 'NONE'}`);
-                log(`PROFILE LINKS: ${profileLinks.length > 0 ? profileLinks.join(' | ') : 'NONE'}`);
-                log(`PORNSTAR LINKS: ${pornstarLinks.length > 0 ? pornstarLinks.join(' | ') : 'NONE'}`);
-                log(`TAG LINKS (/s/): ${tagLinks.length > 0 ? tagLinks.join(' | ') : 'NONE'}`);
-                
-                log(`parseSearchResults: ===== END FULL DEBUG =====`);
-            }
-            
             // LOG extracted data for debugging
-            if (videos.length < 5) {
-                log(`parseSearchResults: Video ${videoId}: title="${title}", duration=${durationSeconds}s, views=${views}, uploader="${uploader.name || 'NONE'}", uploaderUrl="${uploader.url || 'NONE'}"`);
+            if (videos.length < 3) {
+                log(`parseSearchResults: Video ${videoId}: title="${title}", duration=${durationSeconds}s, views=${views}, uploader="${uploader.name || 'NONE'}"`);
             }
 
             videos.push({
@@ -2504,83 +2325,6 @@ function parseProfilesPage(html) {
     }
 
     return profiles;
-}
-
-function parseChannelsPage(html) {
-    const channels = [];
-    const seenIds = new Set();
-
-    // Pattern to match channel links: /shortId/channel/channelname
-    const channelPatterns = [
-        // Full channel link with image
-        /<a[^>]*href="\/([a-z0-9]+)\/channel\/([^"\/]+)\/?\"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?<\/a>/gi,
-        // Channel link with title attribute
-        /<a[^>]*href="\/([a-z0-9]+)\/channel\/([^"\/]+)\/?\"[^>]*title="([^"]+)"[^>]*>/gi,
-        // Basic channel link
-        /<a[^>]*href="\/([a-z0-9]+)\/channel\/([^"\/]+)\/?\"[^>]*>([^<]+)<\/a>/gi
-    ];
-
-    for (const pattern of channelPatterns) {
-        let match;
-        pattern.lastIndex = 0;
-        while ((match = pattern.exec(html)) !== null) {
-            const shortId = match[1];
-            const channelSlug = match[2].replace(/\/$/, '');
-            const channelId = `${shortId}:${channelSlug}`;
-            
-            if (seenIds.has(channelId)) continue;
-            seenIds.add(channelId);
-
-            let avatar = "";
-            let name = match[3] || channelSlug;
-
-            // Check if match[3] is an image URL or a name
-            if (name && (name.startsWith('http') || name.startsWith('//') || name.includes('.jpg') || name.includes('.png'))) {
-                avatar = name;
-                // Use slug as name, properly formatted
-                name = channelSlug.replace(/[+_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-            } else {
-                // Extract avatar from nearby context
-                const contextStart = Math.max(0, match.index - 300);
-                const contextEnd = Math.min(html.length, match.index + match[0].length + 300);
-                const context = html.substring(contextStart, contextEnd);
-                
-                const avatarMatch = context.match(/<img[^>]*(?:data-src|src)="([^"]+(?:avatar|channel|thumb)[^"]*)"/i);
-                if (avatarMatch && avatarMatch[1]) {
-                    avatar = avatarMatch[1];
-                }
-            }
-
-            // Normalize avatar URL
-            if (avatar.startsWith('//')) {
-                avatar = `https:${avatar}`;
-            } else if (avatar && !avatar.startsWith('http')) {
-                avatar = `https://spankbang.com${avatar}`;
-            }
-
-            // Clean up name - remove HTML tags and trim
-            name = name.replace(/<[^>]*>/g, '').trim();
-            
-            // Format name if it's still the slug
-            if (name === channelSlug || name.length === 0) {
-                name = channelSlug.replace(/[+_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-            }
-
-            channels.push({
-                id: channelId,
-                shortId: shortId,
-                slug: channelSlug,
-                name: name,
-                avatar: avatar,
-                url: `${CONFIG.EXTERNAL_URL_BASE}/${shortId}/channel/${channelSlug}`,
-                subscribers: 0,
-                videoCount: 0
-            });
-        }
-    }
-
-    log("parseChannelsPage: Found " + channels.length + " channels");
-    return channels;
 }
 
 function parsePlaylistsPage(html) {
@@ -5559,48 +5303,26 @@ source.searchChannels = function(query, continuationToken) {
                 searchUrl += `/${page}`;
             }
         } else {
-            // Use + for spaces to match SpankBang's URL encoding format
-            const searchQuery = query.trim().replace(/\s+/g, '+');
-            searchUrl = `${BASE_URL}/s/${encodeURIComponent(searchQuery)}/`;
+            const searchQuery = encodeURIComponent(query.trim());
+            searchUrl = `${BASE_URL}/s/${searchQuery}/`;
             if (page > 1) {
                 searchUrl += `${page}/`;
             }
         }
 
-        log("searchChannels: Fetching URL: " + searchUrl);
         const html = makeRequest(searchUrl, API_HEADERS, 'channel search');
         
-        // Parse pornstars, profiles, AND channels from the page
+        // Parse both pornstars AND profiles from the page
         const pornstars = parsePornstarsPage(html);
         const profiles = parseProfilesPage(html);
-        const channels = parseChannelsPage(html);
         
-        log("searchChannels: Found " + pornstars.length + " pornstars, " + profiles.length + " profiles, and " + channels.length + " channels");
+        log("searchChannels: Found " + pornstars.length + " pornstars and " + profiles.length + " profiles");
 
-        // Combine all into platform channels
+        // Combine pornstars and profiles into platform channels
         const platformChannels = [];
-        const seenIds = new Set();
-        
-        // Add channels first (studios like "Evil Angel" are usually channels)
-        channels.forEach(c => {
-            if (seenIds.has(c.id)) return;
-            seenIds.add(c.id);
-            platformChannels.push(new PlatformChannel({
-                id: new PlatformID(PLATFORM, c.id, plugin.config.id),
-                name: c.name,
-                thumbnail: c.avatar,
-                banner: "",
-                subscribers: c.subscribers || 0,
-                description: `${c.videoCount || 0} videos`,
-                url: `spankbang://channel/${c.id}`,
-                links: {}
-            }));
-        });
         
         // Add pornstars
         pornstars.forEach(p => {
-            if (seenIds.has(p.id)) return;
-            seenIds.add(p.id);
             platformChannels.push(new PlatformChannel({
                 id: new PlatformID(PLATFORM, p.id, plugin.config.id),
                 name: p.name,
@@ -5615,8 +5337,6 @@ source.searchChannels = function(query, continuationToken) {
         
         // Add profiles
         profiles.forEach(p => {
-            if (seenIds.has(p.id)) return;
-            seenIds.add(p.id);
             platformChannels.push(new PlatformChannel({
                 id: new PlatformID(PLATFORM, p.id, plugin.config.id),
                 name: p.name,
@@ -5702,15 +5422,6 @@ source.isChannelUrl = function(url) {
 
 source.getChannel = function(url) {
     try {
-        // CRITICAL: Early return for empty/invalid URLs
-        // This prevents errors when Grayjay tries to open empty author links
-        if (!url || url.trim().length === 0) {
-            log("getChannel: Empty URL received - returning null");
-            throw new ScriptException("No channel URL provided");
-        }
-        
-        log("getChannel: Called with URL: " + url);
-        
         const result = extractChannelId(url);
         let profileUrl;
         let internalUrl;
