@@ -2035,6 +2035,27 @@ function hasValidUploader(uploader) {
 }
 
 function createPlatformVideo(videoData) {
+    // CRITICAL: Validate input to prevent null/undefined errors
+    if (!videoData) {
+        log("createPlatformVideo: ERROR - videoData is null/undefined!");
+        // Return a minimal valid video object to prevent crashes
+        return new PlatformVideo({
+            id: new PlatformID(PLATFORM, "unknown", plugin.config.id),
+            name: "Unknown Video",
+            thumbnails: new Thumbnails([]),
+            author: new PlatformAuthorLink(new PlatformID(PLATFORM, "", plugin.config.id), "", "", ""),
+            datetime: 0,
+            duration: 0,
+            viewCount: 0,
+            url: CONFIG.EXTERNAL_URL_BASE,
+            isLive: false
+        });
+    }
+    
+    if (!videoData.id || videoData.id.trim().length === 0) {
+        log("createPlatformVideo: WARNING - video has empty ID! title=" + (videoData.title || "none"));
+    }
+    
     const uploader = videoData.uploader || {};
     
     // CRITICAL: Only create author if we have a valid uploader with a URL
@@ -2121,6 +2142,11 @@ function createVideoDetails(videoData, url) {
         description += "Related Playlists: " + playlistLinks;
     }
 
+    // CRITICAL: Ensure video ID is valid for history tracking
+    if (!videoData.id || videoData.id.trim().length === 0) {
+        log("createVideoDetails: WARNING - empty video ID detected, history tracking may fail");
+    }
+
     const details = new PlatformVideoDetails({
         id: new PlatformID(PLATFORM, videoData.id || "", plugin.config.id),
         name: videoData.title || "Untitled",
@@ -2140,7 +2166,7 @@ function createVideoDetails(videoData, url) {
         rating: videoData.rating ? new RatingScaler(videoData.rating) : null
     });
     
-    log("createVideoDetails: Created details with duration=" + (videoData.duration || 0) + "s, thumbnail=" + videoData.thumbnail);
+    log("createVideoDetails: Created details with id=" + (videoData.id || "MISSING") + ", duration=" + (videoData.duration || 0) + "s, thumbnail=" + (videoData.thumbnail ? "present" : "MISSING"));
 
     details.getContentRecommendations = function() {
         return source.getContentRecommendations(url);
@@ -4412,7 +4438,7 @@ source.getWatchHistory = function() {
         // Use authenticated request directly (same pattern as getUserSubscriptions)
         // Don't check isLoggedIn() as it may fail even with valid cookies in the http client
         const historyUrl = USER_URLS.HISTORY;
-        log("Fetching watch history from: " + historyUrl);
+        log("getWatchHistory: Fetching from: " + historyUrl);
         
         const response = makeRequestNoThrow(historyUrl, API_HEADERS, 'watch history', true);
         
@@ -4431,20 +4457,45 @@ source.getWatchHistory = function() {
         log("getWatchHistory: HTML length = " + html.length);
         
         let videos = parseSearchResults(html);
+        log("getWatchHistory: parseSearchResults returned " + videos.length + " videos");
         
         if (videos.length === 0) {
             videos = parseHistoryPage(html);
+            log("getWatchHistory: parseHistoryPage returned " + videos.length + " videos");
         }
         
         if (videos.length === 0) {
             log("getWatchHistory: No videos found. HTML snippet (first 500 chars): " + html.substring(0, 500).replace(/[\n\r]/g, ' '));
         }
         
-        log("getWatchHistory found " + videos.length + " videos");
+        // Validate and log each video before creating PlatformVideo
+        log("getWatchHistory: Validating " + videos.length + " videos...");
+        const validVideos = [];
+        for (let i = 0; i < videos.length; i++) {
+            const v = videos[i];
+            if (!v) {
+                log("getWatchHistory: Video at index " + i + " is NULL - skipping");
+                continue;
+            }
+            if (!v.id || v.id.trim().length === 0) {
+                log("getWatchHistory: Video at index " + i + " has EMPTY ID - skipping (title: " + (v.title || "no title") + ")");
+                continue;
+            }
+            if (!v.url || v.url.trim().length === 0) {
+                log("getWatchHistory: Video " + v.id + " has EMPTY URL - fixing");
+                v.url = `${CONFIG.EXTERNAL_URL_BASE}/${v.id}/video/`;
+            }
+            log("getWatchHistory: Video " + i + " valid: id=" + v.id + ", duration=" + v.duration + ", title=" + (v.title || "").substring(0, 30));
+            validVideos.push(v);
+        }
+        
+        log("getWatchHistory: " + validVideos.length + " valid videos out of " + videos.length);
         
         // Return full video objects (PlatformVideo) instead of just URLs
         // This ensures thumbnails, duration, and other metadata are preserved in history
-        return videos.map(v => createPlatformVideo(v));
+        const platformVideos = validVideos.map(v => createPlatformVideo(v));
+        log("getWatchHistory: Returning " + platformVideos.length + " platform videos");
+        return platformVideos;
 
     } catch (error) {
         log("getWatchHistory error: " + error.message);
@@ -4457,6 +4508,12 @@ function parseHistoryPage(html) {
     const seenIds = new Set();
     
     log("parseHistoryPage: Starting parse, HTML length = " + html.length);
+    
+    // Debug: Log a sample of the HTML to understand the structure
+    if (html.length > 0) {
+        const sampleStart = html.indexOf('video-item') > -1 ? Math.max(0, html.indexOf('video-item') - 100) : 0;
+        log("parseHistoryPage: HTML sample around video-item: " + html.substring(sampleStart, sampleStart + 500).replace(/[\n\r]/g, ' '));
+    }
     
     // SpankBang history page specific patterns - they use "video-item" and "thumb" classes
     const videoItemPatterns = [
@@ -4983,7 +5040,7 @@ source.syncRemoteWatchHistory = function(continuationToken) {
             ? `${USER_URLS.HISTORY}/${page}/`
             : USER_URLS.HISTORY;
         
-        log("Syncing remote watch history from: " + historyUrl);
+        log("syncRemoteWatchHistory: Fetching page " + page + " from: " + historyUrl);
         
         const response = makeRequestNoThrow(historyUrl, API_HEADERS, 'remote watch history', true);
         
@@ -5002,21 +5059,43 @@ source.syncRemoteWatchHistory = function(continuationToken) {
         log("syncRemoteWatchHistory: HTML length = " + html.length);
         
         let videos = parseSearchResults(html);
+        log("syncRemoteWatchHistory: parseSearchResults returned " + videos.length + " videos");
         
         if (videos.length === 0) {
             videos = parseHistoryPage(html);
+            log("syncRemoteWatchHistory: parseHistoryPage returned " + videos.length + " videos");
         }
         
         if (videos.length === 0) {
             log("syncRemoteWatchHistory: No videos found. HTML snippet (first 500 chars): " + html.substring(0, 500).replace(/[\n\r]/g, ' '));
         }
         
-        const platformVideos = videos.map(v => createPlatformVideo(v));
+        // Validate videos before converting to platform videos
+        log("syncRemoteWatchHistory: Validating " + videos.length + " videos...");
+        const validVideos = [];
+        for (let i = 0; i < videos.length; i++) {
+            const v = videos[i];
+            if (!v) {
+                log("syncRemoteWatchHistory: Video at index " + i + " is NULL - skipping");
+                continue;
+            }
+            if (!v.id || v.id.trim().length === 0) {
+                log("syncRemoteWatchHistory: Video at index " + i + " has EMPTY ID - skipping");
+                continue;
+            }
+            if (!v.url || v.url.trim().length === 0) {
+                v.url = `${CONFIG.EXTERNAL_URL_BASE}/${v.id}/video/`;
+            }
+            validVideos.push(v);
+        }
+        log("syncRemoteWatchHistory: " + validVideos.length + " valid videos");
         
-        const hasMore = videos.length >= 20;
+        const platformVideos = validVideos.map(v => createPlatformVideo(v));
+        
+        const hasMore = validVideos.length >= 20;
         const nextToken = hasMore ? (page + 1).toString() : null;
         
-        log("syncRemoteWatchHistory found " + videos.length + " videos, hasMore: " + hasMore);
+        log("syncRemoteWatchHistory: Returning " + platformVideos.length + " videos, hasMore: " + hasMore);
         return new SpankBangHistoryPager(platformVideos, hasMore, { continuationToken: nextToken });
 
     } catch (error) {
@@ -5278,8 +5357,23 @@ source.getHome = function(continuationToken) {
         const page = continuationToken ? parseInt(continuationToken) : 1;
         const url = `${BASE_URL}/trending_videos/${page}/`;
 
+        log("getHome: Fetching page " + page + " from " + url);
         const html = makeRequest(url, API_HEADERS, 'home content');
         const videos = parseSearchResults(html);
+        
+        // Log uploader stats for debugging
+        let withUploader = 0;
+        let withoutUploader = 0;
+        videos.forEach(v => {
+            if (v.uploader && v.uploader.name && v.uploader.url) {
+                withUploader++;
+            } else {
+                withoutUploader++;
+                log("getHome: Video " + v.id + " (" + (v.title || "").substring(0, 30) + "...) has NO uploader");
+            }
+        });
+        log("getHome: Parsed " + videos.length + " videos - " + withUploader + " with uploader, " + withoutUploader + " without");
+        
         const platformVideos = videos.map(v => createPlatformVideo(v));
 
         const hasMore = videos.length >= 20;
@@ -5679,7 +5773,18 @@ source.getCreators = function(continuationToken) {
 };
 
 source.isChannelUrl = function(url) {
-    if (!url || typeof url !== 'string') return false;
+    // CRITICAL: Empty or whitespace-only URLs should return false immediately
+    // This prevents Grayjay from trying to open empty author links
+    if (!url || typeof url !== 'string') {
+        log("isChannelUrl: URL is null/undefined/not-string, returning false");
+        return false;
+    }
+    
+    const trimmedUrl = url.trim();
+    if (trimmedUrl.length === 0) {
+        log("isChannelUrl: Empty URL after trim, returning false");
+        return false;
+    }
 
     if (REGEX_PATTERNS.urls.channelInternal.test(url)) return true;
     if (REGEX_PATTERNS.urls.profileInternal.test(url)) return true;
@@ -5697,6 +5802,7 @@ source.isChannelUrl = function(url) {
     if (REGEX_PATTERNS.urls.pornstarSimple.test(url)) return true;
     if (REGEX_PATTERNS.urls.channelS.test(url)) return true;
 
+    log("isChannelUrl: URL '" + url.substring(0, 50) + "' did not match any pattern, returning false");
     return false;
 };
 
@@ -5704,12 +5810,20 @@ source.getChannel = function(url) {
     try {
         // CRITICAL: Early return for empty/invalid URLs
         // This prevents errors when Grayjay tries to open empty author links
-        if (!url || url.trim().length === 0) {
-            log("getChannel: Empty URL received - returning null");
+        log("getChannel: Received URL type=" + typeof url + ", value='" + (url || 'NULL') + "'");
+        
+        if (!url || typeof url !== 'string') {
+            log("getChannel: URL is null/undefined/not-string - throwing");
             throw new ScriptException("No channel URL provided");
         }
         
-        log("getChannel: Called with URL: " + url);
+        const trimmedUrl = url.trim();
+        if (trimmedUrl.length === 0) {
+            log("getChannel: Empty URL after trim - throwing");
+            throw new ScriptException("Empty channel URL provided");
+        }
+        
+        log("getChannel: Called with valid URL: " + url);
         
         const result = extractChannelId(url);
         let profileUrl;
@@ -5897,9 +6011,9 @@ source.getSearchChannelContentsCapabilities = function() {
 
 source.getChannelContents = function(url, type, order, filters, continuationToken) {
     try {
-        log("getChannelContents called with URL: " + url + ", page: " + (continuationToken || "1"));
+        log("getChannelContents called with URL: " + url + ", type: " + type + ", page: " + (continuationToken || "1"));
         const result = extractChannelId(url);
-        log("Extracted channel type: " + result.type + ", id: " + result.id);
+        log("getChannelContents: Extracted channel type: " + result.type + ", id: " + result.id);
         
         const page = continuationToken ? parseInt(continuationToken) : 1;
 
@@ -6000,7 +6114,19 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
         
         const html = response.body;
         const videos = parseSearchResults(html);
-        log("Parsed " + videos.length + " videos from channel contents");
+        
+        // Log uploader stats for debugging channel content
+        let withUploader = 0;
+        let withoutUploader = 0;
+        videos.forEach(v => {
+            if (v.uploader && v.uploader.name && v.uploader.url) {
+                withUploader++;
+            } else {
+                withoutUploader++;
+                log("getChannelContents: Video " + v.id + " has NO uploader");
+            }
+        });
+        log("getChannelContents: Parsed " + videos.length + " videos - " + withUploader + " with uploader, " + withoutUploader + " without");
         
         const platformVideos = videos.map(v => createPlatformVideo(v));
 
@@ -6767,4 +6893,4 @@ class SpankBangHistoryPager extends ContentPager {
     }
 }
 
-log("SpankBang plugin loaded - v63");
+log("SpankBang plugin loaded - v64 (history debug)");
