@@ -578,20 +578,21 @@ function extractBestDurationSecondsFromContext(html, opts = {}) {
 }
 
 function extractViewCountFromContext(html) {
-    if (!html || typeof html !== 'string') return 0;
+    if (!html) return 0;
 
+    // PRIORITY 1: Look for data-testid="views" (SpankBang's new structure)
+    const dataTestIdPattern = /<span[^>]*data-testid=["']views["'][^>]*>[\s\S]*?(\d+(?:[,.]\d+)?[KMB]?)/i;
+    const testIdMatch = html.match(dataTestIdPattern);
+    if (testIdMatch && testIdMatch[1]) {
+        const parsed = parseViewCount(testIdMatch[1].trim());
+        if (parsed > 0) {
+            return parsed;
+        }
+    }
+
+    // PRIORITY 2: Look for views in various patterns
     const patterns = [
-        // Data attributes - most reliable
-        /data-views=["']([^"']+)["']/i,
-        /data-viewcount=["']([^"']+)["']/i,
-        /data-view-count=["']([^"']+)["']/i,
-        
-        // JSON-LD and meta data
-        /"interactionCount"\s*:\s*"?(\d+(?:[,.]\d+)?[KMB]?)"?/i,
-        /"viewCount"\s*:\s*"?(\d+(?:[,.]\d+)?[KMB]?)"?/i,
-        
-        // Span elements with view classes
-        /<span[^>]*class=["'][^"']*\bv\b[^"']*["'][^>]*>([^<]+)<\/span>/i,
+        // Class-based patterns
         /<span[^>]*class=["'][^"']*(?:views?|view-count)[^"']*["'][^>]*>([^<]+)<\/span>/i,
         
         // Generic view patterns with word boundaries
@@ -1142,14 +1143,27 @@ function fetchUploaderAvatarIfNeeded(uploader, html) {
 }
 
 function extractUploaderFromSearchResult(block) {
-    // CRITICAL: ALWAYS find an uploader - profiles, pornstars, or channels
-    // Priority: Profile > Pornstar > Channel (profiles are most accurate)
-
+    // CRITICAL: SpankBang's home page often shows TAGS instead of uploaders
+    // We need to SKIP anything marked with data-badge="tag"
+    
     const uploader = {
         name: "",
         url: "",
         avatar: ""
     };
+
+    // FIRST: Check if this block has REAL uploader info (not tags)
+    // Real uploaders have channel/profile/pornstar links
+    // Tags are marked with data-badge="tag" and href="/s/..."
+    
+    // Skip if we detect this is a tag-only block
+    const hasOnlyTags = /<span[^>]*data-badge=["']tag["'][^>]*>/i.test(block) && 
+                        !/<a[^>]*href=["']\/(?:profile|[a-z0-9]+\/(?:channel|pornstar))\/[^"]+["']/i.test(block);
+    
+    if (hasOnlyTags) {
+        log("extractUploaderFromSearchResult: Block only has tags, no real uploader");
+        return uploader; // Return empty - no uploader available
+    }
 
     // PRIORITY 0: Look for PROFILE links FIRST (most accurate for user uploads)
     const profileWithAvatarPatterns = [
@@ -1240,7 +1254,7 @@ function extractUploaderFromSearchResult(block) {
         }
     }
 
-    // PRIORITY 2: Look for channel links
+    // PRIORITY 2: Look for channel links (but NOT tag links /s/...)
     const channelWithAvatarPatterns = [
         /<a[^>]*href="\/([a-z0-9]+)\/channel\/([^"]+)"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?<span[^>]*>([^<]+)<\/span>/i,
         /<a[^>]*href="\/([a-z0-9]+)\/channel\/([^"]+)"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?([^<>]+)<\/a>/i
@@ -1286,102 +1300,8 @@ function extractUploaderFromSearchResult(block) {
         }
     }
 
-    // Look for ANY uploader-related spans or text with nearby links
-    const userSpanPatterns = [
-        /<span[^>]*class="[^"]*(?:user|uploader|author|name|n)[^"]*"[^>]*>([^<]+)<\/span>/i,
-        /<div[^>]*class="[^"]*(?:user|uploader|author|name)[^"]*"[^>]*>([^<]+)<\/div>/i,
-        /<p[^>]*class="[^"]*(?:user|uploader|author|name)[^"]*"[^>]*>([^<]+)<\/p>/i
-    ];
-
-    for (const spanPattern of userSpanPatterns) {
-        const spanMatch = block.match(spanPattern);
-        if (spanMatch && spanMatch[1]) {
-            const name = spanMatch[1].trim();
-            if (name && name.length > 2 && name.length < 100 && !isLikelyBadUploaderName(name)) {
-                uploader.name = name;
-                
-                // Try to find associated URL - PRIORITIZE PROFILES
-                const nearbyHrefProfile = block.match(/href="\/profile\/([^"\/]+)\/?"/i);
-                if (nearbyHrefProfile) {
-                    uploader.url = `spankbang://profile/${nearbyHrefProfile[1]}`;
-                    uploader.avatar = extractAvatarFromHtml(block);
-                    log("extractUploaderFromSearchResult: Found PROFILE from span: " + name);
-                    return uploader;
-                }
-                
-                const nearbyHrefPornstar = block.match(/href="\/([a-z0-9]+)\/pornstar\/([^"]+)"/i);
-                if (nearbyHrefPornstar) {
-                    uploader.url = `spankbang://profile/pornstar:${nearbyHrefPornstar[2]}`;
-                    uploader.avatar = extractPornstarAvatarFromHtml(block, nearbyHrefPornstar[2]);
-                    return uploader;
-                }
-                
-                const nearbyHrefChannel = block.match(/href="\/([a-z0-9]+)\/channel\/([^"]+)"/i);
-                if (nearbyHrefChannel) {
-                    uploader.url = `spankbang://channel/${nearbyHrefChannel[1]}:${nearbyHrefChannel[2]}`;
-                    uploader.avatar = extractChannelAvatarNearLink(block, nearbyHrefChannel[1], nearbyHrefChannel[2]);
-                    return uploader;
-                }
-                
-                // Even without a URL, return the name (better than nothing)
-                return uploader;
-            }
-        }
-    }
-
-    // Final fallback: look for any links and use less strict validation
-    // PRIORITIZE PROFILES FIRST
-    const profileLinkMatch = block.match(/href="\/profile\/([^"\/]+)\/?"/i);
-    if (profileLinkMatch) {
-        const slug = profileLinkMatch[1];
-        const formattedName = slug.replace(/[+_-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-        if (formattedName.length > 2 && !isLikelyBadUploaderName(formattedName)) {
-            uploader.name = formattedName;
-            uploader.url = `spankbang://profile/${slug}`;
-            uploader.avatar = extractAvatarFromHtml(block);
-            log("extractUploaderFromSearchResult: Found PROFILE fallback: " + formattedName);
-            return uploader;
-        }
-    }
-    
-    const anyLinkMatch = block.match(/href="\/([a-z0-9]+)\/(channel|pornstar)\/([^"\/]+)\/?"/i);
-    if (anyLinkMatch) {
-        const type = anyLinkMatch[2];
-        const slug = anyLinkMatch[3];
-        
-        // Try to extract name from title attribute or nearby context
-        const titleMatch = block.match(new RegExp(`href="[^"]*${type}/${slug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^"]*"[^>]*title="([^"]+)"`, 'i'));
-        if (titleMatch && titleMatch[1]) {
-            const name = titleMatch[1].trim();
-            if (!isLikelyBadUploaderName(name, slug)) {
-                uploader.name = name;
-                if (type === 'channel') {
-                    uploader.url = `spankbang://channel/${anyLinkMatch[1]}:${slug}`;
-                } else {
-                    uploader.url = `spankbang://profile/pornstar:${slug}`;
-                }
-                return uploader;
-            }
-        }
-        
-        // Use formatted slug as fallback
-        const formattedName = slug.replace(/[+_-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-        if (formattedName.length > 2 && !isLikelyBadUploaderName(formattedName)) {
-            uploader.name = formattedName;
-            if (type === 'channel') {
-                uploader.url = `spankbang://channel/${anyLinkMatch[1]}:${slug}`;
-            } else {
-                uploader.url = `spankbang://profile/pornstar:${slug}`;
-            }
-            return uploader;
-        }
-    }
-
-    // If we still have nothing, return placeholder so video at least shows SOMETHING
-    if (!uploader.name) {
-        log("WARNING: extractUploaderFromSearchResult could not find any uploader");
-    }
-    
+    // If we couldn't find any real uploader, return empty (don't use tags)
+    log("WARNING: extractUploaderFromSearchResult could not find any uploader");
     return uploader;
 }
 
