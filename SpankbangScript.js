@@ -2113,7 +2113,8 @@ function parseSearchResults(html) {
                 log(`  - Title: "${title}"`);
                 log(`  - Duration: ${durationSeconds}s`);
                 log(`  - Views extracted: ${views}`);
-                log(`  - Block sample (first 500 chars): ${block.substring(0, 500).replace(/\s+/g, ' ')}`);
+                log(`  - Block length: ${block.length} chars`);
+                log(`  - Block sample (first 2000 chars): ${block.substring(0, 2000).replace(/\s+/g, ' ')}`);
             }
 
             let uploadDate = 0;
