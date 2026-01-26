@@ -6021,7 +6021,7 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
 
         let profileUrl;
         if (result.type === 'category') {
-            // Handle categories/tags
+            // Handle categories/tags - these DO need trailing slash
             if (page > 1) {
                 profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/s/${result.id}/${page}/`;
             } else {
@@ -6033,33 +6033,33 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
                 resolvedShortId = resolvePornstarShortId(result.id);
             }
             
+            // Pornstar URLs - NO trailing slash
             if (resolvedShortId) {
                 if (page > 1) {
-                    profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${resolvedShortId}/pornstar/${result.id}/${page}/`;
+                    profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${resolvedShortId}/pornstar/${result.id}/${page}`;
                 } else {
-                    profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${resolvedShortId}/pornstar/${result.id}/`;
+                    profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${resolvedShortId}/pornstar/${result.id}`;
                 }
             } else {
                 if (page > 1) {
-                    profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/pornstar/${result.id}/${page}/`;
+                    profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/pornstar/${result.id}/${page}`;
                 } else {
-                    profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/pornstar/${result.id}/`;
+                    profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/pornstar/${result.id}`;
                 }
             }
         } else if (result.type === 'channel') {
             const [shortId, channelName] = result.id.split(':');
             if (page > 1) {
-                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${shortId}/channel/${channelName}/${page}/`;
+                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${shortId}/channel/${channelName}/${page}`;
             } else {
-                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${shortId}/channel/${channelName}/`;
+                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/${shortId}/channel/${channelName}`;
             }
         } else {
-            // For user profiles, try /profile/xxx/ first (without /videos/)
-            // The /videos/ suffix may not exist for all profiles
+            // For user profiles - NO trailing slash (SpankBang returns 404 with trailing slash)
             if (page > 1) {
-                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/${page}/`;
+                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/${page}`;
             } else {
-                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/`;
+                profileUrl = `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}`;
             }
         }
 
@@ -6078,20 +6078,23 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
         if (!response.isOk && response.code === 404 && result.type === 'profile') {
             log("Profile URL failed, trying alternative formats...");
             
-            // Try with /videos/ suffix
+            // Try with /videos suffix (NO trailing slash)
             const altUrl1 = page > 1 
-                ? `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos/${page}/`
-                : `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos/`;
+                ? `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos/${page}`
+                : `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/videos`;
             log("Trying alternative URL: " + altUrl1);
             response = makeRequestNoThrow(altUrl1, API_HEADERS, 'channel contents alt1', false);
             
-            // If still fails, try /s/ URL format (search-style profile)
+            // If still fails, try /s/ URL format (search-style profile) - but this may show wrong results
+            // so we should NOT fall back to this as it shows trending, not profile videos
             if (!response.isOk && response.code === 404) {
-                const altUrl2 = page > 1
-                    ? `${CONFIG.EXTERNAL_URL_BASE}/s/${result.id}/${page}/`
-                    : `${CONFIG.EXTERNAL_URL_BASE}/s/${result.id}/`;
-                log("Trying /s/ URL: " + altUrl2);
-                response = makeRequestNoThrow(altUrl2, API_HEADERS, 'channel contents alt2', false);
+                log("Profile not found at any URL format - profile may not exist or have videos");
+                // DO NOT fall back to /s/ URL as it shows trending videos, not profile videos
+                // Return empty results instead
+                return new SpankBangChannelContentPager([], false, {
+                    channelUrl: url,
+                    continuationToken: null
+                });
             }
         }
         
@@ -6913,4 +6916,4 @@ class SpankBangHistoryPager extends ContentPager {
     }
 }
 
-log("SpankBang plugin loaded - v66 (timeout retry)");
+log("SpankBang plugin loaded - v67 (profile URL fix)");
