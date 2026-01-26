@@ -848,11 +848,31 @@ function extractUploaderFromVideoToolbar(html) {
         avatar: ""
     };
 
+    // DEBUG: Log what HTML sections we're searching
     const toolbarMatch = html.match(/<ul[^>]*class="[^"]*video_toolbar[^"]*"[^>]*>([\s\S]*?)<\/ul>/i);
-    const toolbarHtml = toolbarMatch ? toolbarMatch[1] : html;
+    const toolbarHtml = toolbarMatch ? toolbarMatch[1] : "";
     
     const infoSectionMatch = html.match(/<div[^>]*class="[^"]*info[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/i);
     const infoHtml = infoSectionMatch ? infoSectionMatch[1] : "";
+
+    // NEW: Look for uploader-specific section in SpankBang's new structure
+    // The uploader info is in a div with data-testid="uploader" or class containing "uploader"
+    const uploaderSectionMatch = html.match(/<div[^>]*(?:data-testid="uploader"|class="[^"]*uploader[^"]*")[^>]*>([\s\S]*?)<\/div>/i);
+    const uploaderHtml = uploaderSectionMatch ? uploaderSectionMatch[1] : "";
+    
+    // Also look for the video info section
+    const videoInfoMatch = html.match(/<div[^>]*class="[^"]*video-info[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+    const videoInfoHtml = videoInfoMatch ? videoInfoMatch[1] : "";
+    
+    log("extractUploaderFromVideoToolbar: toolbarHtml length=" + toolbarHtml.length + ", infoHtml length=" + infoHtml.length + ", uploaderHtml length=" + uploaderHtml.length);
+    
+    // DEBUG: Find ALL profile links in the page to understand what's available
+    const allProfileLinks = html.match(/href="\/profile\/[^"]+"/gi) || [];
+    const allChannelLinks = html.match(/href="\/[a-z0-9]+\/channel\/[^"]+"/gi) || [];
+    log("extractUploaderFromVideoToolbar: Found " + allProfileLinks.length + " profile links and " + allChannelLinks.length + " channel links in full HTML");
+    if (allProfileLinks.length > 0) {
+        log("extractUploaderFromVideoToolbar: First 3 profile links: " + allProfileLinks.slice(0, 3).join(' | '));
+    }
 
     const uploaderPatterns = [
         {
@@ -894,13 +914,26 @@ function extractUploaderFromVideoToolbar(html) {
         {
             pattern: /<a[^>]*href="\/([a-z0-9]+)\/pornstar\/([^"\/]+)\/?\"[^>]*>[\s\S]*?<img[^>]*(?:data-src|src)="([^"]+)"[\s\S]*?([^<>]+)<\/a>/i,
             type: 'pornstar'
+        },
+        {
+            // NEW: Simple profile link with span (SpankBang new structure)
+            pattern: /<a[^>]*href="\/profile\/([^"\/]+)\/?\"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/i,
+            type: 'profile_span'
+        },
+        {
+            // NEW: Profile link as the first link in an uploader context
+            pattern: /<a[^>]*href="\/profile\/([^"\/]+)\/?\"[^>]*>([^<]+)<\/a>/i,
+            type: 'profile_simple'
         }
     ];
 
-    const searchHtmls = [toolbarHtml, infoHtml, html];
+    // IMPORTANT: Search uploader-specific sections FIRST, then general HTML
+    // This ensures we find the ACTUAL uploader, not related video channels
+    const searchHtmls = [uploaderHtml, videoInfoHtml, toolbarHtml, infoHtml];
     
+    // First pass: Search in specific uploader sections
     for (const searchHtml of searchHtmls) {
-        if (!searchHtml) continue;
+        if (!searchHtml || searchHtml.length < 10) continue;
         
         for (const { pattern, type } of uploaderPatterns) {
             const match = searchHtml.match(pattern);
@@ -908,7 +941,6 @@ function extractUploaderFromVideoToolbar(html) {
                 let avatarUrl = "";
                 
                 if (type === 'profile_title') {
-                    // Profile title attribute pattern: match[1]=profileSlug, match[2]=title
                     uploader.name = match[2].trim();
                     uploader.url = `spankbang://profile/${match[1]}`;
                     uploader.avatar = extractAvatarFromHtml(searchHtml);
@@ -916,28 +948,27 @@ function extractUploaderFromVideoToolbar(html) {
                     return uploader;
                 }
                 
-                if (type === 'profile') {
-                    // Profile pattern: match[1]=profileSlug, match[2]=avatar, match[3]=name
-                    uploader.name = (match[3] || match[1]).replace(/<[^>]*>/g, '').trim();
+                if (type === 'profile' || type === 'profile_span' || type === 'profile_simple') {
+                    const nameIndex = type === 'profile' ? 3 : 2;
+                    uploader.name = (match[nameIndex] || match[1]).replace(/<[^>]*>/g, '').trim();
                     uploader.url = `spankbang://profile/${match[1]}`;
-                    avatarUrl = match[2] || "";
-                    if (avatarUrl.startsWith('//')) {
-                        avatarUrl = `https:${avatarUrl}`;
-                    } else if (avatarUrl && !avatarUrl.startsWith('http')) {
-                        avatarUrl = `https://spankbang.com${avatarUrl}`;
+                    if (type === 'profile' && match[2]) {
+                        avatarUrl = match[2];
+                        if (avatarUrl.startsWith('//')) avatarUrl = `https:${avatarUrl}`;
+                        else if (!avatarUrl.startsWith('http')) avatarUrl = `https://spankbang.com${avatarUrl}`;
                     }
                     uploader.avatar = avatarUrl || extractAvatarFromHtml(searchHtml);
                     if (uploader.name && uploader.name.length > 0) {
-                        log("extractUploaderFromVideoToolbar: Found PROFILE: " + uploader.name);
+                        log("extractUploaderFromVideoToolbar: Found PROFILE (" + type + "): " + uploader.name);
                         return uploader;
                     }
                 }
                 
                 if (type === 'channel_title') {
-                    // Title attribute pattern: match[1]=shortId, match[2]=slug, match[3]=title
                     uploader.name = match[3].trim();
                     uploader.url = `spankbang://channel/${match[1]}:${match[2]}`;
                     uploader.avatar = extractChannelAvatarNearLink(searchHtml, match[1], match[2]) || extractAvatarFromHtml(searchHtml);
+                    log("extractUploaderFromVideoToolbar: Found CHANNEL (title): " + uploader.name);
                     return uploader;
                 }
                 
@@ -1027,6 +1058,11 @@ function extractUploaderFromVideoToolbar(html) {
         }
     }
 
+    // IMPORTANT: Only search for channels in full HTML if no profile was found
+    // Profiles take priority because they represent actual uploaders
+    // Channels in full HTML are often from related videos, not the actual uploader
+    log("extractUploaderFromVideoToolbar: No profile found, checking for channels (may be from related videos)");
+    
     const simpleChannelPatterns = [
         // Priority 1: Title attribute (most reliable for channel name)
         /href="\/([a-z0-9]+)\/channel\/([^"]+)"[^>]*title="([^"]+)"/i,
