@@ -170,11 +170,12 @@ function makeRequest(url, headers = null, context = 'request', useAuth = false) 
         const requestHeaders = headers || getAuthHeaders();
         const response = http.GET(url, requestHeaders, useAuth);
         if (!response.isOk) {
-            // If we get 429, add exponential backoff with multiple retries
-            if (response.code === 429) {
+            // Handle retryable errors: 429 (rate limit), 408 (timeout), 503 (service unavailable), 502 (bad gateway)
+            const retryableCodes = [429, 408, 503, 502];
+            if (retryableCodes.includes(response.code)) {
                 localConfig.consecutiveErrors++;
                 const waitTime = Math.min(3000 * localConfig.consecutiveErrors, 10000); // 3s, 6s, 9s, max 10s
-                log(`Rate limit hit (429), attempt ${localConfig.consecutiveErrors}, waiting ${waitTime}ms before retry...`);
+                log(`Server error (${response.code}), attempt ${localConfig.consecutiveErrors}, waiting ${waitTime}ms before retry...`);
                 sleep(waitTime);
                 localConfig.requestDelay = Math.min(localConfig.requestDelay * 2, 2000); // Increase delay up to 2s
                 
@@ -211,11 +212,12 @@ function makeRequestNoThrow(url, headers = null, context = 'request', useAuth = 
         const requestHeaders = headers || getAuthHeaders();
         const response = http.GET(url, requestHeaders, useAuth);
         
-        // If we get 429, add exponential backoff and retry
-        if (!response.isOk && response.code === 429) {
+        // Handle retryable errors: 429 (rate limit), 408 (timeout), 503 (service unavailable), 502 (bad gateway)
+        const retryableCodes = [429, 408, 503, 502];
+        if (!response.isOk && retryableCodes.includes(response.code)) {
             localConfig.consecutiveErrors++;
             const waitTime = Math.min(3000 * localConfig.consecutiveErrors, 10000); // 3s, 6s, 9s, max 10s
-            log(`Rate limit hit (429), attempt ${localConfig.consecutiveErrors}, waiting ${waitTime}ms before retry...`);
+            log(`Server error (${response.code}), attempt ${localConfig.consecutiveErrors}, waiting ${waitTime}ms before retry...`);
             sleep(waitTime);
             localConfig.requestDelay = Math.min(localConfig.requestDelay * 2, 2000); // Increase delay up to 2s
             
@@ -6911,4 +6913,4 @@ class SpankBangHistoryPager extends ContentPager {
     }
 }
 
-log("SpankBang plugin loaded - v65 (history tracking debug)");
+log("SpankBang plugin loaded - v66 (timeout retry)");
