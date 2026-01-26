@@ -1932,20 +1932,22 @@ function createPlatformVideo(videoData) {
     const uploader = videoData.uploader || {};
     
     // CRITICAL: Only create author if we have a valid uploader with a URL
-    // If no real uploader exists, create an empty author that won't be clickable
+    // If no real uploader exists, create an author that Grayjay won't make clickable
     let author;
     if (hasValidUploader(uploader)) {
         author = createPlatformAuthor(uploader);
         log(`createPlatformVideo: Video ${videoData.id} has VALID uploader: "${uploader.name}"`);
     } else {
-        // Create author with empty URL - Grayjay should not make this clickable
+        // No valid uploader - create author with NO URL at all
+        // Grayjay should not make this clickable when URL is empty
+        // Using PLATFORM as name tells users this is platform content (no specific uploader)
         author = new PlatformAuthorLink(
-            new PlatformID(PLATFORM, "", plugin.config.id),
-            "", // Empty name
-            "", // Empty URL - CRITICAL: this should prevent clicking
+            new PlatformID(PLATFORM, PLATFORM, plugin.config.id),
+            "", // Empty name - should hide the element
+            "", // Empty URL - CRITICAL: prevents Grayjay from making this clickable
             ""  // Empty avatar
         );
-        log(`createPlatformVideo: Video ${videoData.id} has NO valid uploader - using empty author`);
+        log(`createPlatformVideo: Video ${videoData.id} has NO valid uploader - empty author created`);
     }
     
     return new PlatformVideo({
@@ -5572,6 +5574,15 @@ source.isChannelUrl = function(url) {
 
 source.getChannel = function(url) {
     try {
+        // CRITICAL: Early return for empty/invalid URLs
+        // This prevents errors when Grayjay tries to open empty author links
+        if (!url || url.trim().length === 0) {
+            log("getChannel: Empty URL received - returning null");
+            throw new ScriptException("No channel URL provided");
+        }
+        
+        log("getChannel: Called with URL: " + url);
+        
         const result = extractChannelId(url);
         let profileUrl;
         let internalUrl;
