@@ -2106,6 +2106,15 @@ function parseSearchResults(html) {
             });
 
             const views = extractViewCountFromContext(block);
+            
+            // DEBUG: Log what we're extracting for first few videos
+            if (videos.length < 3) {
+                log(`parseSearchResults DEBUG Video ${videoId}:`);
+                log(`  - Title: "${title}"`);
+                log(`  - Duration: ${durationSeconds}s`);
+                log(`  - Views extracted: ${views}`);
+                log(`  - Block sample (first 500 chars): ${block.substring(0, 500).replace(/\s+/g, ' ')}`);
+            }
 
             let uploadDate = 0;
             const datePatterns = [
