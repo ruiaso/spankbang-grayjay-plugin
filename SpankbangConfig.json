@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 79,
+  "version": 80,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -42,8 +42,7 @@
       "name": "Sync Remote History",
       "description": "When enabled, your SpankBang watch history will automatically sync to Grayjay on startup. Toggle this on to import your viewing history from spankbang.com/users/history",
       "type": "Boolean",
-      "default": "true",
-      "warningDialog": true
+      "default": "true"
     }
   ],
   "subscriptionRateLimit": 150,
@@ -52,6 +51,11 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "80": [
+      "Removed warningDialog property - was causing invalid config error",
+      "Dialog should still work based on hasSyncRemoteWatchHistory capability alone",
+      "Grayjay triggers sync dialog automatically when capability is present"
+    ],
     "79": [
       "Removed manual sync button - dialog works correctly now",
       "Cleaned up settings to only show the toggle with dialog",
