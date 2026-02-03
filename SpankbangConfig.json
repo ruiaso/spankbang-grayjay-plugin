@@ -36,15 +36,7 @@
     "cookiesToFind": ["sb_session"],
     "cookiesExclOthers": false
   },
-  "settings": [
-    {
-      "variable": "syncRemoteHistory",
-      "name": "Sync Remote History",
-      "description": "When enabled, your SpankBang watch history will automatically sync to Grayjay on startup. Toggle this on to import your viewing history from spankbang.com/users/history",
-      "type": "Boolean",
-      "default": "true"
-    }
-  ],
+  "settings": [],
   "subscriptionRateLimit": 150,
   "supportedClaimTypes": [
     3
@@ -53,13 +45,15 @@
   "changelog": {
     "81": [
       "CRITICAL FIX: Remote history sync now properly extracts videos from history page",
+      "CRITICAL FIX: Removed duplicate 'Sync Remote History' from Plugin settings section",
+      "Now uses ONLY the capability-based sync toggle (in Sync section) - same as YouTube plugin",
+      "This is the toggle that shows 'Would you like to sync now?' dialog and actually imports history",
       "Enhanced parseHistoryPage with improved direct link extraction patterns",
       "Fixed sync to try parseHistoryPage FIRST (designed for history pages) before parseSearchResults",
       "Added better authentication checks - detects login page redirects",
       "Added comprehensive logging for better diagnostics when sync fails",
       "Improved thumbnail, duration, and title extraction with expanded context window (3000 chars)",
       "Enhanced error messages to guide users when sync fails (e.g., empty history, auth issues)",
-      "Removed getUserHistory test function that may have caused UI confusion",
       "Updated README to reflect that Account History Sync is now working",
       "Fixed 'imported no history items' issue - sync now successfully retrieves watch history"
     ],
