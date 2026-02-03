@@ -31,6 +31,14 @@ function getApiHeaders() {
     };
 }
 
+function getAuthHeaders() {
+    const headers = getApiHeaders();
+    if (state.authCookies && state.authCookies.length > 0) {
+        headers["Cookie"] = state.authCookies;
+    }
+    return headers;
+}
+
 const USER_URLS = {
     PLAYLISTS: "https://spankbang.com/users/playlists",
     HISTORY: "https://spankbang.com/users/history",
@@ -157,14 +165,6 @@ const REGEX_PATTERNS = {
     }
 };
 
-function getAuthHeaders() {
-    const headers = { ...API_HEADERS };
-    if (state.authCookies && state.authCookies.length > 0) {
-        headers["Cookie"] = state.authCookies;
-    }
-    return headers;
-}
-
 function sleep(ms) {
     const start = Date.now();
     while (Date.now() - start < ms) {
@@ -190,7 +190,7 @@ function makeRequest(url, headers = null, context = 'request', useAuth = false) 
         // Enforce rate limiting before making the request
         enforceRateLimit();
         
-        const requestHeaders = headers || getAuthHeaders();
+        const requestHeaders = headers || getApiHeaders();
         const response = http.GET(url, requestHeaders, useAuth);
         if (!response.isOk) {
             // If we get 429, add exponential backoff with multiple retries
@@ -231,8 +231,8 @@ function makeRequestNoThrow(url, headers = null, context = 'request', useAuth = 
         // Enforce rate limiting before making the request
         enforceRateLimit();
         
-        const requestHeaders = headers || getAuthHeaders();
-        const response = http.GET(url, requestHeaders, useAuth);
+        const requestHeaders = headers || getApiHeaders();
+        const response = makeRequestNoThrow(simpleUrl, null, 'pornstar lookup');
         
         // If we get 429, add exponential backoff and retry
         if (!response.isOk && response.code === 429) {
