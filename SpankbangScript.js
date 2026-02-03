@@ -2210,6 +2210,25 @@ function cleanVideoTitle(title) {
 }
 
 function parseSearchResults(html) {
+    log("=== parseSearchResults START ===");
+    log("parseSearchResults: HTML length = " + (html ? html.length : 'NULL'));
+    
+    if (!html) {
+        log("parseSearchResults: HTML is empty/null!");
+        return [];
+    }
+    
+    // Check if we got a valid page
+    if (html.includes('Access Denied') || html.includes('403')) {
+        log("parseSearchResults: Page contains access denied!");
+    }
+    
+    if (html.includes('video-item') || html.includes('video-list')) {
+        log("parseSearchResults: Found video-item/video-list in HTML");
+    } else {
+        log("parseSearchResults: NO video-item found in HTML!");
+    }
+    
     const videos = [];
     const seenIds = new Set();
 
@@ -5326,11 +5345,24 @@ source.getLikedVideos = function() {
 
 source.getHome = function(continuationToken) {
     try {
+        log("=== getHome START ===");
+        
         const page = continuationToken ? parseInt(continuationToken) : 1;
         const url = `${BASE_URL}/trending_videos/${page}/`;
 
-        const html = makeRequest(url, API_HEADERS, 'home content');
+        log("getHome: Fetching URL = " + url);
+        log("getHome: User-Agent will be = " + getUserAgent());
+
+        // IMPORTANT: Use null instead of API_HEADERS to get dynamic headers
+        const html = makeRequest(url, null, 'home content');
+        
+        log("getHome: HTML length = " + (html ? html.length : 'NULL'));
+        log("getHome: HTML first 300 chars = " + (html ? html.substring(0, 300) : 'EMPTY'));
+
         const videos = parseSearchResults(html);
+        
+        log("getHome: Parsed " + videos.length + " videos");
+
         const platformVideos = videos.map(v => createPlatformVideo(v));
 
         const hasMore = videos.length >= 20;
@@ -5339,6 +5371,7 @@ source.getHome = function(continuationToken) {
         return new SpankBangHomeContentPager(platformVideos, hasMore, { continuationToken: nextToken });
 
     } catch (error) {
+        log("getHome ERROR: " + error.message);
         throw new ScriptException("Failed to get home content: " + error.message);
     }
 };
