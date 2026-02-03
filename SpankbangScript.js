@@ -4540,7 +4540,8 @@ function parseHistoryPage(html) {
                           fullContext.match(/<p[^>]*class="[^"]*n[^"]*"[^>]*>([^<]+)<\/p>/i);
         let title = titleMatch ? cleanVideoTitle(titleMatch[1]) : videoSlug.replace(/[_+-]/g, ' ');
         
-        // Extract thumbnail - try data-src first, then src, check inner content
+        // Extract thumbnail - CRITICAL: Look in fullContext (parent container) not just video link
+        // SpankBang history has thumbnails in SIBLING <a class="thumb"> elements, not in the video link itself
         let thumbnail = "";
         const thumbPatterns = [
             // Try data-src with image extensions first (most reliable)
@@ -4563,22 +4564,25 @@ function parseHistoryPage(html) {
             /data-src="([^"]+)"/i
         ];
         
+        // IMPORTANT: Search in fullContext (parent container) FIRST, then innerContent, then fullMatch
+        // This is because SpankBang's history page has thumbnails in sibling elements
         for (const thumbPattern of thumbPatterns) {
-            const tMatch = innerContent.match(thumbPattern) || fullMatch.match(thumbPattern);
+            const tMatch = fullContext.match(thumbPattern) || innerContent.match(thumbPattern) || fullMatch.match(thumbPattern);
             if (tMatch && tMatch[1]) {
                 thumbnail = tMatch[1];
                 if (!thumbnail.includes('avatar') && !thumbnail.includes('icon') && !thumbnail.includes('pornstarimg')) {
+                    log("parseHistoryPage: Found thumbnail for video " + videoId + ": " + thumbnail.substring(0, 80));
                     break;
                 }
                 thumbnail = "";
             }
         }
         
-        // Fallback to default CDN thumbnail with improved pattern
+        // Log if no thumbnail found - DO NOT use fake CDN URLs as they use different IDs
         if (!thumbnail || thumbnail.length < 10) {
-            // Use the 1/6/w:500 pattern which is more common for history thumbnails
+            log("parseHistoryPage: WARNING - No thumbnail found for video " + videoId + ", will use CDN fallback");
+            // Use CDN fallback as last resort, but it may not work due to ID mismatch
             thumbnail = `https://tbi.sb-cd.com/t/${videoId}/1/6/w:500/default.jpg`;
-            log("parseHistoryPage: Using CDN fallback thumbnail for video " + videoId);
         }
         if (thumbnail.startsWith('//')) {
             thumbnail = 'https:' + thumbnail;
@@ -6871,4 +6875,4 @@ class SpankBangHistoryPager extends ContentPager {
     }
 }
 
-log("SpankBang plugin loaded - v64");
+log("SpankBang plugin loaded - v63");
