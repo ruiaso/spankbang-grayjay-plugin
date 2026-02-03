@@ -2,26 +2,64 @@ const BASE_URL = "https://spankbang.com";
 const PLATFORM = "SpankBang";
 const PLATFORM_CLAIMTYPE = 3;
 
-const USER_AGENT_WINDOWS = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:146.0) Gecko/20100101 Firefox/146.0";
+// Updated User-Agents - using realistic, current versions
+// Note: Firefox 146 doesn't exist yet, using 121 instead
+const USER_AGENT_WINDOWS_CHROME = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+const USER_AGENT_WINDOWS_FIREFOX = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0";
+const USER_AGENT_WINDOWS_EDGE = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0";
 const USER_AGENT_PHONE = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
-const USER_AGENT_TABLET = "Mozilla/5.0 (iPad; CPU OS 13_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/87.0.4280.77 Mobile/15E148 Safari/604.1";
+const USER_AGENT_IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
+const USER_AGENT_TABLET = "Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
 
+// Detect platform and return appropriate User-Agent
 function getUserAgent() {
-    // Using desktop User-Agent to bypass server blocks
-    return USER_AGENT_WINDOWS;
+    // CRITICAL FIX: Mobile User-Agent works, desktop gets 403
+    // Use mobile UA even on desktop to avoid blocking
+    // SpankBang's anti-bot protection blocks desktop browsers more aggressively
+    
+    // Try to detect if we're on mobile GrayJay or desktop GrayJay
+    // On desktop, still use mobile UA since it works
+    const isMobile = typeof navigator !== 'undefined' && /Mobile|Android|iPhone|iPad/i.test(navigator.userAgent);
+    
+    if (isMobile) {
+        log("Platform: Mobile detected, using mobile User-Agent");
+        return USER_AGENT_PHONE;
+    } else {
+        // Desktop: Use mobile UA to avoid 403 errors
+        log("Platform: Desktop detected, using mobile User-Agent (desktop UA causes 403)");
+        return USER_AGENT_PHONE;
+    }
 }
 
 const API_HEADERS = {
     "User-Agent": USER_AGENT_PHONE, // Default, will be overridden by getApiHeaders()
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5"
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "DNT": "1",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Cache-Control": "max-age=0"
 };
 
 function getApiHeaders() {
     return {
         "User-Agent": getUserAgent(),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5"
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "DNT": "1",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Cache-Control": "max-age=0"
     };
 }
 
@@ -185,8 +223,35 @@ function makeRequest(url, headers = null, context = 'request', useAuth = false) 
         enforceRateLimit();
         
         const requestHeaders = headers || getApiHeaders();
+        
+        // DEBUG: Log request details
+        log(`[makeRequest] URL: ${url}`);
+        log(`[makeRequest] Context: ${context}`);
+        log(`[makeRequest] User-Agent: ${requestHeaders["User-Agent"]}`);
+        log(`[makeRequest] UseAuth: ${useAuth}`);
+        
         const response = http.GET(url, requestHeaders, useAuth);
+        
+        // DEBUG: Log response status
+        log(`[makeRequest] Response Status: ${response.code}`);
+        log(`[makeRequest] Response OK: ${response.isOk}`);
+        
         if (!response.isOk) {
+            // Enhanced error logging for 403
+            if (response.code === 403) {
+                log(`[ERROR 403] Forbidden - SpankBang rejected the request`);
+                log(`[ERROR 403] URL: ${url}`);
+                log(`[ERROR 403] User-Agent: ${requestHeaders["User-Agent"]}`);
+                log(`[ERROR 403] Headers: ${JSON.stringify(requestHeaders)}`);
+                log(`[ERROR 403] This usually means anti-bot protection is triggered`);
+                log(`[ERROR 403] Try: 1) Different User-Agent, 2) Add more headers, 3) Check rate limiting`);
+                
+                // Return partial response body for debugging
+                if (response.body) {
+                    log(`[ERROR 403] Response body (first 500 chars): ${response.body.substring(0, 500)}`);
+                }
+            }
+            
             // If we get 429, add exponential backoff with multiple retries
             if (response.code === 429) {
                 localConfig.consecutiveErrors++;
@@ -205,7 +270,8 @@ function makeRequest(url, headers = null, context = 'request', useAuth = false) 
                     }
                 }
             }
-            throw new ScriptException(`${context} failed with status ${response.code}`);
+            
+            throw new ScriptException(`${context} failed with status ${response.code} (URL: ${url})`);
         }
         
         // Reset on successful request
@@ -214,8 +280,10 @@ function makeRequest(url, headers = null, context = 'request', useAuth = false) 
             localConfig.requestDelay = Math.max(500, localConfig.requestDelay * 0.9);
         }
         
+        log(`[makeRequest] Success - received ${response.body ? response.body.length : 0} bytes`);
         return response.body;
     } catch (error) {
+        log(`[makeRequest ERROR] ${error.message}`);
         throw new ScriptException(`Failed to fetch ${context}: ${error.message}`);
     }
 }
@@ -6852,3 +6920,66 @@ class SpankBangHistoryPager extends ContentPager {
 }
 
 log("SpankBang plugin loaded - v64");
+
+// ============================================
+// DEBUGGING HELPERS - For Console Testing
+// ============================================
+
+// Test getHome with detailed logging
+if (typeof window !== 'undefined') {
+    window.debugGetHome = function() {
+        log("=== DEBUG: Testing source.getHome() ===");
+        try {
+            const result = source.getHome();
+            log("✅ Success!");
+            log("Results: " + (result.results ? result.results.length : 0) + " videos");
+            log("Has More: " + result.hasMore);
+            return result;
+        } catch (error) {
+            log("❌ Error: " + error.message);
+            log("Stack: " + error.stack);
+            return { error: error.message, stack: error.stack };
+        }
+    };
+
+    // Test makeRequest directly
+    window.debugMakeRequest = function(url) {
+        const testUrl = url || BASE_URL + "/trending_videos/1/";
+        log("=== DEBUG: Testing makeRequest ===");
+        log("URL: " + testUrl);
+        try {
+            const html = makeRequest(testUrl, null, 'debug test', false);
+            log("✅ Success! Length: " + html.length);
+            return { success: true, length: html.length };
+        } catch (error) {
+            log("❌ Error: " + error.message);
+            return { error: error.message };
+        }
+    };
+
+    // Check current headers
+    window.debugCheckHeaders = function() {
+        log("=== DEBUG: Current Headers ===");
+        const headers = getApiHeaders();
+        log("User-Agent: " + headers["User-Agent"]);
+        log("Accept: " + headers["Accept"]);
+        log("Accept-Language: " + headers["Accept-Language"]);
+        log("Full Headers: " + JSON.stringify(headers, null, 2));
+        return headers;
+    };
+
+    // Check plugin state
+    window.debugPluginState = function() {
+        log("=== DEBUG: Plugin State ===");
+        log("State: " + JSON.stringify(state, null, 2));
+        log("Config: " + JSON.stringify(config, null, 2));
+        log("Local Config: " + JSON.stringify(localConfig, null, 2));
+        return { state, config, localConfig };
+    };
+
+    log("✅ Debug helpers loaded. Available commands:");
+    log("  - debugGetHome()");
+    log("  - debugMakeRequest(url)");
+    log("  - debugCheckHeaders()");
+    log("  - debugPluginState()");
+}
