@@ -42,7 +42,7 @@
       "name": "Sync Remote History",
       "description": "Synchronize account history from this platform on startup",
       "type": "Boolean",
-      "default": true
+      "default": "true"
     }
   ],
   "subscriptionRateLimit": 150,
