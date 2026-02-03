@@ -40,7 +40,7 @@
     {
       "variable": "syncRemoteHistory",
       "name": "Sync Remote History",
-      "description": "When enabled, your SpankBang watch history will automatically sync to Grayjay on startup. Toggle this on to import your viewing history from spankbang.com/users/history",
+      "description": "Synchronize account history from this platform on startup",
       "type": "Boolean",
       "default": "true"
     }
