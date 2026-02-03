@@ -5059,7 +5059,7 @@ function fetchVideoBasicInfo(videoId) {
 // Add getUserHistory function for GrayJay plugin testing
 source.getUserHistory = function() {
     try {
-        log("getUserHistory: Starting to fetch user history");
+        log("getUserHistory: Starting to fetch user history for sync");
         
         // Use the same authenticated request pattern as other user functions
         const historyUrl = USER_URLS.HISTORY;
@@ -5069,16 +5069,14 @@ source.getUserHistory = function() {
         
         if (!response.isOk) {
             log("getUserHistory: Failed with status " + response.code + ", user may not be logged in");
-            // Return empty pager, not array
-            return new SpankBangHistoryPager([], false, { continuationToken: null });
+            return [];
         }
         
         const html = response.body;
         
         if (!html || html.length < 100) {
             log("getUserHistory: Empty or invalid HTML response (length: " + (html ? html.length : 0) + ")");
-            // Return empty pager, not array
-            return new SpankBangHistoryPager([], false, { continuationToken: null });
+            return [];
         }
         
         log("getUserHistory: HTML length = " + html.length);
@@ -5091,37 +5089,33 @@ source.getUserHistory = function() {
             log("getUserHistory: parseSearchResults found 0 videos, trying parseHistoryPage");
             videos = parseHistoryPage(html);
         } else {
-            log("getUserHistory: parseSearchResults found " + videos.length + " videos, skipping parseHistoryPage");
+            log("getUserHistory: parseSearchResults found " + videos.length + " videos");
         }
         
         if (videos.length === 0) {
             log("getUserHistory: No videos found. HTML snippet (first 500 chars): " + html.substring(0, 500).replace(/[\n\r]/g, ' '));
-            // Return empty pager, not array
-            return new SpankBangHistoryPager([], false, { continuationToken: null });
+            return [];
         }
         
         log("getUserHistory: Found " + videos.length + " videos");
         
-        // Return full PlatformVideo objects with all metadata
-        const platformVideos = videos.map(v => createPlatformVideo(v));
+        // Return array of video URLs (like getUserSubscriptions and getUserPlaylists)
+        const videoUrls = videos.map(v => {
+            // Convert video object to full URL
+            const videoUrl = `${BASE_URL}/${v.id}/video/${v.title ? v.title.toLowerCase().replace(/[^a-z0-9]+/g, '+') : 'video'}`;
+            return videoUrl;
+        });
         
-        // Log first video for debugging thumbnails
-        if (platformVideos.length > 0) {
-            const firstVideo = platformVideos[0];
-            log("getUserHistory: First video - ID: " + firstVideo.id + ", Title: " + (firstVideo.name || '').substring(0, 50) + ", Thumbnail: " + (firstVideo.thumbnails && firstVideo.thumbnails.sources && firstVideo.thumbnails.sources.length > 0 ? firstVideo.thumbnails.sources[0].url : 'NO THUMBNAIL'));
+        log("getUserHistory: Returning " + videoUrls.length + " video URLs for import");
+        if (videoUrls.length > 0) {
+            log("getUserHistory: First URL: " + videoUrls[0]);
         }
         
-        // Return a Pager object with pagination support
-        const hasMore = videos.length >= 20;
-        const nextToken = hasMore ? "2" : null;
-        
-        log("getUserHistory: Returning pager with " + platformVideos.length + " videos, hasMore=" + hasMore);
-        return new SpankBangHistoryPager(platformVideos, hasMore, { continuationToken: nextToken });
+        return videoUrls;
         
     } catch (error) {
         log("getUserHistory error: " + error.message);
-        // Return empty pager, not array
-        return new SpankBangHistoryPager([], false, { continuationToken: null });
+        return [];
     }
 };
 
@@ -6962,4 +6956,4 @@ class SpankBangHistoryPager extends ContentPager {
     }
 }
 
-log("SpankBang plugin loaded - v80");
+log("SpankBang plugin loaded - v82");
