@@ -4062,8 +4062,12 @@ source.getCapabilities = function() {
 source.enable = function(conf, settings, savedStateStr) {
     config = conf ?? {};
     
+    log("===== PLUGIN ENABLE CALLED =====");
+    
     if (settings) {
+        log("enable: Received settings object");
         if (typeof settings.syncRemoteHistory !== 'undefined') {
+            log("enable: syncRemoteHistory setting found, value=" + settings.syncRemoteHistory);
             if (typeof settings.syncRemoteHistory === 'boolean') {
                 pluginSettings.syncRemoteHistory = settings.syncRemoteHistory;
             } else if (typeof settings.syncRemoteHistory === 'string') {
@@ -4071,7 +4075,13 @@ source.enable = function(conf, settings, savedStateStr) {
             } else {
                 pluginSettings.syncRemoteHistory = !!settings.syncRemoteHistory;
             }
+            log("enable: syncRemoteHistory is now " + (pluginSettings.syncRemoteHistory ? "ENABLED" : "DISABLED"));
+            log("enable: hasSyncRemoteWatchHistory capability = " + pluginSettings.syncRemoteHistory);
+        } else {
+            log("enable: syncRemoteHistory setting NOT found in settings object");
         }
+    } else {
+        log("enable: No settings object provided");
     }
     
     if (!localConfig.pornstarShortIds) {
@@ -6952,4 +6962,4 @@ class SpankBangHistoryPager extends ContentPager {
     }
 }
 
-log("SpankBang plugin loaded - v73");
+log("SpankBang plugin loaded - v74");
