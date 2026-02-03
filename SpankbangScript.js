@@ -2183,7 +2183,17 @@ function createVideoDetails(videoData, url) {
         rating: videoData.rating ? new RatingScaler(videoData.rating) : null
     });
     
-    log("createVideoDetails: Created details with duration=" + (videoData.duration || 0) + "s, thumbnail=" + videoData.thumbnail);
+    log("createVideoDetails: ===== COMPLETE VIDEO DETAILS =====");
+    log("createVideoDetails: Video ID: " + videoData.id);
+    log("createVideoDetails: Title: " + (videoData.title || "MISSING"));
+    log("createVideoDetails: Duration: " + (videoData.duration || 0) + " seconds");
+    log("createVideoDetails: Thumbnail extracted: " + (videoData.thumbnail || "NONE"));
+    log("createVideoDetails: Total thumbnails in array: " + (details.thumbnails && details.thumbnails.sources ? details.thumbnails.sources.length : 0));
+    if (details.thumbnails && details.thumbnails.sources && details.thumbnails.sources.length > 0) {
+        log("createVideoDetails: Primary thumbnail URL: " + details.thumbnails.sources[0].url);
+        log("createVideoDetails: Primary thumbnail width: " + details.thumbnails.sources[0].width);
+    }
+    log("createVideoDetails: =====================================");
 
     details.getContentRecommendations = function() {
         return source.getContentRecommendations(url);
@@ -6883,4 +6893,4 @@ class SpankBangHistoryPager extends ContentPager {
     }
 }
 
-log("SpankBang plugin loaded - v66");
+log("SpankBang plugin loaded - v63");
