@@ -2017,10 +2017,17 @@ function createThumbnails(thumbnail, videoId) {
         log("createThumbnails: No valid thumbnail available for video " + videoId + ", thumbnail=" + (thumbnail || "null"));
     }
     
-    // Add CDN fallback options (these may work in some cases)
+    // Add CDN fallback options based on SpankBang's thumbnail pattern
+    // Pattern: https://tbi.sb-cd.com/t/{videoId}/1/6/w:{width}/{slug}.jpg
+    // For fallback, we use default.jpg as slug
     if (videoId && videoId.length >= 4) {
         const cdnThumbs = [
+            // New pattern with 1/6/ structure (most common in history)
+            `https://tbi.sb-cd.com/t/${videoId}/1/6/w:500/default.jpg`,
+            `https://tbi.sb-cd.com/t/${videoId}/1/6/w:320/default.jpg`,
+            // Standard patterns as additional fallbacks
             `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`,
+            `https://tbi.sb-cd.com/t/${videoId}/1/1/default.jpg`,
             `https://tbi.sb-cd.com/t/${videoId}/small/1/default.jpg`,
             `https://cdn.spankbang.com/t/${videoId}/def/1/default.jpg`
         ];
@@ -2030,6 +2037,8 @@ function createThumbnails(thumbnail, videoId) {
                 thumbnails.push(new Thumbnail(cdnThumb, 320));
             }
         });
+        
+        log("createThumbnails: Added " + cdnThumbs.length + " CDN fallback thumbnails for video " + videoId);
     }
     
     return new Thumbnails(thumbnails);
@@ -4565,9 +4574,11 @@ function parseHistoryPage(html) {
             }
         }
         
-        // Fallback to default CDN thumbnail
+        // Fallback to default CDN thumbnail with improved pattern
         if (!thumbnail || thumbnail.length < 10) {
-            thumbnail = `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
+            // Use the 1/6/w:500 pattern which is more common for history thumbnails
+            thumbnail = `https://tbi.sb-cd.com/t/${videoId}/1/6/w:500/default.jpg`;
+            log("parseHistoryPage: Using CDN fallback thumbnail for video " + videoId);
         }
         if (thumbnail.startsWith('//')) {
             thumbnail = 'https:' + thumbnail;
@@ -4736,7 +4747,8 @@ function parseHistoryPage(html) {
                     }
                 }
                 if (!thumbnail || thumbnail.length < 10) {
-                    thumbnail = `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
+                    thumbnail = `https://tbi.sb-cd.com/t/${videoId}/1/6/w:500/default.jpg`;
+                    log("parseHistoryPage (div pattern): Using CDN fallback thumbnail for video " + videoId);
                 }
                 if (thumbnail.startsWith('//')) {
                     thumbnail = 'https:' + thumbnail;
@@ -4875,7 +4887,8 @@ function parseHistoryPage(html) {
                     }
                 }
                 if (!thumbnail || thumbnail.length < 10) {
-                    thumbnail = `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
+                    thumbnail = `https://tbi.sb-cd.com/t/${videoId}/1/6/w:500/default.jpg`;
+                    log("parseHistoryPage (fallback pattern): Using CDN fallback thumbnail for video " + videoId);
                 }
                 if (thumbnail.startsWith('//')) {
                     thumbnail = 'https:' + thumbnail;
@@ -5007,6 +5020,63 @@ function fetchVideoBasicInfo(videoId) {
         return null;
     }
 }
+
+// Add getUserHistory function for GrayJay plugin testing
+source.getUserHistory = function() {
+    try {
+        log("getUserHistory: Starting to fetch user history");
+        
+        // Use the same authenticated request pattern as other user functions
+        const historyUrl = USER_URLS.HISTORY;
+        log("getUserHistory: Fetching from " + historyUrl);
+        
+        const response = makeRequestNoThrow(historyUrl, API_HEADERS, 'user history', true);
+        
+        if (!response.isOk) {
+            log("getUserHistory: Failed with status " + response.code + ", user may not be logged in");
+            return [];
+        }
+        
+        const html = response.body;
+        
+        if (!html || html.length < 100) {
+            log("getUserHistory: Empty or invalid HTML response (length: " + (html ? html.length : 0) + ")");
+            return [];
+        }
+        
+        log("getUserHistory: HTML length = " + html.length);
+        
+        // Parse history using both parseSearchResults and parseHistoryPage
+        let videos = parseSearchResults(html);
+        
+        if (videos.length === 0) {
+            log("getUserHistory: parseSearchResults found 0 videos, trying parseHistoryPage");
+            videos = parseHistoryPage(html);
+        }
+        
+        if (videos.length === 0) {
+            log("getUserHistory: No videos found. HTML snippet (first 500 chars): " + html.substring(0, 500).replace(/[\n\r]/g, ' '));
+            return [];
+        }
+        
+        log("getUserHistory: Found " + videos.length + " videos");
+        
+        // Return full PlatformVideo objects with all metadata
+        const platformVideos = videos.map(v => createPlatformVideo(v));
+        
+        // Log first video for debugging thumbnails
+        if (platformVideos.length > 0) {
+            const firstVideo = platformVideos[0];
+            log("getUserHistory: First video - ID: " + firstVideo.id + ", Title: " + (firstVideo.name || '').substring(0, 50) + ", Thumbnail: " + (firstVideo.thumbnails && firstVideo.thumbnails.sources && firstVideo.thumbnails.sources.length > 0 ? firstVideo.thumbnails.sources[0].url : 'NO THUMBNAIL'));
+        }
+        
+        return platformVideos;
+        
+    } catch (error) {
+        log("getUserHistory error: " + error.message);
+        return [];
+    }
+};
 
 source.syncRemoteWatchHistory = function(continuationToken) {
     try {
