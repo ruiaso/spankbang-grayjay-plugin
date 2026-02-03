@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 65,
+  "version": 66,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -51,15 +51,17 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "66": [
+      "CRITICAL FIX: Fixed 403 errors on both desktop AND mobile - removed incompatible Sec-Fetch headers",
+      "Simplified headers to only what Grayjay HTTP client supports: User-Agent, Accept, Accept-Language, Referer",
+      "Removed Sec-Fetch-* headers that were causing malformed requests in Grayjay's HTTP implementation",
+      "Removed Accept-Encoding and Cache-Control headers (Grayjay handles these automatically)",
+      "Desktop User-Agent (Chrome 131 Windows) now works correctly on both platforms",
+      "Kept 403 retry logic with exponential backoff for resilience"
+    ],
     "65": [
-      "CRITICAL FIX: Desktop Grayjay now works correctly - fixed 403 errors on video loading",
-      "Switched to desktop User-Agent (Chrome 131 Windows) which works on both desktop and mobile",
-      "Added comprehensive browser headers: Referer, Sec-Fetch-*, Accept-Encoding, Cache-Control",
-      "Enhanced Accept header to include modern image formats (avif, webp, apng)",
-      "Added automatic retry logic for 403 Forbidden errors with exponential backoff (2s, 4s, 6s)",
-      "Improved error handling with detailed logging for debugging connection issues",
-      "Desktop User-Agent is more permissive and works on both platforms (tested on both)",
-      "Added proper browser security headers to avoid anti-bot detection by SpankBang"
+      "DEPRECATED: Added too many headers causing issues - see v66",
+      "Attempted comprehensive browser headers but broke compatibility with Grayjay HTTP client"
     ],
     "63": [
       "CRITICAL FIX: Made uploader name detection more permissive to show more channel/pornstar names instead of missing uploaders",
