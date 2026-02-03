@@ -73,14 +73,46 @@ const CONFIG = {
     }
 };
 
-// Use desktop User-Agent as it's more permissive for both desktop and mobile Grayjay
-// Keep headers minimal - Grayjay's HTTP client doesn't support browser-specific security headers (Sec-Fetch-*)
+// User-Agent configuration
+// SpankBang validates UA against actual client platform, so we need to use the right one
+const USER_AGENTS = {
+    MOBILE: "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+    DESKTOP: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+};
+
+// Start with mobile UA (original working version), will auto-detect if desktop is needed
+let ACTIVE_USER_AGENT = USER_AGENTS.MOBILE;
+let platformDetected = false;
+
+// Simple platform detection: try mobile first, if it fails try desktop
+function getActiveUserAgent() {
+    return ACTIVE_USER_AGENT;
+}
+
+function switchToDesktopUA() {
+    if (ACTIVE_USER_AGENT !== USER_AGENTS.DESKTOP) {
+        log("Switching to desktop User-Agent due to 403 errors with mobile UA");
+        ACTIVE_USER_AGENT = USER_AGENTS.DESKTOP;
+        platformDetected = true;
+    }
+}
+
 const API_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "User-Agent": ACTIVE_USER_AGENT,  // Will be updated dynamically
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
     "Referer": "https://spankbang.com/"
 };
+
+function getAuthHeaders() {
+    // Update User-Agent dynamically in case it changed
+    const headers = { ...API_HEADERS };
+    headers["User-Agent"] = getActiveUserAgent();
+    if (state.authCookies && state.authCookies.length > 0) {
+        headers["Cookie"] = state.authCookies;
+    }
+    return headers;
+}
 
 const REGEX_PATTERNS = {
     urls: {
@@ -173,6 +205,22 @@ function makeRequest(url, headers = null, context = 'request', useAuth = false) 
         const requestHeaders = headers || getAuthHeaders();
         const response = http.GET(url, requestHeaders, useAuth);
         if (!response.isOk) {
+            // If we get 403 with mobile UA and haven't tried desktop yet, switch and retry
+            if (response.code === 403 && ACTIVE_USER_AGENT === USER_AGENTS.MOBILE && !platformDetected) {
+                log(`403 error with mobile UA, switching to desktop UA...`);
+                switchToDesktopUA();
+                const retryHeaders = headers || getAuthHeaders(); // Get new headers with desktop UA
+                sleep(1000); // Wait 1s before retry
+                const retryResponse = http.GET(url, retryHeaders, useAuth);
+                if (retryResponse.isOk) {
+                    log(`Desktop UA successful! Platform detected as DESKTOP`);
+                    localConfig.consecutiveErrors = 0;
+                    return retryResponse.body;
+                } else {
+                    log(`Desktop UA also failed with status ${retryResponse.code}`);
+                }
+            }
+            
             // If we get 429 (rate limit) or 403 (forbidden), add exponential backoff with multiple retries
             if (response.code === 429 || response.code === 403) {
                 localConfig.consecutiveErrors++;
@@ -202,6 +250,15 @@ function makeRequest(url, headers = null, context = 'request', useAuth = false) 
         
         // Reset on successful request
         localConfig.consecutiveErrors = 0;
+        if (localConfig.requestDelay > 500) {
+            localConfig.requestDelay = Math.max(500, localConfig.requestDelay * 0.9);
+        }
+        
+        return response.body;
+    } catch (error) {
+        throw new ScriptException(`Failed to fetch ${context}: ${error.message}`);
+    }
+}
         if (localConfig.requestDelay > 500) {
             localConfig.requestDelay = Math.max(500, localConfig.requestDelay * 0.9);
         }

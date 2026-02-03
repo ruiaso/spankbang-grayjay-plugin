@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 66,
+  "version": 67,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -51,6 +51,14 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "67": [
+      "CRITICAL FIX: Auto-detecting platform by starting with mobile UA and switching to desktop if needed",
+      "Plugin now starts with mobile User-Agent (works on mobile Grayjay)",
+      "If 403 error with mobile UA, automatically switches to desktop UA and retries",
+      "Platform detection happens transparently - no configuration needed",
+      "Works on BOTH mobile (uses mobile UA) and desktop (auto-switches to desktop UA)",
+      "Solves the platform validation issue where SpankBang checks UA against actual client"
+    ],
     "66": [
       "CRITICAL FIX: Fixed 403 errors on both desktop AND mobile - removed incompatible Sec-Fetch headers",
       "Simplified headers to only what Grayjay HTTP client supports: User-Agent, Accept, Accept-Language, Referer",
