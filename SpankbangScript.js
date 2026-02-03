@@ -4055,7 +4055,7 @@ var pluginSettings = {
 
 source.getCapabilities = function() {
     return {
-        hasGetUserHistory: pluginSettings.syncRemoteHistory
+        hasSyncRemoteWatchHistory: pluginSettings.syncRemoteHistory
     };
 };
 
@@ -4076,7 +4076,7 @@ source.enable = function(conf, settings, savedStateStr) {
                 pluginSettings.syncRemoteHistory = !!settings.syncRemoteHistory;
             }
             log("enable: syncRemoteHistory is now " + (pluginSettings.syncRemoteHistory ? "ENABLED" : "DISABLED"));
-            log("enable: hasGetUserHistory capability = " + pluginSettings.syncRemoteHistory);
+            log("enable: hasSyncRemoteWatchHistory capability = " + pluginSettings.syncRemoteHistory);
         } else {
             log("enable: syncRemoteHistory setting NOT found in settings object");
         }
@@ -6962,4 +6962,4 @@ class SpankBangHistoryPager extends ContentPager {
     }
 }
 
-log("SpankBang plugin loaded - v75");
+log("SpankBang plugin loaded - v76");
