@@ -73,46 +73,11 @@ const CONFIG = {
     }
 };
 
-// User-Agent configuration
-// SpankBang validates UA against actual client platform, so we need to use the right one
-const USER_AGENTS = {
-    MOBILE: "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-    DESKTOP: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-};
-
-// Start with mobile UA (original working version), will auto-detect if desktop is needed
-let ACTIVE_USER_AGENT = USER_AGENTS.MOBILE;
-let platformDetected = false;
-
-// Simple platform detection: try mobile first, if it fails try desktop
-function getActiveUserAgent() {
-    return ACTIVE_USER_AGENT;
-}
-
-function switchToDesktopUA() {
-    if (ACTIVE_USER_AGENT !== USER_AGENTS.DESKTOP) {
-        log("Switching to desktop User-Agent due to 403 errors with mobile UA");
-        ACTIVE_USER_AGENT = USER_AGENTS.DESKTOP;
-        platformDetected = true;
-    }
-}
-
 const API_HEADERS = {
-    "User-Agent": ACTIVE_USER_AGENT,  // Will be updated dynamically
+    "User-Agent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Referer": "https://spankbang.com/"
+    "Accept-Language": "en-US,en;q=0.5"
 };
-
-function getAuthHeaders() {
-    // Update User-Agent dynamically in case it changed
-    const headers = { ...API_HEADERS };
-    headers["User-Agent"] = getActiveUserAgent();
-    if (state.authCookies && state.authCookies.length > 0) {
-        headers["Cookie"] = state.authCookies;
-    }
-    return headers;
-}
 
 const REGEX_PATTERNS = {
     urls: {
@@ -169,6 +134,14 @@ const REGEX_PATTERNS = {
     }
 };
 
+function getAuthHeaders() {
+    const headers = { ...API_HEADERS };
+    if (state.authCookies && state.authCookies.length > 0) {
+        headers["Cookie"] = state.authCookies;
+    }
+    return headers;
+}
+
 function sleep(ms) {
     const start = Date.now();
     while (Date.now() - start < ms) {
@@ -194,54 +167,26 @@ function makeRequest(url, headers = null, context = 'request', useAuth = false) 
         // Enforce rate limiting before making the request
         enforceRateLimit();
         
-        let requestHeaders = headers || getAuthHeaders();
-        log(`makeRequest: ${context} - UA: ${requestHeaders["User-Agent"].substring(0, 60)}...`);
-        
+        const requestHeaders = headers || getAuthHeaders();
         const response = http.GET(url, requestHeaders, useAuth);
         if (!response.isOk) {
-            log(`makeRequest: Got ${response.code} for ${context}`);
-            
-            // If we get 403 with mobile UA and haven't tried desktop yet, switch and retry
-            if (response.code === 403 && ACTIVE_USER_AGENT === USER_AGENTS.MOBILE && !platformDetected) {
-                log(`403 error with mobile UA, switching to desktop UA...`);
-                switchToDesktopUA();
-                sleep(1000); // Wait 1s before retry
-                requestHeaders = headers || getAuthHeaders(); // IMPORTANT: Get NEW headers with desktop UA
-                log(`makeRequest: Retrying with desktop UA: ${requestHeaders["User-Agent"].substring(0, 60)}...`);
-                const retryResponse = http.GET(url, requestHeaders, useAuth);
-                if (retryResponse.isOk) {
-                    log(`Desktop UA successful! Platform detected as DESKTOP`);
-                    localConfig.consecutiveErrors = 0;
-                    return retryResponse.body;
-                } else {
-                    log(`Desktop UA also failed with status ${retryResponse.code}`);
-                }
-            }
-            
-            // If we get 429 (rate limit) or 403 (forbidden), add exponential backoff with multiple retries
-            if (response.code === 429 || response.code === 403) {
+            // If we get 429, add exponential backoff with multiple retries
+            if (response.code === 429) {
                 localConfig.consecutiveErrors++;
-                const waitTime = response.code === 403 
-                    ? Math.min(2000 * localConfig.consecutiveErrors, 8000) // 403: 2s, 4s, 6s, max 8s
-                    : Math.min(3000 * localConfig.consecutiveErrors, 10000); // 429: 3s, 6s, 9s, max 10s
-                log(`${response.code} error, attempt ${localConfig.consecutiveErrors}, waiting ${waitTime}ms before retry...`);
+                const waitTime = Math.min(3000 * localConfig.consecutiveErrors, 10000); // 3s, 6s, 9s, max 10s
+                log(`Rate limit hit (429), attempt ${localConfig.consecutiveErrors}, waiting ${waitTime}ms before retry...`);
                 sleep(waitTime);
                 localConfig.requestDelay = Math.min(localConfig.requestDelay * 2, 2000); // Increase delay up to 2s
                 
-                // Retry up to 3 times - IMPORTANT: Use current headers (which may have been updated to desktop UA)
+                // Retry up to 3 times
                 if (localConfig.consecutiveErrors < 3) {
-                    requestHeaders = headers || getAuthHeaders(); // Refresh headers in case UA was switched
                     const retryResponse = http.GET(url, requestHeaders, useAuth);
                     if (retryResponse.isOk) {
                         localConfig.consecutiveErrors = 0; // Reset on success
                         localConfig.requestDelay = Math.max(500, localConfig.requestDelay * 0.8); // Slowly decrease
-                        log(`Retry successful after ${response.code} error`);
                         return retryResponse.body;
                     }
                 }
-                
-                // If all retries failed, log detailed error
-                log(`All retries failed for ${url}, last status: ${response.code}`);
             }
             throw new ScriptException(`${context} failed with status ${response.code}`);
         }
@@ -266,13 +211,11 @@ function makeRequestNoThrow(url, headers = null, context = 'request', useAuth = 
         const requestHeaders = headers || getAuthHeaders();
         const response = http.GET(url, requestHeaders, useAuth);
         
-        // If we get 429 (rate limit) or 403 (forbidden), add exponential backoff and retry
-        if (!response.isOk && (response.code === 429 || response.code === 403)) {
+        // If we get 429, add exponential backoff and retry
+        if (!response.isOk && response.code === 429) {
             localConfig.consecutiveErrors++;
-            const waitTime = response.code === 403 
-                ? Math.min(2000 * localConfig.consecutiveErrors, 8000) // 403: 2s, 4s, 6s, max 8s
-                : Math.min(3000 * localConfig.consecutiveErrors, 10000); // 429: 3s, 6s, 9s, max 10s
-            log(`${response.code} error, attempt ${localConfig.consecutiveErrors}, waiting ${waitTime}ms before retry...`);
+            const waitTime = Math.min(3000 * localConfig.consecutiveErrors, 10000); // 3s, 6s, 9s, max 10s
+            log(`Rate limit hit (429), attempt ${localConfig.consecutiveErrors}, waiting ${waitTime}ms before retry...`);
             sleep(waitTime);
             localConfig.requestDelay = Math.min(localConfig.requestDelay * 2, 2000); // Increase delay up to 2s
             
@@ -282,7 +225,6 @@ function makeRequestNoThrow(url, headers = null, context = 'request', useAuth = 
                 if (retryResponse.isOk) {
                     localConfig.consecutiveErrors = 0;
                     localConfig.requestDelay = Math.max(500, localConfig.requestDelay * 0.8);
-                    log(`Retry successful after ${response.code} error`);
                 }
                 return { isOk: retryResponse.isOk, code: retryResponse.code, body: retryResponse.body };
             }
@@ -315,7 +257,7 @@ function resolvePornstarShortId(slug) {
     
     const simpleUrl = `${CONFIG.EXTERNAL_URL_BASE}/pornstar/${normalizedSlug}`;
     log("Resolving pornstar shortId for: " + normalizedSlug + " via " + simpleUrl);
-    const response = makeRequestNoThrow(simpleUrl, null, 'pornstar lookup');
+    const response = makeRequestNoThrow(simpleUrl, API_HEADERS, 'pornstar lookup');
     
     if (response.isOk && response.body) {
         const patterns = [
@@ -339,7 +281,7 @@ function resolvePornstarShortId(slug) {
     try {
         const searchUrl = `${BASE_URL}/s/${normalizedSlug}/`;
         log("Trying search fallback: " + searchUrl);
-        const searchResponse = makeRequestNoThrow(searchUrl, null, 'pornstar search');
+        const searchResponse = makeRequestNoThrow(searchUrl, API_HEADERS, 'pornstar search');
         if (searchResponse.isOk && searchResponse.body) {
             const escapedSlug = normalizedSlug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const pattern = new RegExp(`href=["']/([a-z0-9]+)/pornstar/${escapedSlug}`, 'i');
@@ -357,7 +299,7 @@ function resolvePornstarShortId(slug) {
     try {
         const pornstarsUrl = `${BASE_URL}/pornstars`;
         log("Trying pornstars listing fallback");
-        const listResponse = makeRequestNoThrow(pornstarsUrl, null, 'pornstars list');
+        const listResponse = makeRequestNoThrow(pornstarsUrl, API_HEADERS, 'pornstars list');
         if (listResponse.isOk && listResponse.body) {
             const escapedSlug = normalizedSlug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const pattern = new RegExp(`href=["']/([a-z0-9]+)/pornstar/${escapedSlug}`, 'i');
@@ -4460,7 +4402,7 @@ source.getUserSubscriptions = function() {
     try {
         // Fetch user subscriptions using authenticated client with rate limiting
         log("Fetching user subscriptions from /users/subscriptions");
-        const userSubsHtml = makeRequestNoThrow(`${BASE_URL}/users/subscriptions`, null, 'user subscriptions', true);
+        const userSubsHtml = makeRequestNoThrow(`${BASE_URL}/users/subscriptions`, API_HEADERS, 'user subscriptions', true);
         
         if (!userSubsHtml.isOk) {
             log("Failed to fetch user subscriptions, user may not be logged in");
@@ -4477,7 +4419,7 @@ source.getUserSubscriptions = function() {
     try {
         // Fetch pornstar subscriptions using authenticated client with rate limiting
         log("Fetching pornstar subscriptions from /users/subscriptions_pornstars");
-        const pornstarSubsHtml = makeRequestNoThrow(`${BASE_URL}/users/subscriptions_pornstars`, null, 'pornstar subscriptions', true);
+        const pornstarSubsHtml = makeRequestNoThrow(`${BASE_URL}/users/subscriptions_pornstars`, API_HEADERS, 'pornstar subscriptions', true);
         
         if (!pornstarSubsHtml.isOk) {
             log("Failed to fetch pornstar subscriptions");
@@ -4506,7 +4448,7 @@ source.getWatchHistory = function() {
         const historyUrl = USER_URLS.HISTORY;
         log("Fetching watch history from: " + historyUrl);
         
-        const response = makeRequestNoThrow(historyUrl, null, 'watch history', true);
+        const response = makeRequestNoThrow(historyUrl, API_HEADERS, 'watch history', true);
         
         if (!response.isOk) {
             log("getWatchHistory: Failed with status " + response.code + ", user may not be logged in");
@@ -5033,7 +4975,7 @@ function parseHistoryPage(html) {
 function fetchVideoBasicInfo(videoId) {
     try {
         const videoUrl = `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/`;
-        const response = makeRequestNoThrow(videoUrl, null, 'video basic info');
+        const response = makeRequestNoThrow(videoUrl, API_HEADERS, 'video basic info');
         if (!response.isOk || !response.body) {
             return null;
         }
@@ -5077,7 +5019,7 @@ source.syncRemoteWatchHistory = function(continuationToken) {
         
         log("Syncing remote watch history from: " + historyUrl);
         
-        const response = makeRequestNoThrow(historyUrl, null, 'remote watch history', true);
+        const response = makeRequestNoThrow(historyUrl, API_HEADERS, 'remote watch history', true);
         
         if (!response.isOk) {
             log("syncRemoteWatchHistory: Failed with status " + response.code + ", user may not be logged in");
@@ -5123,7 +5065,7 @@ source.getUserPlaylists = function() {
     try {
         // Fetch playlists using authenticated client with rate limiting
         log("Fetching playlists from /users/playlists");
-        const playlistsResp = makeRequestNoThrow(`${BASE_URL}/users/playlists`, null, 'user playlists', true);
+        const playlistsResp = makeRequestNoThrow(`${BASE_URL}/users/playlists`, API_HEADERS, 'user playlists', true);
         
         if (!playlistsResp.isOk) {
             log("Failed to fetch playlists, user may not be logged in");
@@ -5369,24 +5311,17 @@ source.getHome = function(continuationToken) {
     try {
         const page = continuationToken ? parseInt(continuationToken) : 1;
         const url = `${BASE_URL}/trending_videos/${page}/`;
-        
-        log(`getHome() called - page: ${page}, url: ${url}`);
-        log(`Current User-Agent: ${getActiveUserAgent().substring(0, 80)}...`);
-        log(`Platform detected: ${platformDetected ? 'YES (desktop)' : 'NO (mobile)'}`);
 
-        const html = makeRequest(url, null, 'home content');
+        const html = makeRequest(url, API_HEADERS, 'home content');
         const videos = parseSearchResults(html);
         const platformVideos = videos.map(v => createPlatformVideo(v));
 
         const hasMore = videos.length >= 20;
         const nextToken = hasMore ? (page + 1).toString() : null;
-        
-        log(`getHome() success - found ${videos.length} videos, hasMore: ${hasMore}`);
 
         return new SpankBangHomeContentPager(platformVideos, hasMore, { continuationToken: nextToken });
 
     } catch (error) {
-        log(`getHome() error: ${error.message}`);
         throw new ScriptException("Failed to get home content: " + error.message);
     }
 };
@@ -5394,7 +5329,7 @@ source.getHome = function(continuationToken) {
 source.searchSuggestions = function(query) {
     try {
         const suggestUrl = `${BASE_URL}/api/search/suggestions?q=${encodeURIComponent(query)}`;
-        const response = makeRequestNoThrow(suggestUrl, null, 'search suggestions', false);
+        const response = makeRequestNoThrow(suggestUrl, API_HEADERS, 'search suggestions', false);
 
         if (response.isOk && response.body) {
             try {
@@ -5627,7 +5562,7 @@ source.search = function(query, type, order, filters, continuationToken) {
 
         log("Search URL: " + searchUrl);
 
-        const html = makeRequest(searchUrl, null, 'search');
+        const html = makeRequest(searchUrl, API_HEADERS, 'search');
         const videos = parseSearchResults(html);
         const platformVideos = videos.map(v => createPlatformVideo(v));
 
@@ -5667,7 +5602,7 @@ source.searchChannels = function(query, continuationToken) {
         }
 
         log("searchChannels: Fetching URL: " + searchUrl);
-        const html = makeRequest(searchUrl, null, 'channel search');
+        const html = makeRequest(searchUrl, API_HEADERS, 'channel search');
         
         // Parse pornstars, profiles, AND channels from the page
         const pornstars = parsePornstarsPage(html);
@@ -5750,7 +5685,7 @@ source.getCreators = function(continuationToken) {
             url += `/${page}`;
         }
 
-        const html = makeRequest(url, null, 'pornstars');
+        const html = makeRequest(url, API_HEADERS, 'pornstars');
         const pornstars = parsePornstarsPage(html);
 
         const platformChannels = pornstars.map(p => new PlatformChannel({
@@ -5843,7 +5778,7 @@ source.getChannel = function(url) {
         }
 
         log("Fetching channel from: " + profileUrl);
-        const html = makeRequest(profileUrl, null, 'channel');
+        const html = makeRequest(profileUrl, API_HEADERS, 'channel');
 
         const namePatterns = [
             /<h1[^>]*class="[^"]*name[^"]*"[^>]*>([^<]+)<\/h1>/i,
@@ -6055,7 +5990,7 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
         log("Fetching channel contents from: " + profileUrl);
         
         // Use makeRequestNoThrow to get more details about failures
-        let response = makeRequestNoThrow(profileUrl, null, 'channel contents', false);
+        let response = makeRequestNoThrow(profileUrl, API_HEADERS, 'channel contents', false);
         
         // If first request fails with 404 for profile type, try alternative URL formats
         if (!response.isOk && response.code === 404 && result.type === 'profile') {
@@ -6066,7 +6001,7 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
                 ? `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/${page}`
                 : `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}`;
             log("Trying alternative URL: " + altUrl1);
-            response = makeRequestNoThrow(altUrl1, null, 'channel contents alt1', false);
+            response = makeRequestNoThrow(altUrl1, API_HEADERS, 'channel contents alt1', false);
             
             // If still fails, try /s/ URL format (search-style profile)
             if (!response.isOk && response.code === 404) {
@@ -6074,7 +6009,7 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
                     ? `${CONFIG.EXTERNAL_URL_BASE}/s/${result.id}/${page}`
                     : `${CONFIG.EXTERNAL_URL_BASE}/s/${result.id}`;
                 log("Trying /s/ URL: " + altUrl2);
-                response = makeRequestNoThrow(altUrl2, null, 'channel contents alt2', false);
+                response = makeRequestNoThrow(altUrl2, API_HEADERS, 'channel contents alt2', false);
             }
         }
         
@@ -6151,7 +6086,7 @@ source.getContentDetails = function(url) {
             log("Detected video-in-playlist URL, video ID: " + videoId);
         }
         
-        const html = makeRequest(url, null, 'video details');
+        const html = makeRequest(url, API_HEADERS, 'video details');
         log("getContentDetails: Received HTML length: " + html.length);
         
         const videoData = parseVideoPage(html, url);
@@ -6172,7 +6107,7 @@ source.getContentDetails = function(url) {
 
 source.getContentRecommendations = function(url) {
     try {
-        const html = makeRequest(url, null, 'recommendations');
+        const html = makeRequest(url, API_HEADERS, 'recommendations');
         const videoData = parseVideoPage(html, url);
 
         if (videoData.relatedVideos && videoData.relatedVideos.length > 0) {
@@ -6198,7 +6133,7 @@ source.getComments = function(url) {
         if (comments.length === 0) {
             try {
                 const commentsUrl = `${BASE_URL}/${videoId}/comments/`;
-                const html = makeRequestNoThrow(commentsUrl, null, 'comments');
+                const html = makeRequestNoThrow(commentsUrl, API_HEADERS, 'comments');
                 if (html.isOk && html.body) {
                     comments = parseComments(html.body, videoId);
                 }
@@ -6209,7 +6144,7 @@ source.getComments = function(url) {
         
         if (comments.length === 0) {
             try {
-                const videoPageHtml = makeRequest(url, null, 'video page for comments');
+                const videoPageHtml = makeRequest(url, API_HEADERS, 'video page for comments');
                 const commentsSection = videoPageHtml.match(/<div[^>]*id="[^"]*comments[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/section>/i);
                 if (commentsSection && commentsSection[1]) {
                     comments = parseComments(commentsSection[1], videoId);
@@ -6345,7 +6280,7 @@ source.searchPlaylists = function(query, type, order, filters, continuationToken
                 
                 log("Fetching profile playlists from: " + profilePlaylistsUrl);
                 
-                const html = makeRequest(profilePlaylistsUrl, null, 'profile playlists', true);
+                const html = makeRequest(profilePlaylistsUrl, API_HEADERS, 'profile playlists', true);
                 const playlists = parsePlaylistsPage(html);
                 
                 const platformPlaylists = playlists.map(p => new PlatformPlaylist({
@@ -6464,7 +6399,7 @@ source.searchPlaylists = function(query, type, order, filters, continuationToken
         
         log("Playlist search URL: " + searchUrl);
 
-        const html = makeRequest(searchUrl, null, 'playlist search', true);
+        const html = makeRequest(searchUrl, API_HEADERS, 'playlist search', true);
         const playlists = parsePlaylistsPage(html);
 
         const platformPlaylists = playlists.map(p => {

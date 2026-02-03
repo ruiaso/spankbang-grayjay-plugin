@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 72,
+  "version": 63,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -51,52 +51,6 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
-    "72": [
-      "CRITICAL DEBUG: Added comprehensive logging to diagnose UA switching",
-      "Fixed misleading log in getHome() that showed static UA instead of actual dynamic UA",
-      "Added logging in makeRequest() to show actual User-Agent being sent",
-      "Added platform detection status logging",
-      "This version will show exactly what's happening with UA switching"
-    ],
-    "71": [
-      "CRITICAL FIX: All HTTP requests now use dynamic User-Agent (not cached)",
-      "Fixed ALL makeRequest/makeRequestNoThrow calls to use getAuthHeaders() instead of cached API_HEADERS",
-      "This fixes 403 errors in getChannel, getChannelContents, getContentDetails, search, etc.",
-      "Now ALL functions benefit from automatic UA switching, not just getHome",
-      "Desktop Grayjay should now work completely across all plugin features"
-    ],
-    "70": [
-      "CRITICAL FIX: Desktop UA switching now works correctly",
-      "Fixed bug where retry logic was using old mobile UA headers instead of switched desktop UA",
-      "Headers are now refreshed after UA switch to ensure desktop UA is actually used",
-      "Desktop should now properly detect platform and switch to desktop UA on first 403 error"
-    ],
-    "69": [
-      "Fixed duplicate getAuthHeaders() function causing illegal return statement error"
-    ],
-    "68": [
-      "Fixed syntax error from v67 (duplicate code blocks removed)"
-    ],
-    "67": [
-      "CRITICAL FIX: Auto-detecting platform by starting with mobile UA and switching to desktop if needed",
-      "Plugin now starts with mobile User-Agent (works on mobile Grayjay)",
-      "If 403 error with mobile UA, automatically switches to desktop UA and retries",
-      "Platform detection happens transparently - no configuration needed",
-      "Works on BOTH mobile (uses mobile UA) and desktop (auto-switches to desktop UA)",
-      "Solves the platform validation issue where SpankBang checks UA against actual client"
-    ],
-    "66": [
-      "CRITICAL FIX: Fixed 403 errors on both desktop AND mobile - removed incompatible Sec-Fetch headers",
-      "Simplified headers to only what Grayjay HTTP client supports: User-Agent, Accept, Accept-Language, Referer",
-      "Removed Sec-Fetch-* headers that were causing malformed requests in Grayjay's HTTP implementation",
-      "Removed Accept-Encoding and Cache-Control headers (Grayjay handles these automatically)",
-      "Desktop User-Agent (Chrome 131 Windows) now works correctly on both platforms",
-      "Kept 403 retry logic with exponential backoff for resilience"
-    ],
-    "65": [
-      "DEPRECATED: Added too many headers causing issues - see v66",
-      "Attempted comprehensive browser headers but broke compatibility with Grayjay HTTP client"
-    ],
     "63": [
       "CRITICAL FIX: Made uploader name detection more permissive to show more channel/pornstar names instead of missing uploaders",
       "CRITICAL FIX: Enhanced video pattern detection to catch thumbnail timecode overlays on home, trending, and search pages",
