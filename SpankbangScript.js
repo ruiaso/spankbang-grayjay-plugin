@@ -2,6 +2,35 @@ const BASE_URL = "https://spankbang.com";
 const PLATFORM = "SpankBang";
 const PLATFORM_CLAIMTYPE = 3;
 
+const USER_AGENT_WINDOWS = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+const USER_AGENT_PHONE = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
+const USER_AGENT_TABLET = "Mozilla/5.0 (iPad; CPU OS 13_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/87.0.4280.77 Mobile/15E148 Safari/604.1";
+
+function getUserAgent() {
+    // Try to detect platform - desktop Grayjay sets different indicators
+    // If we can't detect, default to mobile (which works on both)
+    try {
+        if (typeof bridge !== 'undefined' && bridge.buildPlatform === 'desktop') {
+            return USER_AGENT_WINDOWS;
+        }
+    } catch(e) {}
+    return USER_AGENT_PHONE;
+}
+
+const API_HEADERS = {
+    "User-Agent": USER_AGENT_PHONE, // Default, will be overridden by getApiHeaders()
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5"
+};
+
+function getApiHeaders() {
+    return {
+        "User-Agent": getUserAgent(),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5"
+    };
+}
+
 const USER_URLS = {
     PLAYLISTS: "https://spankbang.com/users/playlists",
     HISTORY: "https://spankbang.com/users/history",
@@ -71,23 +100,6 @@ const CONFIG = {
             LENGTH: "6"
         }
     }
-};
-
-const API_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Cache-Control": "no-cache",
-    "Pragma": "no-cache",
-    "Sec-Ch-Ua": "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\"",
-    "Sec-Ch-Ua-Mobile": "?0",
-    "Sec-Ch-Ua-Platform": "\"Windows\"",
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "none",
-    "Sec-Fetch-User": "?1",
-    "Upgrade-Insecure-Requests": "1"
 };
 
 const REGEX_PATTERNS = {
