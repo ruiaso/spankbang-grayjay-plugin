@@ -5059,7 +5059,7 @@ function fetchVideoBasicInfo(videoId) {
 // Add getUserHistory function for GrayJay plugin testing
 source.getUserHistory = function() {
     try {
-        log("getUserHistory: Starting to fetch user history for sync");
+        log("getUserHistory: Starting to fetch user history");
         
         // Use the same authenticated request pattern as other user functions
         const historyUrl = USER_URLS.HISTORY;
@@ -5069,14 +5069,16 @@ source.getUserHistory = function() {
         
         if (!response.isOk) {
             log("getUserHistory: Failed with status " + response.code + ", user may not be logged in");
-            return [];
+            // Return empty pager, not array
+            return new SpankBangHistoryPager([], false, { continuationToken: null });
         }
         
         const html = response.body;
         
         if (!html || html.length < 100) {
             log("getUserHistory: Empty or invalid HTML response (length: " + (html ? html.length : 0) + ")");
-            return [];
+            // Return empty pager, not array
+            return new SpankBangHistoryPager([], false, { continuationToken: null });
         }
         
         log("getUserHistory: HTML length = " + html.length);
@@ -5089,33 +5091,37 @@ source.getUserHistory = function() {
             log("getUserHistory: parseSearchResults found 0 videos, trying parseHistoryPage");
             videos = parseHistoryPage(html);
         } else {
-            log("getUserHistory: parseSearchResults found " + videos.length + " videos");
+            log("getUserHistory: parseSearchResults found " + videos.length + " videos, skipping parseHistoryPage");
         }
         
         if (videos.length === 0) {
             log("getUserHistory: No videos found. HTML snippet (first 500 chars): " + html.substring(0, 500).replace(/[\n\r]/g, ' '));
-            return [];
+            // Return empty pager, not array
+            return new SpankBangHistoryPager([], false, { continuationToken: null });
         }
         
         log("getUserHistory: Found " + videos.length + " videos");
         
-        // Return array of video URLs (like getUserSubscriptions and getUserPlaylists)
-        const videoUrls = videos.map(v => {
-            // Convert video object to full URL
-            const videoUrl = `${BASE_URL}/${v.id}/video/${v.title ? v.title.toLowerCase().replace(/[^a-z0-9]+/g, '+') : 'video'}`;
-            return videoUrl;
-        });
+        // Return full PlatformVideo objects with all metadata
+        const platformVideos = videos.map(v => createPlatformVideo(v));
         
-        log("getUserHistory: Returning " + videoUrls.length + " video URLs for import");
-        if (videoUrls.length > 0) {
-            log("getUserHistory: First URL: " + videoUrls[0]);
+        // Log first video for debugging thumbnails
+        if (platformVideos.length > 0) {
+            const firstVideo = platformVideos[0];
+            log("getUserHistory: First video - ID: " + firstVideo.id + ", Title: " + (firstVideo.name || '').substring(0, 50) + ", Thumbnail: " + (firstVideo.thumbnails && firstVideo.thumbnails.sources && firstVideo.thumbnails.sources.length > 0 ? firstVideo.thumbnails.sources[0].url : 'NO THUMBNAIL'));
         }
         
-        return videoUrls;
+        // Return a Pager object with pagination support
+        const hasMore = videos.length >= 20;
+        const nextToken = hasMore ? "2" : null;
+        
+        log("getUserHistory: Returning pager with " + platformVideos.length + " videos, hasMore=" + hasMore);
+        return new SpankBangHistoryPager(platformVideos, hasMore, { continuationToken: nextToken });
         
     } catch (error) {
         log("getUserHistory error: " + error.message);
-        return [];
+        // Return empty pager, not array
+        return new SpankBangHistoryPager([], false, { continuationToken: null });
     }
 };
 
@@ -5142,7 +5148,7 @@ source.syncRemoteWatchHistory = function(continuationToken) {
             log("syncRemoteWatchHistory: FAILED - Status " + response.code);
             log("syncRemoteWatchHistory: This usually means you're not logged into SpankBang in Grayjay");
             log("syncRemoteWatchHistory: Go to Sources → SpankBang → Login button");
-            return [];
+            return new SpankBangHistoryPager([], false, { continuationToken: null });
         }
         
         const html = response.body;
@@ -5153,7 +5159,7 @@ source.syncRemoteWatchHistory = function(continuationToken) {
         if (!html || htmlLength < 100) {
             log("syncRemoteWatchHistory: ERROR - HTML too short (length: " + htmlLength + ")");
             log("syncRemoteWatchHistory: This means the page didn't load properly");
-            return [];
+            return new SpankBangHistoryPager([], false, { continuationToken: null });
         }
         
         // Log HTML preview for debugging
@@ -5180,7 +5186,6 @@ source.syncRemoteWatchHistory = function(continuationToken) {
             log("  1. History page is empty (no watch history on your account)");
             log("  2. SpankBang changed their HTML structure");
             log("  3. You're seeing a login/redirect page instead of history");
-            return [];
         } else {
             log("syncRemoteWatchHistory: SUCCESS - Found " + videos.length + " videos!");
             if (videos.length > 0) {
@@ -5188,25 +5193,21 @@ source.syncRemoteWatchHistory = function(continuationToken) {
             }
         }
         
-        // Return array of video URLs (like getUserHistory)
-        const videoUrls = videos.map(v => {
-            // Convert video object to full URL
-            const videoUrl = `${BASE_URL}/${v.id}/video/${v.title ? v.title.toLowerCase().replace(/[^a-z0-9]+/g, '+') : 'video'}`;
-            return videoUrl;
-        });
+        const platformVideos = videos.map(v => createPlatformVideo(v));
         
-        log("syncRemoteWatchHistory: Returning " + videoUrls.length + " video URLs");
-        if (videoUrls.length > 0) {
-            log("syncRemoteWatchHistory: First URL: " + videoUrls[0]);
-        }
+        const hasMore = videos.length >= 20;
+        const nextToken = hasMore ? (page + 1).toString() : null;
+        
+        log("syncRemoteWatchHistory: Returning " + platformVideos.length + " platform videos");
+        log("syncRemoteWatchHistory: hasMore = " + hasMore + ", nextToken = " + (nextToken || "null"));
         log("===== SYNC REMOTE WATCH HISTORY END =====");
         
-        return videoUrls;
+        return new SpankBangHistoryPager(platformVideos, hasMore, { continuationToken: nextToken });
 
     } catch (error) {
         log("syncRemoteWatchHistory: EXCEPTION - " + error.message);
         log("syncRemoteWatchHistory: Stack trace: " + (error.stack || "No stack trace"));
-        return [];
+        return new SpankBangHistoryPager([], false, { continuationToken: null });
     }
 };
 
@@ -6961,4 +6962,4 @@ class SpankBangHistoryPager extends ContentPager {
     }
 }
 
-log("SpankBang plugin loaded - v84");
+log("SpankBang plugin loaded - v80");

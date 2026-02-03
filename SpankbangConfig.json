@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 84,
+  "version": 80,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -40,9 +40,9 @@
     {
       "variable": "syncRemoteHistory",
       "name": "Sync Remote History",
-      "description": "When enabled, your SpankBang watch history will automatically sync to Grayjay on startup",
+      "description": "When enabled, your SpankBang watch history will automatically sync to Grayjay on startup. Toggle this on to import your viewing history from spankbang.com/users/history",
       "type": "Boolean",
-      "default": true
+      "default": "true"
     }
   ],
   "subscriptionRateLimit": 150,
@@ -51,18 +51,294 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
-    "84": [
-      "Cleaned up config - trimmed changelog to resolve invalid config error",
-      "Both getUserHistory and syncRemoteWatchHistory return URL arrays",
-      "History sync fully functional"
+    "80": [
+      "Removed warningDialog property - was causing invalid config error",
+      "Dialog should still work based on hasSyncRemoteWatchHistory capability alone",
+      "Grayjay triggers sync dialog automatically when capability is present"
     ],
-    "83": [
-      "CRITICAL FIX: syncRemoteWatchHistory now returns array of video URLs instead of Pager",
-      "Fixed V8ValueArray error - history sync now works correctly"
+    "79": [
+      "Removed manual sync button - dialog works correctly now",
+      "Cleaned up settings to only show the toggle with dialog",
+      "Improved description explaining auto-sync on startup",
+      "Sync Remote History toggle now properly shows confirmation dialog and imports history"
     ],
-    "82": [
-      "Fixed getUserHistory to return array of video URLs",
-      "History sync dialog now properly imports videos"
+    "78": [
+      "Added warningDialog property to Sync Remote History setting",
+      "This should trigger the confirmation dialog when toggling the setting",
+      "Dialog will ask 'Would you like to sync now?' with Yes/No buttons",
+      "Keeps manual 'Sync History Now' button as backup option"
+    ],
+    "77": [
+      "Added 'Sync History Now' manual button in settings",
+      "Button triggers immediate history sync with feedback message",
+      "Shows success message with count of videos synced",
+      "Shows error message if not logged in or sync fails",
+      "Keeps automatic sync toggle for background sync on startup"
+    ],
+    "76": [
+      "REVERTED v75 change: Changed capability back to hasSyncRemoteWatchHistory (was hasGetUserHistory)",
+      "This should restore the confirmation dialog that was working in earlier versions",
+      "Capability name hasSyncRemoteWatchHistory is what Grayjay expects for history sync",
+      "Dialog should now show: 'Would you like to sync now? This will update your history from the platform'"
+    ],
+    "75": [
+      "CRITICAL FIX: Changed capability from hasSyncRemoteWatchHistory to hasGetUserHistory",
+      "This is the correct capability name that Grayjay expects for history sync",
+      "getUserHistory() should now work in Grayjay test framework",
+      "History sync should now trigger automatically on app startup when toggle is ON"
+    ],
+    "74": [
+      "Added detailed logging to enable() function to track setting changes",
+      "Logs now show when syncRemoteHistory toggle is changed",
+      "Added capability logging for debugging",
+      "Note: getUserHistory is for testing only - actual sync uses syncRemoteWatchHistory"
+    ],
+    "73": [
+      "CRITICAL FIX: getUserHistory now returns Pager object instead of array",
+      "Fixed V8ValueArray error in getUserHistory test function",
+      "getUserHistory now supports pagination like syncRemoteWatchHistory",
+      "Both history functions now return consistent SpankBangHistoryPager objects"
+    ],
+    "72": [
+      "Enhanced logging for history sync debugging - shows detailed status at each step",
+      "Added authentication status logging to help diagnose login issues",
+      "Added HTML preview logging to verify page content",
+      "Added video parsing status logging with reasons for failures",
+      "Logs now clearly indicate if user needs to log into SpankBang through Grayjay"
+    ],
+    "71": [
+      "CRITICAL FIX: History page now extracts actual video titles instead of channel names",
+      "Enhanced title extraction with 4-tier priority: video link title → text-secondary span → img alt → fallback",
+      "Fixed issue where history sync showed channel names (e.g., 'Just Taboo') instead of video titles",
+      "Improved parseSearchResults to correctly handle SpankBang's new HTML structure with multiple title elements"
+    ],
+    "70": [
+      "CRITICAL FIX: Fixed remote history sync V8ValueArray error - pagers now correctly pass only (results, hasMore) to parent constructor",
+      "Fixed ContentPager, ChannelPager, PlaylistPager, and CommentPager constructor calls to match Grayjay API specification",
+      "Remote watch history sync now works correctly both manually and automatically",
+      "Fixed 'Expected JSPager.results to be of type V8ValueArray, but found V8ValueUndefined' error"
+    ],
+    "63": [
+      "CRITICAL FIX: Made uploader name detection more permissive to show more channel/pornstar names instead of missing uploaders",
+      "CRITICAL FIX: Enhanced video pattern detection to catch thumbnail timecode overlays on home, trending, and search pages",
+      "CRITICAL FIX: Improved video extraction across different SpankBang page layouts (trending, popular, featured, thumb-based)",
+      "Enhanced uploader extraction to be less aggressive in filtering, allowing more valid names through",
+      "Added comprehensive video patterns for better detection on all SpankBang page types",
+      "Improved systematic pattern testing with better logging for debugging video extraction issues",
+      "Fixed missing thumbnail duration overlays by enhancing video container pattern matching",
+      "Better fallback logic for uploader names when primary extraction methods don't find results",
+      "Enhanced context extraction for direct link parsing to improve metadata extraction"
+    ],
+    "62": [
+      "CRITICAL FIX: Channel/pornstar names now display correctly instead of showing generic tags like 'HD', 'Japanese', 'Amateur'",
+      "CRITICAL FIX: Improved uploader detection to prioritize actual channel/pornstar names over category tags",
+      "Enhanced view count extraction with more reliable patterns for better display in all sections",
+      "Improved avatar extraction for channels and pornstars to show profile pictures correctly",
+      "Enhanced duration extraction for consistent thumbnail timecode overlays across all video sections",
+      "Expanded bad uploader name detection to filter out common category tags and quality labels",
+      "Fixed missing view counts under video titles throughout the application",
+      "Improved remote history sync reliability for better synchronization with SpankBang account",
+      "Better validation in uploader extraction to prevent displaying wrong channel information"
+    ],
+    "61": [
+      "Fix: consistent duration (timecode overlay) extraction across Home/Search/Channels/Related/Favorites/History",
+      "Fix: history duration now prefers full video duration over watch-progress timestamps",
+      "Fix: view count now extracted in more places (search fallbacks, playlist/favorites/related where available)",
+      "Fix: uploader/channel name parsing avoids tag-like labels (e.g., 'Solo', 'HD', '148 videos') while keeping tags usable"
+    ],
+    "60": [
+      "CRITICAL FIX: Restored video duration display on thumbnails (regression from v59)",
+      "Fixed duration extraction logging to help diagnose issues",
+      "Duration overlay now appears correctly on all video thumbnails everywhere",
+      "Reverted to working v58 duration extraction approach"
+    ],
+    "59": [
+      "CRITICAL FIX: Video duration now shows seconds in home section (14:44 instead of 14:00)",
+      "CRITICAL FIX: Video duration now appears in search results (was completely missing)",
+      "CRITICAL FIX: Video duration now appears in subscriptions (was completely missing)",
+      "CRITICAL FIX: Video duration now appears in channel contents (was completely missing)",
+      "CRITICAL FIX: History now shows correct video durations (15:21 instead of wrong 1:23)",
+      "Enhanced duration extraction with 13 comprehensive patterns across all video listings",
+      "Added HH:MM:SS and MM:SS time format support with proper regex patterns",
+      "Added word boundary matching (\\bl\\b) to prevent false duration matches",
+      "Added specific duration/time class patterns for better HTML structure detection",
+      "Added data-length and data-time attribute patterns as fallbacks",
+      "Fixed history duration extraction to filter out 'watch progress' time",
+      "Added context validation to skip 'watched/progress/viewed' indicators in history",
+      "Updated parseSearchResults() primary and all 3 fallback patterns",
+      "Updated parseRelatedVideos() in 2 locations with enhanced patterns",
+      "Updated parseHistoryPage() in 3 locations with watch progress filtering",
+      "Duration extraction now prioritizes specific matches before generic patterns"
+    ],
+    "58": [
+      "CRITICAL FIX: Grayjay local history now displays thumbnails correctly (was showing black thumbnails)",
+      "CRITICAL FIX: Grayjay local history now displays video durations correctly (was showing 0:00)",
+      "Enhanced createThumbnails() to generate CDN fallback URLs when thumbnail extraction fails",
+      "Added videoId parameter to createThumbnails() for proper CDN URL generation",
+      "Enhanced ALL fallback parsing patterns to extract duration from HTML context",
+      "Fixed parseSearchResults() fallback patterns (3 patterns) to extract duration",
+      "Fixed parseRelatedVideos() fallback pattern to extract duration",
+      "Fixed extractVideoLinksFromHtml() patterns (2 patterns) to extract duration",
+      "Fixed parseFavoritesPage() pattern to extract duration",
+      "Every video object now guaranteed to have thumbnail (extracted or CDN fallback)",
+      "Duration extraction now attempts multiple regex patterns before defaulting to 0:00",
+      "Consistent video metadata across all sections: home, search, history, playlists, favorites"
+    ],
+    "57": [
+      "CRITICAL FIX: History page videos now show correct thumbnails instead of black placeholders",
+      "CRITICAL FIX: History page videos now display actual duration (e.g., 12:34) instead of 0:00",
+      "CRITICAL FIX: History page videos now show uploader/channel names with clickable links",
+      "CRITICAL FIX: History page videos now display view counts",
+      "Enhanced thumbnail extraction with 10+ fallback patterns (data-src, src, lazy-src, CDN URLs)",
+      "Enhanced duration extraction with 7+ patterns including data-duration attribute support",
+      "Enhanced view count extraction with 6+ patterns for more reliable parsing",
+      "Improved parseHistoryPage() with uploader information extraction across all fallback patterns",
+      "Better pattern matching with word boundary detection for class='l' (duration) and class='v' (views)",
+      "All history videos now include complete metadata: thumbnail, duration, views, and uploader info"
+    ],
+    "56": [
+      "CRITICAL FIX: All user playlists now import correctly (previously only 1 playlist shown, now shows all ~60+ playlists)",
+      "CRITICAL FIX: Playlist videos now show channel/uploader name instead of being empty",
+      "CRITICAL FIX: Playlist videos now show view counts instead of 0 views",
+      "CRITICAL FIX: Pornstar links in video descriptions now clickable with full web URLs",
+      "Simplified getUserPlaylists() to use reliable parsePlaylistsPage() directly (branch 5 approach)",
+      "Enhanced parsePlaylistVideos() with multi-source uploader extraction (context → full match → inner HTML)",
+      "Enhanced view count extraction with multiple fallback patterns across all contexts",
+      "Added comprehensive fallback in extractUploaderFromSearchResult() to find ANY uploader link",
+      "Improved uploader extraction in home and search feeds with better pattern matching",
+      "Fixed missing profile pictures for channels/uploaders across the app",
+      "Pornstar description links now use web URLs (https://spankbang.com/{shortId}/pornstar/{slug})",
+      "Better handling of channels, pornstars, and user profiles in all video listings"
+    ],
+    "54": [
+      "CRITICAL FIX: Video titles in playlists now show actual video names instead of playlist name",
+      "CRITICAL FIX: Video thumbnails now properly extracted and displayed in playlists",
+      "Enhanced title extraction with multiple fallback patterns and context-aware parsing",
+      "Enhanced thumbnail extraction with priority-based pattern matching and CDN detection",
+      "Improved parsePlaylistVideos() to extract titles from surrounding HTML context",
+      "Improved extractVideoLinksFromHtml() with better title and thumbnail fallbacks",
+      "Fixed issue where all videos showed 'kata lumi nappi' (playlist name) as title",
+      "Fixed missing thumbnails for playlist videos with proper URL normalization",
+      "All playlist video parsing now uses context-aware extraction for accuracy"
+    ],
+    "53": [
+      "CRITICAL FIX: Playlist videos now use correct playlist context URLs (/{playlistId}-{videoId}/playlist/{slug}) for proper playback",
+      "Fixed issue where playlist videos generated broken URLs like /t2glc7/video/feet instead of /dqcqx-t2glc7/playlist/feet",
+      "Fixed video playback from imported playlists - all videos now play correctly",
+      "Fixed video thumbnails in playlists - properly extracts from HTML with multiple fallbacks",
+      "Fixed related playlist links in video descriptions - now use full web URLs (https://spankbang.com/{id}/playlist/{slug})",
+      "Updated parsePlaylistVideos() to maintain playlist context in all URL patterns",
+      "Updated extractVideoLinksFromHtml() to preserve playlist context URLs",
+      "Enhanced thumbnail extraction with better relative URL handling",
+      "All playlist functionality merged from branch 5 for showing ALL playlists, not just Watch Later"
+    ],
+    "52": [
+      "CRITICAL FIX: Fixed playlist video URL generation - videos now use correct video slugs instead of playlist names",
+      "Fixed issue where imported playlist videos had URLs like '/video/feet' instead of '/video/actual-video-title'",
+      "Added parsePlaylistVideos() function with proper title-to-slug conversion for playlist video URLs",
+      "Added extractVideoLinksFromHtml() function for comprehensive video link extraction fallback",
+      "Enhanced playlist video import to correctly handle /{playlistId}-{videoId}/playlist/{slug} URL format",
+      "Video titles now properly extracted and converted to slugs for accurate video URL construction",
+      "Improved playlist video parsing with 3-tier fallback system for maximum compatibility",
+      "All playlist videos now playable with correct URLs that match actual video pages",
+      "Combined best features from branches 5 and 10 for optimal playlist functionality"
+    ],
+    "51": [
+      "MAJOR FIX: Playlist creator/owner now properly extracted instead of showing 'SpankBang'",
+      "Fixed playlist owner to show actual creator (e.g., 'd4r4g0r0n') with clickable profile link",
+      "Enhanced playlist creator subscription support - click creator to view their profile",
+      "Improved video count extraction in fetchPlaylistInfo() with authenticated requests",
+      "Added multiple video counting patterns for better accuracy (regex + parsers)",
+      "Enhanced author extraction in parsePlaylistsPage() for all playlist listings",
+      "Enhanced author extraction in parseUserPlaylistsPageEnhanced() for user playlists",
+      "Enhanced author extraction in extractPlaylistLinksFromHtml() fallback",
+      "Fixed author URL mapping in searchPlaylists() - creators now have proper profile URLs",
+      "Applied author URL fixes to all playlist search branches (user, profile, URL, keyword)",
+      "Better creator avatar extraction in getPlaylist()",
+      "Improved thumbnail extraction patterns in fetchPlaylistInfo()",
+      "All playlist creators now clickable and lead to their profile/playlists"
+    ],
+    "50": [
+      "Major playlist search improvements - now supports searching by URL or keyword",
+      "Added support for user playlist page URLs (https://spankbang.com/users/playlists)",
+      "Added support for profile playlist URLs (https://spankbang.com/profile/xxx/playlists)",
+      "When pasting a playlist URL, now fetches actual video count and thumbnail",
+      "Added parseUserPlaylistsPageEnhanced() for better user playlist parsing",
+      "Added parsePlaylistVideos() for dedicated playlist video extraction",
+      "Added extractPlaylistLinksFromHtml() and extractVideoLinksFromHtml() fallbacks",
+      "Added fetchPlaylistInfo() to get playlist details when searching by URL",
+      "Added SpankBangPlaylistVideosPager for playlist video pagination",
+      "Enhanced getPlaylist() with multi-tier video extraction fallbacks",
+      "Improved SpankBangPlaylistPager to support pagination",
+      "Fixed issue where imported playlists showed 0 videos",
+      "Added regex patterns for userPlaylistsPage, userPlaylistsSubsPage, profilePlaylistsPage"
+    ],
+    "49": [
+      "Enhanced playlist video count extraction with 10+ new patterns",
+      "Added support for various HTML structures: <span class='len'>, <p>, <div> elements",
+      "Improved regex patterns to match 'X videos', 'X vids', and standalone numbers",
+      "Added comprehensive diagnostic logging for playlists with 0 videos",
+      "Enhanced parsePlaylistsPage() to log HTML structure for debugging",
+      "Better handling of video counts in different contexts (search, import, user playlists)"
+    ],
+    "48": [
+      "Fixed 404 errors on channel contents pagination",
+      "Added trailing slashes to all channel/profile URLs for consistency",
+      "Improved error handling in getChannelContents() with detailed logging",
+      "404 on pagination pages now returns empty results instead of throwing error",
+      "Added makeRequestNoThrow usage for better error diagnostics"
+    ],
+    "47": [
+      "Added playlist search functionality - now supports both URL and keyword search",
+      "Added regex patterns for external playlist URLs (playlistExternal and playlistSimple)",
+      "Updated searchPlaylists() to detect and handle direct playlist URLs",
+      "Updated search() to redirect playlist URLs to searchPlaylists()",
+      "Updated isPlaylistUrl() to recognize external playlist URLs",
+      "Updated getPlaylist() to convert external URLs to internal format",
+      "Users can now paste playlist URLs directly in search (e.g., https://spankbang.com/dqcr2/playlist/feet+joi/)",
+      "Users can also search playlists by keyword/name"
+    ],
+    "46": [
+      "Fixed playlist import to use cookies directly via http.GET with authenticated client (same as subscriptions)",
+      "Fixed history import to use cookies directly without isLoggedIn() check which was failing",
+      "Fixed syncRemoteWatchHistory to use cookies directly for better reliability",
+      "Enhanced parseHistoryPage with SpankBang-specific <a class='thumb'> pattern for better thumbnail/duration extraction",
+      "Added improved fallback patterns for history page parsing",
+      "Fixed history thumbnails showing black - now properly extracts from data-src attributes",
+      "Fixed history duration showing 0:00 - now extracts from <span class='l'> elements"
+    ],
+    "45": [
+      "Fixed playlist video count parsing to correctly extract from <span class='len'> elements",
+      "Added specific regex pattern to match SpankBang's playlist-item anchor tags",
+      "Enhanced name extraction to parse <p class='inf'> playlist titles",
+      "Improved fallback patterns with wider context search (500 chars) for better video count detection",
+      "Fixed slug replacement to handle '+' characters in playlist URLs"
+    ],
+    "44": [
+      "Fixed playlist video parsing with enhanced multi-tier fallback patterns",
+      "Added comprehensive logging to diagnose empty playlist issues",
+      "Improved parseSearchResults with 4 different extraction strategies",
+      "Enhanced authentication handling for playlist page requests",
+      "Added duplicate video detection to prevent repeated entries"
+    ],
+    "43": [
+      "Fixed playlist video count parsing with enhanced regex patterns",
+      "Improved playlist import functionality with better error handling",
+      "Added comprehensive logging for playlist operations",
+      "Enhanced video count extraction from multiple HTML patterns"
+    ],
+    "41": [
+      "Fixed authentication flow - updated completionUrl and added more cookies to find",
+      "Improved hasValidAuthCookie to accept multiple auth cookie types",
+      "Updated User-Agent in auth config to match modern Chrome browser"
+    ],
+    "40": [
+      "Added USER_URLS constants for playlists, history, subscriptions",
+      "Improved history page parsing for better thumbnail and duration extraction",
+      "Fixed video thumbnails and duration showing 0:00 in history sync"
+    ],
+    "38": [
+      "Fixed settings default value format (boolean to string)"
     ]
   }
 }
