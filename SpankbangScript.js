@@ -2011,8 +2011,17 @@ function createThumbnails(thumbnail, videoId) {
     
     // Primary thumbnail - use extracted thumbnail if available and valid
     if (thumbnail && thumbnail.trim().length > 0 && thumbnail.startsWith('http')) {
-        thumbnails.push(new Thumbnail(thumbnail, 480));
-        log("createThumbnails: Using extracted thumbnail for video " + videoId + ": " + thumbnail.substring(0, 60) + "...");
+        // Extract width from URL if present (e.g., w:500 -> 500)
+        let width = 500; // Default width for primary thumbnail
+        const widthMatch = thumbnail.match(/\/w:(\d+)\//);
+        if (widthMatch && widthMatch[1]) {
+            width = parseInt(widthMatch[1]);
+            log("createThumbnails: Extracted width " + width + " from thumbnail URL");
+        }
+        
+        // Create Thumbnail - constructor is: new Thumbnail(url, width)
+        thumbnails.push(new Thumbnail(thumbnail, width));
+        log("createThumbnails: Created thumbnail for video " + videoId + " with URL: " + thumbnail.substring(0, 60) + "... and width: " + width);
     } else {
         log("createThumbnails: No valid thumbnail available for video " + videoId + ", thumbnail=" + (thumbnail || "null"));
     }
@@ -2190,8 +2199,16 @@ function createVideoDetails(videoData, url) {
     log("createVideoDetails: Thumbnail extracted: " + (videoData.thumbnail || "NONE"));
     log("createVideoDetails: Total thumbnails in array: " + (details.thumbnails && details.thumbnails.sources ? details.thumbnails.sources.length : 0));
     if (details.thumbnails && details.thumbnails.sources && details.thumbnails.sources.length > 0) {
-        log("createVideoDetails: Primary thumbnail URL: " + details.thumbnails.sources[0].url);
-        log("createVideoDetails: Primary thumbnail width: " + details.thumbnails.sources[0].width);
+        const primaryThumb = details.thumbnails.sources[0];
+        log("createVideoDetails: Primary thumbnail URL: " + primaryThumb.url);
+        log("createVideoDetails: Primary thumbnail width: " + primaryThumb.width);
+        log("createVideoDetails: Primary thumbnail height: " + (primaryThumb.height || "not set"));
+        
+        // Verify the thumbnail object has all required properties
+        log("createVideoDetails: Thumbnail object type: " + typeof primaryThumb);
+        log("createVideoDetails: Thumbnail object keys: " + Object.keys(primaryThumb).join(", "));
+    } else {
+        log("createVideoDetails: ERROR - No thumbnails in sources array!");
     }
     log("createVideoDetails: =====================================");
 
@@ -6893,4 +6910,4 @@ class SpankBangHistoryPager extends ContentPager {
     }
 }
 
-log("SpankBang plugin loaded - v67");
+log("SpankBang plugin loaded - v63");
