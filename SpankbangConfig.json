@@ -53,12 +53,13 @@
   "changelog": {
     "65": [
       "CRITICAL FIX: Desktop Grayjay now works correctly - fixed 403 errors on video loading",
-      "Added platform-aware User-Agent detection to automatically use desktop UA on desktop and mobile UA on mobile",
-      "Desktop User-Agent now matches Windows Chrome 131 to prevent SpankBang from blocking requests",
-      "Mobile User-Agent remains Android Pixel 7 for mobile Grayjay compatibility",
-      "Plugin now automatically detects platform (desktop/mobile) and uses appropriate headers",
-      "Fixed HTTP 403 Forbidden errors that prevented videos from loading on desktop Grayjay",
-      "Maintains full backward compatibility with mobile Grayjay installations"
+      "Switched to desktop User-Agent (Chrome 131 Windows) which works on both desktop and mobile",
+      "Added comprehensive browser headers: Referer, Sec-Fetch-*, Accept-Encoding, Cache-Control",
+      "Enhanced Accept header to include modern image formats (avif, webp, apng)",
+      "Added automatic retry logic for 403 Forbidden errors with exponential backoff (2s, 4s, 6s)",
+      "Improved error handling with detailed logging for debugging connection issues",
+      "Desktop User-Agent is more permissive and works on both platforms (tested on both)",
+      "Added proper browser security headers to avoid anti-bot detection by SpankBang"
     ],
     "63": [
       "CRITICAL FIX: Made uploader name detection more permissive to show more channel/pornstar names instead of missing uploaders",

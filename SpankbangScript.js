@@ -73,48 +73,20 @@ const CONFIG = {
     }
 };
 
-// Platform detection - check if running on desktop or mobile
-function isDesktopPlatform() {
-    try {
-        // Try to detect platform from bridge if available
-        if (typeof bridge !== 'undefined' && bridge.getDeviceInfo) {
-            const deviceInfo = bridge.getDeviceInfo();
-            return deviceInfo && (deviceInfo.platform === 'desktop' || deviceInfo.platform === 'windows' || deviceInfo.platform === 'macos' || deviceInfo.platform === 'linux');
-        }
-        
-        // Fallback: check if common desktop globals exist
-        if (typeof window !== 'undefined' && typeof window.require !== 'undefined') {
-            return true; // Likely desktop/Electron
-        }
-        
-        // Check for Node.js environment (desktop)
-        if (typeof process !== 'undefined' && process.versions && process.versions.node) {
-            return true;
-        }
-    } catch (e) {
-        // If detection fails, default to mobile for safety
-        log("Platform detection error: " + e.message);
-    }
-    
-    // Default to mobile if unable to detect
-    return false;
-}
-
-// User-Agent strings for different platforms
-const USER_AGENTS = {
-    DESKTOP: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    MOBILE: "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
-};
-
-// Select appropriate User-Agent based on platform
-const SELECTED_USER_AGENT = isDesktopPlatform() ? USER_AGENTS.DESKTOP : USER_AGENTS.MOBILE;
-
-log("Platform detected: " + (isDesktopPlatform() ? "DESKTOP" : "MOBILE") + " - Using User-Agent: " + SELECTED_USER_AGENT.substring(0, 50) + "...");
-
+// Use desktop User-Agent by default as it's more permissive for both desktop and mobile Grayjay
+// SpankBang appears to be blocking the mobile UA when accessed from non-mobile clients
 const API_HEADERS = {
-    "User-Agent": SELECTED_USER_AGENT,
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Referer": "https://spankbang.com/",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "same-origin",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1",
+    "Cache-Control": "max-age=0"
 };
 
 const REGEX_PATTERNS = {
@@ -208,11 +180,13 @@ function makeRequest(url, headers = null, context = 'request', useAuth = false) 
         const requestHeaders = headers || getAuthHeaders();
         const response = http.GET(url, requestHeaders, useAuth);
         if (!response.isOk) {
-            // If we get 429, add exponential backoff with multiple retries
-            if (response.code === 429) {
+            // If we get 429 (rate limit) or 403 (forbidden), add exponential backoff with multiple retries
+            if (response.code === 429 || response.code === 403) {
                 localConfig.consecutiveErrors++;
-                const waitTime = Math.min(3000 * localConfig.consecutiveErrors, 10000); // 3s, 6s, 9s, max 10s
-                log(`Rate limit hit (429), attempt ${localConfig.consecutiveErrors}, waiting ${waitTime}ms before retry...`);
+                const waitTime = response.code === 403 
+                    ? Math.min(2000 * localConfig.consecutiveErrors, 8000) // 403: 2s, 4s, 6s, max 8s
+                    : Math.min(3000 * localConfig.consecutiveErrors, 10000); // 429: 3s, 6s, 9s, max 10s
+                log(`${response.code} error, attempt ${localConfig.consecutiveErrors}, waiting ${waitTime}ms before retry...`);
                 sleep(waitTime);
                 localConfig.requestDelay = Math.min(localConfig.requestDelay * 2, 2000); // Increase delay up to 2s
                 
@@ -222,9 +196,13 @@ function makeRequest(url, headers = null, context = 'request', useAuth = false) 
                     if (retryResponse.isOk) {
                         localConfig.consecutiveErrors = 0; // Reset on success
                         localConfig.requestDelay = Math.max(500, localConfig.requestDelay * 0.8); // Slowly decrease
+                        log(`Retry successful after ${response.code} error`);
                         return retryResponse.body;
                     }
                 }
+                
+                // If all retries failed, log detailed error
+                log(`All retries failed for ${url}, last status: ${response.code}`);
             }
             throw new ScriptException(`${context} failed with status ${response.code}`);
         }
@@ -249,11 +227,13 @@ function makeRequestNoThrow(url, headers = null, context = 'request', useAuth = 
         const requestHeaders = headers || getAuthHeaders();
         const response = http.GET(url, requestHeaders, useAuth);
         
-        // If we get 429, add exponential backoff and retry
-        if (!response.isOk && response.code === 429) {
+        // If we get 429 (rate limit) or 403 (forbidden), add exponential backoff and retry
+        if (!response.isOk && (response.code === 429 || response.code === 403)) {
             localConfig.consecutiveErrors++;
-            const waitTime = Math.min(3000 * localConfig.consecutiveErrors, 10000); // 3s, 6s, 9s, max 10s
-            log(`Rate limit hit (429), attempt ${localConfig.consecutiveErrors}, waiting ${waitTime}ms before retry...`);
+            const waitTime = response.code === 403 
+                ? Math.min(2000 * localConfig.consecutiveErrors, 8000) // 403: 2s, 4s, 6s, max 8s
+                : Math.min(3000 * localConfig.consecutiveErrors, 10000); // 429: 3s, 6s, 9s, max 10s
+            log(`${response.code} error, attempt ${localConfig.consecutiveErrors}, waiting ${waitTime}ms before retry...`);
             sleep(waitTime);
             localConfig.requestDelay = Math.min(localConfig.requestDelay * 2, 2000); // Increase delay up to 2s
             
@@ -263,6 +243,7 @@ function makeRequestNoThrow(url, headers = null, context = 'request', useAuth = 
                 if (retryResponse.isOk) {
                     localConfig.consecutiveErrors = 0;
                     localConfig.requestDelay = Math.max(500, localConfig.requestDelay * 0.8);
+                    log(`Retry successful after ${response.code} error`);
                 }
                 return { isOk: retryResponse.isOk, code: retryResponse.code, body: retryResponse.body };
             }
@@ -5349,6 +5330,9 @@ source.getHome = function(continuationToken) {
     try {
         const page = continuationToken ? parseInt(continuationToken) : 1;
         const url = `${BASE_URL}/trending_videos/${page}/`;
+        
+        log(`getHome() called - page: ${page}, url: ${url}`);
+        log(`Using headers: User-Agent=${API_HEADERS["User-Agent"].substring(0, 50)}...`);
 
         const html = makeRequest(url, API_HEADERS, 'home content');
         const videos = parseSearchResults(html);
@@ -5356,10 +5340,13 @@ source.getHome = function(continuationToken) {
 
         const hasMore = videos.length >= 20;
         const nextToken = hasMore ? (page + 1).toString() : null;
+        
+        log(`getHome() success - found ${videos.length} videos`);
 
         return new SpankBangHomeContentPager(platformVideos, hasMore, { continuationToken: nextToken });
 
     } catch (error) {
+        log(`getHome() error: ${error.message}`);
         throw new ScriptException("Failed to get home content: " + error.message);
     }
 };
