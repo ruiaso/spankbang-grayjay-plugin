@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 71,
+  "version": 72,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -51,6 +51,13 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "72": [
+      "Enhanced logging for history sync debugging - shows detailed status at each step",
+      "Added authentication status logging to help diagnose login issues",
+      "Added HTML preview logging to verify page content",
+      "Added video parsing status logging with reasons for failures",
+      "Logs now clearly indicate if user needs to log into SpankBang through Grayjay"
+    ],
     "71": [
       "CRITICAL FIX: History page now extracts actual video titles instead of channel names",
       "Enhanced title extraction with 4-tier priority: video link title → text-secondary span → img alt → fallback",
