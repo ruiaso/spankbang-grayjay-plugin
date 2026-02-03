@@ -2006,51 +2006,13 @@ function createVideoSources(videoData) {
     return videoSources;
 }
 
-function createThumbnails(thumbnail, videoId) {
-    const thumbnails = [];
-    
-    // Primary thumbnail - use extracted thumbnail if available and valid
-    if (thumbnail && thumbnail.trim().length > 0 && thumbnail.startsWith('http')) {
-        // Extract width from URL if present (e.g., w:500 -> 500)
-        let width = 500; // Default width for primary thumbnail
-        const widthMatch = thumbnail.match(/\/w:(\d+)\//);
-        if (widthMatch && widthMatch[1]) {
-            width = parseInt(widthMatch[1]);
-            log("createThumbnails: Extracted width " + width + " from thumbnail URL");
-        }
-        
-        // Create Thumbnail - constructor is: new Thumbnail(url, width)
-        thumbnails.push(new Thumbnail(thumbnail, width));
-        log("createThumbnails: Created thumbnail for video " + videoId + " with URL: " + thumbnail.substring(0, 60) + "... and width: " + width);
-    } else {
-        log("createThumbnails: No valid thumbnail available for video " + videoId + ", thumbnail=" + (thumbnail || "null"));
+function createThumbnails(thumbnail) {
+    if (!thumbnail) {
+        return new Thumbnails([]);
     }
-    
-    // Add CDN fallback options based on SpankBang's thumbnail pattern
-    // Pattern: https://tbi.sb-cd.com/t/{videoId}/1/6/w:{width}/{slug}.jpg
-    // For fallback, we use default.jpg as slug
-    if (videoId && videoId.length >= 4) {
-        const cdnThumbs = [
-            // New pattern with 1/6/ structure (most common in history)
-            `https://tbi.sb-cd.com/t/${videoId}/1/6/w:500/default.jpg`,
-            `https://tbi.sb-cd.com/t/${videoId}/1/6/w:320/default.jpg`,
-            // Standard patterns as additional fallbacks
-            `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`,
-            `https://tbi.sb-cd.com/t/${videoId}/1/1/default.jpg`,
-            `https://tbi.sb-cd.com/t/${videoId}/small/1/default.jpg`,
-            `https://cdn.spankbang.com/t/${videoId}/def/1/default.jpg`
-        ];
-        
-        cdnThumbs.forEach(cdnThumb => {
-            if (!thumbnails.some(t => t.url === cdnThumb)) {
-                thumbnails.push(new Thumbnail(cdnThumb, 320));
-            }
-        });
-        
-        log("createThumbnails: Added " + cdnThumbs.length + " CDN fallback thumbnails for video " + videoId);
-    }
-    
-    return new Thumbnails(thumbnails);
+    return new Thumbnails([
+        new Thumbnail(thumbnail, 0)
+    ]);
 }
 
 function createPlatformAuthor(uploader) {
@@ -2111,7 +2073,7 @@ function createPlatformVideo(videoData) {
     return new PlatformVideo({
         id: new PlatformID(PLATFORM, videoData.id || "", plugin.config.id),
         name: videoData.title || "Untitled",
-        thumbnails: createThumbnails(videoData.thumbnail, videoData.id),
+        thumbnails: createThumbnails(videoData.thumbnail),
         author: author,
         datetime: videoData.uploadDate || 0,
         duration: videoData.duration || 0,
@@ -2176,7 +2138,7 @@ function createVideoDetails(videoData, url) {
     const details = new PlatformVideoDetails({
         id: new PlatformID(PLATFORM, videoData.id || "", plugin.config.id),
         name: videoData.title || "Untitled",
-        thumbnails: createThumbnails(videoData.thumbnail, videoData.id),
+        thumbnails: createThumbnails(videoData.thumbnail),
         author: hasValidUploader(videoData.uploader) 
             ? createPlatformAuthor(videoData.uploader) 
             : new PlatformAuthorLink(new PlatformID(PLATFORM, "", plugin.config.id), "", "", ""),
@@ -6910,4 +6872,4 @@ class SpankBangHistoryPager extends ContentPager {
     }
 }
 
-log("SpankBang plugin loaded - v68");
+log("SpankBang plugin loaded - v63");
