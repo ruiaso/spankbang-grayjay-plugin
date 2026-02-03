@@ -195,14 +195,19 @@ function makeRequest(url, headers = null, context = 'request', useAuth = false) 
         enforceRateLimit();
         
         let requestHeaders = headers || getAuthHeaders();
+        log(`makeRequest: ${context} - UA: ${requestHeaders["User-Agent"].substring(0, 60)}...`);
+        
         const response = http.GET(url, requestHeaders, useAuth);
         if (!response.isOk) {
+            log(`makeRequest: Got ${response.code} for ${context}`);
+            
             // If we get 403 with mobile UA and haven't tried desktop yet, switch and retry
             if (response.code === 403 && ACTIVE_USER_AGENT === USER_AGENTS.MOBILE && !platformDetected) {
                 log(`403 error with mobile UA, switching to desktop UA...`);
                 switchToDesktopUA();
                 sleep(1000); // Wait 1s before retry
                 requestHeaders = headers || getAuthHeaders(); // IMPORTANT: Get NEW headers with desktop UA
+                log(`makeRequest: Retrying with desktop UA: ${requestHeaders["User-Agent"].substring(0, 60)}...`);
                 const retryResponse = http.GET(url, requestHeaders, useAuth);
                 if (retryResponse.isOk) {
                     log(`Desktop UA successful! Platform detected as DESKTOP`);
@@ -5366,7 +5371,8 @@ source.getHome = function(continuationToken) {
         const url = `${BASE_URL}/trending_videos/${page}/`;
         
         log(`getHome() called - page: ${page}, url: ${url}`);
-        log(`Using headers: User-Agent=${API_HEADERS["User-Agent"].substring(0, 50)}...`);
+        log(`Current User-Agent: ${getActiveUserAgent().substring(0, 80)}...`);
+        log(`Platform detected: ${platformDetected ? 'YES (desktop)' : 'NO (mobile)'}`);
 
         const html = makeRequest(url, null, 'home content');
         const videos = parseSearchResults(html);
@@ -5375,7 +5381,7 @@ source.getHome = function(continuationToken) {
         const hasMore = videos.length >= 20;
         const nextToken = hasMore ? (page + 1).toString() : null;
         
-        log(`getHome() success - found ${videos.length} videos`);
+        log(`getHome() success - found ${videos.length} videos, hasMore: ${hasMore}`);
 
         return new SpankBangHomeContentPager(platformVideos, hasMore, { continuationToken: nextToken });
 
