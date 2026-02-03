@@ -7,13 +7,27 @@ const USER_AGENT_PHONE = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/5
 const USER_AGENT_TABLET = "Mozilla/5.0 (iPad; CPU OS 13_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/87.0.4280.77 Mobile/15E148 Safari/604.1";
 
 function getUserAgent() {
-    // Try to detect platform - desktop Grayjay sets different indicators
-    // If we can't detect, default to mobile (which works on both)
+    // Debug: Log what we're detecting
     try {
-        if (typeof bridge !== 'undefined' && bridge.buildPlatform === 'desktop') {
-            return USER_AGENT_WINDOWS;
+        if (typeof bridge !== 'undefined') {
+            log("getUserAgent: bridge exists, buildPlatform = '" + bridge.buildPlatform + "'");
+            
+            // Try multiple checks for desktop
+            if (bridge.buildPlatform === 'desktop' || 
+                bridge.buildPlatform === 'Desktop' || 
+                bridge.buildPlatform === 'DESKTOP' ||
+                (bridge.buildPlatform && bridge.buildPlatform.toLowerCase() === 'desktop')) {
+                log("getUserAgent: Detected DESKTOP, using Windows UA");
+                return USER_AGENT_WINDOWS;
+            }
+        } else {
+            log("getUserAgent: bridge is undefined");
         }
-    } catch(e) {}
+    } catch(e) {
+        log("getUserAgent: Error detecting platform: " + e.message);
+    }
+    
+    log("getUserAgent: Defaulting to PHONE UA");
     return USER_AGENT_PHONE;
 }
 
