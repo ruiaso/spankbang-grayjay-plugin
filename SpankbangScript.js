@@ -6875,4 +6875,4 @@ class SpankBangHistoryPager extends ContentPager {
     }
 }
 
-log("SpankBang plugin loaded - v63");
+log("SpankBang plugin loaded - v65");
