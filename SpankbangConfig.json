@@ -37,9 +37,7 @@
     "cookiesExclOthers": false
   },
   "subscriptionRateLimit": 150,
-  "supportedClaimTypes": [
-    3
-  ],
+  "supportedClaimTypes": [3],
   "primaryClaimFieldType": 3,
   "changelog": {
     "80": [
