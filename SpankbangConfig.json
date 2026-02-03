@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 67,
+  "version": 68,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -51,6 +51,9 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "68": [
+      "Fixed syntax error from v67 (duplicate code blocks removed)"
+    ],
     "67": [
       "CRITICAL FIX: Auto-detecting platform by starting with mobile UA and switching to desktop if needed",
       "Plugin now starts with mobile User-Agent (works on mobile Grayjay)",

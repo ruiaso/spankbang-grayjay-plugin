@@ -259,15 +259,6 @@ function makeRequest(url, headers = null, context = 'request', useAuth = false) 
         throw new ScriptException(`Failed to fetch ${context}: ${error.message}`);
     }
 }
-        if (localConfig.requestDelay > 500) {
-            localConfig.requestDelay = Math.max(500, localConfig.requestDelay * 0.9);
-        }
-        
-        return response.body;
-    } catch (error) {
-        throw new ScriptException(`Failed to fetch ${context}: ${error.message}`);
-    }
-}
 
 function makeRequestNoThrow(url, headers = null, context = 'request', useAuth = false) {
     try {
