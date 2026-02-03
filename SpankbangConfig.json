@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 70,
+  "version": 71,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -51,6 +51,12 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "71": [
+      "CRITICAL FIX: History page now extracts actual video titles instead of channel names",
+      "Enhanced title extraction with 4-tier priority: video link title → text-secondary span → img alt → fallback",
+      "Fixed issue where history sync showed channel names (e.g., 'Just Taboo') instead of video titles",
+      "Improved parseSearchResults to correctly handle SpankBang's new HTML structure with multiple title elements"
+    ],
     "70": [
       "CRITICAL FIX: Fixed remote history sync V8ValueArray error - pagers now correctly pass only (results, hasMore) to parent constructor",
       "Fixed ContentPager, ChannelPager, PlaylistPager, and CommentPager constructor calls to match Grayjay API specification",

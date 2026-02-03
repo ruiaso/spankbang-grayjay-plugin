@@ -2274,8 +2274,35 @@ function parseSearchResults(html) {
                 thumbnail = `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
             }
 
-            const titleMatch = block.match(/title="([^"]+)"/);
-            let title = titleMatch ? titleMatch[1] : "Unknown";
+            // Enhanced title extraction - prioritize VIDEO title over channel/tag names
+            let title = "Unknown";
+            
+            // PRIORITY 1: Look for video link with title attribute (most accurate)
+            const videoLinkTitleMatch = block.match(/href="\/[a-zA-Z0-9]+\/video\/[^"]*"[^>]*title="([^"]+)"/i) ||
+                                       block.match(/title="([^"]+)"[^>]*href="\/[a-zA-Z0-9]+\/video\//i);
+            
+            if (videoLinkTitleMatch) {
+                title = videoLinkTitleMatch[1];
+            } else {
+                // PRIORITY 2: Look for span with text-secondary class containing video title
+                const spanTitleMatch = block.match(/<span[^>]*class="[^"]*text-secondary[^"]*"[^>]*>([^<]+)<\/span>/i);
+                if (spanTitleMatch && spanTitleMatch[1] && spanTitleMatch[1].length > 5) {
+                    title = spanTitleMatch[1];
+                } else {
+                    // PRIORITY 3: Extract from img alt attribute (video thumbnails often have title in alt)
+                    const altMatch = block.match(/<img[^>]*alt="([^"]+)"[^>]*>/i);
+                    if (altMatch && altMatch[1] && altMatch[1].length > 5) {
+                        title = altMatch[1];
+                    } else {
+                        // FALLBACK: Use any title attribute as last resort
+                        const fallbackTitleMatch = block.match(/title="([^"]+)"/);
+                        if (fallbackTitleMatch) {
+                            title = fallbackTitleMatch[1];
+                        }
+                    }
+                }
+            }
+            
             title = cleanVideoTitle(title);
 
             // Unified duration extraction (for consistent thumbnail timecode overlays)
@@ -6881,4 +6908,4 @@ class SpankBangHistoryPager extends ContentPager {
     }
 }
 
-log("SpankBang plugin loaded - v70");
+log("SpankBang plugin loaded - v71");
