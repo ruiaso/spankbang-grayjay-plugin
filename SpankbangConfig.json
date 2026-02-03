@@ -36,15 +36,6 @@
     "cookiesToFind": ["sb_session"],
     "cookiesExclOthers": false
   },
-  "settings": [
-    {
-      "variable": "syncRemoteHistory",
-      "name": "Sync Remote History",
-      "description": "Synchronize account history from SpankBang on startup",
-      "type": "Boolean",
-      "default": "true"
-    }
-  ],
   "subscriptionRateLimit": 150,
   "supportedClaimTypes": [
     3
