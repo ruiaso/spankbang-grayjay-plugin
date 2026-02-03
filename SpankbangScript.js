@@ -73,8 +73,46 @@ const CONFIG = {
     }
 };
 
+// Platform detection - check if running on desktop or mobile
+function isDesktopPlatform() {
+    try {
+        // Try to detect platform from bridge if available
+        if (typeof bridge !== 'undefined' && bridge.getDeviceInfo) {
+            const deviceInfo = bridge.getDeviceInfo();
+            return deviceInfo && (deviceInfo.platform === 'desktop' || deviceInfo.platform === 'windows' || deviceInfo.platform === 'macos' || deviceInfo.platform === 'linux');
+        }
+        
+        // Fallback: check if common desktop globals exist
+        if (typeof window !== 'undefined' && typeof window.require !== 'undefined') {
+            return true; // Likely desktop/Electron
+        }
+        
+        // Check for Node.js environment (desktop)
+        if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+            return true;
+        }
+    } catch (e) {
+        // If detection fails, default to mobile for safety
+        log("Platform detection error: " + e.message);
+    }
+    
+    // Default to mobile if unable to detect
+    return false;
+}
+
+// User-Agent strings for different platforms
+const USER_AGENTS = {
+    DESKTOP: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    MOBILE: "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+};
+
+// Select appropriate User-Agent based on platform
+const SELECTED_USER_AGENT = isDesktopPlatform() ? USER_AGENTS.DESKTOP : USER_AGENTS.MOBILE;
+
+log("Platform detected: " + (isDesktopPlatform() ? "DESKTOP" : "MOBILE") + " - Using User-Agent: " + SELECTED_USER_AGENT.substring(0, 50) + "...");
+
 const API_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+    "User-Agent": SELECTED_USER_AGENT,
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.5"
 };
