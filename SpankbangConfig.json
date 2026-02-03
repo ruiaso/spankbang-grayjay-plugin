@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 76,
+  "version": 79,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -40,9 +40,10 @@
     {
       "variable": "syncRemoteHistory",
       "name": "Sync Remote History",
-      "description": "Synchronize account history from SpankBang on startup",
+      "description": "When enabled, your SpankBang watch history will automatically sync to Grayjay on startup. Toggle this on to import your viewing history from spankbang.com/users/history",
       "type": "Boolean",
-      "default": "true"
+      "default": "true",
+      "warningDialog": true
     }
   ],
   "subscriptionRateLimit": 150,
@@ -51,6 +52,25 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "79": [
+      "Removed manual sync button - dialog works correctly now",
+      "Cleaned up settings to only show the toggle with dialog",
+      "Improved description explaining auto-sync on startup",
+      "Sync Remote History toggle now properly shows confirmation dialog and imports history"
+    ],
+    "78": [
+      "Added warningDialog property to Sync Remote History setting",
+      "This should trigger the confirmation dialog when toggling the setting",
+      "Dialog will ask 'Would you like to sync now?' with Yes/No buttons",
+      "Keeps manual 'Sync History Now' button as backup option"
+    ],
+    "77": [
+      "Added 'Sync History Now' manual button in settings",
+      "Button triggers immediate history sync with feedback message",
+      "Shows success message with count of videos synced",
+      "Shows error message if not logged in or sync fails",
+      "Keeps automatic sync toggle for background sync on startup"
+    ],
     "76": [
       "REVERTED v75 change: Changed capability back to hasSyncRemoteWatchHistory (was hasGetUserHistory)",
       "This should restore the confirmation dialog that was working in earlier versions",
