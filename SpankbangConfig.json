@@ -36,15 +36,6 @@
     "cookiesToFind": ["sb_session"],
     "cookiesExclOthers": false
   },
-  "settings": [
-    {
-      "variable": "syncRemoteHistory",
-      "name": "Sync Remote History",
-      "description": "Synchronize account history from this platform on startup",
-      "type": "Boolean",
-      "default": "true"
-    }
-  ],
   "subscriptionRateLimit": 150,
   "supportedClaimTypes": [
     3
@@ -53,8 +44,9 @@
   "changelog": {
     "81": [
       "CRITICAL FIX: Remote history sync now properly extracts videos from history page",
-      "Fixed setting configuration - now properly appears in 'Sync' section like YouTube plugin",
-      "Setting shows 'Sync Remote History' toggle that displays 'Would you like to sync now?' dialog",
+      "CRITICAL FIX: Removed settings array to fix 'Invalid config format' error",
+      "Sync uses ONLY hasSyncRemoteWatchHistory capability (no settings needed) like YouTube plugin",
+      "Toggle appears automatically in 'Sync' section when capability is present and enabled",
       "Enhanced parseHistoryPage with improved direct link extraction patterns",
       "Fixed sync to try parseHistoryPage FIRST (designed for history pages) before parseSearchResults",
       "Added better authentication checks - detects login page redirects",
