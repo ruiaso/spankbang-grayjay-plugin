@@ -169,14 +169,6 @@ const REGEX_PATTERNS = {
     }
 };
 
-function getAuthHeaders() {
-    const headers = { ...API_HEADERS };
-    if (state.authCookies && state.authCookies.length > 0) {
-        headers["Cookie"] = state.authCookies;
-    }
-    return headers;
-}
-
 function sleep(ms) {
     const start = Date.now();
     while (Date.now() - start < ms) {
