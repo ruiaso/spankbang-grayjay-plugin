@@ -194,16 +194,16 @@ function makeRequest(url, headers = null, context = 'request', useAuth = false) 
         // Enforce rate limiting before making the request
         enforceRateLimit();
         
-        const requestHeaders = headers || getAuthHeaders();
+        let requestHeaders = headers || getAuthHeaders();
         const response = http.GET(url, requestHeaders, useAuth);
         if (!response.isOk) {
             // If we get 403 with mobile UA and haven't tried desktop yet, switch and retry
             if (response.code === 403 && ACTIVE_USER_AGENT === USER_AGENTS.MOBILE && !platformDetected) {
                 log(`403 error with mobile UA, switching to desktop UA...`);
                 switchToDesktopUA();
-                const retryHeaders = headers || getAuthHeaders(); // Get new headers with desktop UA
                 sleep(1000); // Wait 1s before retry
-                const retryResponse = http.GET(url, retryHeaders, useAuth);
+                requestHeaders = headers || getAuthHeaders(); // IMPORTANT: Get NEW headers with desktop UA
+                const retryResponse = http.GET(url, requestHeaders, useAuth);
                 if (retryResponse.isOk) {
                     log(`Desktop UA successful! Platform detected as DESKTOP`);
                     localConfig.consecutiveErrors = 0;
@@ -223,8 +223,9 @@ function makeRequest(url, headers = null, context = 'request', useAuth = false) 
                 sleep(waitTime);
                 localConfig.requestDelay = Math.min(localConfig.requestDelay * 2, 2000); // Increase delay up to 2s
                 
-                // Retry up to 3 times
+                // Retry up to 3 times - IMPORTANT: Use current headers (which may have been updated to desktop UA)
                 if (localConfig.consecutiveErrors < 3) {
+                    requestHeaders = headers || getAuthHeaders(); // Refresh headers in case UA was switched
                     const retryResponse = http.GET(url, requestHeaders, useAuth);
                     if (retryResponse.isOk) {
                         localConfig.consecutiveErrors = 0; // Reset on success
