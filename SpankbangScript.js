@@ -5059,14 +5059,16 @@ source.getUserHistory = function() {
         
         if (!response.isOk) {
             log("getUserHistory: Failed with status " + response.code + ", user may not be logged in");
-            return [];
+            // Return empty pager, not array
+            return new SpankBangHistoryPager([], false, { continuationToken: null });
         }
         
         const html = response.body;
         
         if (!html || html.length < 100) {
             log("getUserHistory: Empty or invalid HTML response (length: " + (html ? html.length : 0) + ")");
-            return [];
+            // Return empty pager, not array
+            return new SpankBangHistoryPager([], false, { continuationToken: null });
         }
         
         log("getUserHistory: HTML length = " + html.length);
@@ -5084,7 +5086,8 @@ source.getUserHistory = function() {
         
         if (videos.length === 0) {
             log("getUserHistory: No videos found. HTML snippet (first 500 chars): " + html.substring(0, 500).replace(/[\n\r]/g, ' '));
-            return [];
+            // Return empty pager, not array
+            return new SpankBangHistoryPager([], false, { continuationToken: null });
         }
         
         log("getUserHistory: Found " + videos.length + " videos");
@@ -5098,11 +5101,17 @@ source.getUserHistory = function() {
             log("getUserHistory: First video - ID: " + firstVideo.id + ", Title: " + (firstVideo.name || '').substring(0, 50) + ", Thumbnail: " + (firstVideo.thumbnails && firstVideo.thumbnails.sources && firstVideo.thumbnails.sources.length > 0 ? firstVideo.thumbnails.sources[0].url : 'NO THUMBNAIL'));
         }
         
-        return platformVideos;
+        // Return a Pager object with pagination support
+        const hasMore = videos.length >= 20;
+        const nextToken = hasMore ? "2" : null;
+        
+        log("getUserHistory: Returning pager with " + platformVideos.length + " videos, hasMore=" + hasMore);
+        return new SpankBangHistoryPager(platformVideos, hasMore, { continuationToken: nextToken });
         
     } catch (error) {
         log("getUserHistory error: " + error.message);
-        return [];
+        // Return empty pager, not array
+        return new SpankBangHistoryPager([], false, { continuationToken: null });
     }
 };
 
@@ -6943,4 +6952,4 @@ class SpankBangHistoryPager extends ContentPager {
     }
 }
 
-log("SpankBang plugin loaded - v72");
+log("SpankBang plugin loaded - v73");
