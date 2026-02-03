@@ -310,7 +310,7 @@ function resolvePornstarShortId(slug) {
     
     const simpleUrl = `${CONFIG.EXTERNAL_URL_BASE}/pornstar/${normalizedSlug}`;
     log("Resolving pornstar shortId for: " + normalizedSlug + " via " + simpleUrl);
-    const response = makeRequestNoThrow(simpleUrl, API_HEADERS, 'pornstar lookup');
+    const response = makeRequestNoThrow(simpleUrl, null, 'pornstar lookup');
     
     if (response.isOk && response.body) {
         const patterns = [
@@ -334,7 +334,7 @@ function resolvePornstarShortId(slug) {
     try {
         const searchUrl = `${BASE_URL}/s/${normalizedSlug}/`;
         log("Trying search fallback: " + searchUrl);
-        const searchResponse = makeRequestNoThrow(searchUrl, API_HEADERS, 'pornstar search');
+        const searchResponse = makeRequestNoThrow(searchUrl, null, 'pornstar search');
         if (searchResponse.isOk && searchResponse.body) {
             const escapedSlug = normalizedSlug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const pattern = new RegExp(`href=["']/([a-z0-9]+)/pornstar/${escapedSlug}`, 'i');
@@ -352,7 +352,7 @@ function resolvePornstarShortId(slug) {
     try {
         const pornstarsUrl = `${BASE_URL}/pornstars`;
         log("Trying pornstars listing fallback");
-        const listResponse = makeRequestNoThrow(pornstarsUrl, API_HEADERS, 'pornstars list');
+        const listResponse = makeRequestNoThrow(pornstarsUrl, null, 'pornstars list');
         if (listResponse.isOk && listResponse.body) {
             const escapedSlug = normalizedSlug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const pattern = new RegExp(`href=["']/([a-z0-9]+)/pornstar/${escapedSlug}`, 'i');
@@ -4455,7 +4455,7 @@ source.getUserSubscriptions = function() {
     try {
         // Fetch user subscriptions using authenticated client with rate limiting
         log("Fetching user subscriptions from /users/subscriptions");
-        const userSubsHtml = makeRequestNoThrow(`${BASE_URL}/users/subscriptions`, API_HEADERS, 'user subscriptions', true);
+        const userSubsHtml = makeRequestNoThrow(`${BASE_URL}/users/subscriptions`, null, 'user subscriptions', true);
         
         if (!userSubsHtml.isOk) {
             log("Failed to fetch user subscriptions, user may not be logged in");
@@ -4472,7 +4472,7 @@ source.getUserSubscriptions = function() {
     try {
         // Fetch pornstar subscriptions using authenticated client with rate limiting
         log("Fetching pornstar subscriptions from /users/subscriptions_pornstars");
-        const pornstarSubsHtml = makeRequestNoThrow(`${BASE_URL}/users/subscriptions_pornstars`, API_HEADERS, 'pornstar subscriptions', true);
+        const pornstarSubsHtml = makeRequestNoThrow(`${BASE_URL}/users/subscriptions_pornstars`, null, 'pornstar subscriptions', true);
         
         if (!pornstarSubsHtml.isOk) {
             log("Failed to fetch pornstar subscriptions");
@@ -4501,7 +4501,7 @@ source.getWatchHistory = function() {
         const historyUrl = USER_URLS.HISTORY;
         log("Fetching watch history from: " + historyUrl);
         
-        const response = makeRequestNoThrow(historyUrl, API_HEADERS, 'watch history', true);
+        const response = makeRequestNoThrow(historyUrl, null, 'watch history', true);
         
         if (!response.isOk) {
             log("getWatchHistory: Failed with status " + response.code + ", user may not be logged in");
@@ -5028,7 +5028,7 @@ function parseHistoryPage(html) {
 function fetchVideoBasicInfo(videoId) {
     try {
         const videoUrl = `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/`;
-        const response = makeRequestNoThrow(videoUrl, API_HEADERS, 'video basic info');
+        const response = makeRequestNoThrow(videoUrl, null, 'video basic info');
         if (!response.isOk || !response.body) {
             return null;
         }
@@ -5072,7 +5072,7 @@ source.syncRemoteWatchHistory = function(continuationToken) {
         
         log("Syncing remote watch history from: " + historyUrl);
         
-        const response = makeRequestNoThrow(historyUrl, API_HEADERS, 'remote watch history', true);
+        const response = makeRequestNoThrow(historyUrl, null, 'remote watch history', true);
         
         if (!response.isOk) {
             log("syncRemoteWatchHistory: Failed with status " + response.code + ", user may not be logged in");
@@ -5118,7 +5118,7 @@ source.getUserPlaylists = function() {
     try {
         // Fetch playlists using authenticated client with rate limiting
         log("Fetching playlists from /users/playlists");
-        const playlistsResp = makeRequestNoThrow(`${BASE_URL}/users/playlists`, API_HEADERS, 'user playlists', true);
+        const playlistsResp = makeRequestNoThrow(`${BASE_URL}/users/playlists`, null, 'user playlists', true);
         
         if (!playlistsResp.isOk) {
             log("Failed to fetch playlists, user may not be logged in");
@@ -5368,7 +5368,7 @@ source.getHome = function(continuationToken) {
         log(`getHome() called - page: ${page}, url: ${url}`);
         log(`Using headers: User-Agent=${API_HEADERS["User-Agent"].substring(0, 50)}...`);
 
-        const html = makeRequest(url, API_HEADERS, 'home content');
+        const html = makeRequest(url, null, 'home content');
         const videos = parseSearchResults(html);
         const platformVideos = videos.map(v => createPlatformVideo(v));
 
@@ -5388,7 +5388,7 @@ source.getHome = function(continuationToken) {
 source.searchSuggestions = function(query) {
     try {
         const suggestUrl = `${BASE_URL}/api/search/suggestions?q=${encodeURIComponent(query)}`;
-        const response = makeRequestNoThrow(suggestUrl, API_HEADERS, 'search suggestions', false);
+        const response = makeRequestNoThrow(suggestUrl, null, 'search suggestions', false);
 
         if (response.isOk && response.body) {
             try {
@@ -5621,7 +5621,7 @@ source.search = function(query, type, order, filters, continuationToken) {
 
         log("Search URL: " + searchUrl);
 
-        const html = makeRequest(searchUrl, API_HEADERS, 'search');
+        const html = makeRequest(searchUrl, null, 'search');
         const videos = parseSearchResults(html);
         const platformVideos = videos.map(v => createPlatformVideo(v));
 
@@ -5661,7 +5661,7 @@ source.searchChannels = function(query, continuationToken) {
         }
 
         log("searchChannels: Fetching URL: " + searchUrl);
-        const html = makeRequest(searchUrl, API_HEADERS, 'channel search');
+        const html = makeRequest(searchUrl, null, 'channel search');
         
         // Parse pornstars, profiles, AND channels from the page
         const pornstars = parsePornstarsPage(html);
@@ -5744,7 +5744,7 @@ source.getCreators = function(continuationToken) {
             url += `/${page}`;
         }
 
-        const html = makeRequest(url, API_HEADERS, 'pornstars');
+        const html = makeRequest(url, null, 'pornstars');
         const pornstars = parsePornstarsPage(html);
 
         const platformChannels = pornstars.map(p => new PlatformChannel({
@@ -5837,7 +5837,7 @@ source.getChannel = function(url) {
         }
 
         log("Fetching channel from: " + profileUrl);
-        const html = makeRequest(profileUrl, API_HEADERS, 'channel');
+        const html = makeRequest(profileUrl, null, 'channel');
 
         const namePatterns = [
             /<h1[^>]*class="[^"]*name[^"]*"[^>]*>([^<]+)<\/h1>/i,
@@ -6049,7 +6049,7 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
         log("Fetching channel contents from: " + profileUrl);
         
         // Use makeRequestNoThrow to get more details about failures
-        let response = makeRequestNoThrow(profileUrl, API_HEADERS, 'channel contents', false);
+        let response = makeRequestNoThrow(profileUrl, null, 'channel contents', false);
         
         // If first request fails with 404 for profile type, try alternative URL formats
         if (!response.isOk && response.code === 404 && result.type === 'profile') {
@@ -6060,7 +6060,7 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
                 ? `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}/${page}`
                 : `${CONFIG.EXTERNAL_URL_BASE}/profile/${result.id}`;
             log("Trying alternative URL: " + altUrl1);
-            response = makeRequestNoThrow(altUrl1, API_HEADERS, 'channel contents alt1', false);
+            response = makeRequestNoThrow(altUrl1, null, 'channel contents alt1', false);
             
             // If still fails, try /s/ URL format (search-style profile)
             if (!response.isOk && response.code === 404) {
@@ -6068,7 +6068,7 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
                     ? `${CONFIG.EXTERNAL_URL_BASE}/s/${result.id}/${page}`
                     : `${CONFIG.EXTERNAL_URL_BASE}/s/${result.id}`;
                 log("Trying /s/ URL: " + altUrl2);
-                response = makeRequestNoThrow(altUrl2, API_HEADERS, 'channel contents alt2', false);
+                response = makeRequestNoThrow(altUrl2, null, 'channel contents alt2', false);
             }
         }
         
@@ -6145,7 +6145,7 @@ source.getContentDetails = function(url) {
             log("Detected video-in-playlist URL, video ID: " + videoId);
         }
         
-        const html = makeRequest(url, API_HEADERS, 'video details');
+        const html = makeRequest(url, null, 'video details');
         log("getContentDetails: Received HTML length: " + html.length);
         
         const videoData = parseVideoPage(html, url);
@@ -6166,7 +6166,7 @@ source.getContentDetails = function(url) {
 
 source.getContentRecommendations = function(url) {
     try {
-        const html = makeRequest(url, API_HEADERS, 'recommendations');
+        const html = makeRequest(url, null, 'recommendations');
         const videoData = parseVideoPage(html, url);
 
         if (videoData.relatedVideos && videoData.relatedVideos.length > 0) {
@@ -6192,7 +6192,7 @@ source.getComments = function(url) {
         if (comments.length === 0) {
             try {
                 const commentsUrl = `${BASE_URL}/${videoId}/comments/`;
-                const html = makeRequestNoThrow(commentsUrl, API_HEADERS, 'comments');
+                const html = makeRequestNoThrow(commentsUrl, null, 'comments');
                 if (html.isOk && html.body) {
                     comments = parseComments(html.body, videoId);
                 }
@@ -6203,7 +6203,7 @@ source.getComments = function(url) {
         
         if (comments.length === 0) {
             try {
-                const videoPageHtml = makeRequest(url, API_HEADERS, 'video page for comments');
+                const videoPageHtml = makeRequest(url, null, 'video page for comments');
                 const commentsSection = videoPageHtml.match(/<div[^>]*id="[^"]*comments[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/section>/i);
                 if (commentsSection && commentsSection[1]) {
                     comments = parseComments(commentsSection[1], videoId);
@@ -6339,7 +6339,7 @@ source.searchPlaylists = function(query, type, order, filters, continuationToken
                 
                 log("Fetching profile playlists from: " + profilePlaylistsUrl);
                 
-                const html = makeRequest(profilePlaylistsUrl, API_HEADERS, 'profile playlists', true);
+                const html = makeRequest(profilePlaylistsUrl, null, 'profile playlists', true);
                 const playlists = parsePlaylistsPage(html);
                 
                 const platformPlaylists = playlists.map(p => new PlatformPlaylist({
@@ -6458,7 +6458,7 @@ source.searchPlaylists = function(query, type, order, filters, continuationToken
         
         log("Playlist search URL: " + searchUrl);
 
-        const html = makeRequest(searchUrl, API_HEADERS, 'playlist search', true);
+        const html = makeRequest(searchUrl, null, 'playlist search', true);
         const playlists = parsePlaylistsPage(html);
 
         const platformPlaylists = playlists.map(p => {

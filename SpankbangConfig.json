@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 70,
+  "version": 71,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -51,6 +51,13 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "71": [
+      "CRITICAL FIX: All HTTP requests now use dynamic User-Agent (not cached)",
+      "Fixed ALL makeRequest/makeRequestNoThrow calls to use getAuthHeaders() instead of cached API_HEADERS",
+      "This fixes 403 errors in getChannel, getChannelContents, getContentDetails, search, etc.",
+      "Now ALL functions benefit from automatic UA switching, not just getHome",
+      "Desktop Grayjay should now work completely across all plugin features"
+    ],
     "70": [
       "CRITICAL FIX: Desktop UA switching now works correctly",
       "Fixed bug where retry logic was using old mobile UA headers instead of switched desktop UA",
