@@ -2273,6 +2273,7 @@ function parseSearchResults(html) {
                     // Skip avatar/profile images
                     if (!url.includes('avatar') && !url.includes('pornstarimg') && !url.includes('icon')) {
                         thumbnail = url;
+                        log("parseSearchResults: Found thumbnail for video " + videoId + ": " + thumbnail.substring(0, 80));
                         break;
                     }
                 }
@@ -2280,6 +2281,7 @@ function parseSearchResults(html) {
             
             // Fallback to default CDN thumbnail if no valid thumbnail found
             if (!thumbnail || thumbnail.length < 10) {
+                log("parseSearchResults: WARNING - No thumbnail found for video " + videoId + ", using CDN fallback");
                 thumbnail = `https://tbi.sb-cd.com/t/${videoId}/def/1/default.jpg`;
             }
 
@@ -4526,11 +4528,13 @@ function parseHistoryPage(html) {
         if (videoId === 'users' || videoId === 'search' || videoId === 'playlists') continue;
         seenIds.add(videoId);
         
-        // Get title from nearby context
+        // Get title from nearby context - EXPANDED to capture sibling thumbnail elements
         const fullMatch = thumbMatch[0];
         const matchIndex = thumbMatch.index;
-        const contextStart = Math.max(0, matchIndex - 200);
-        const contextEnd = Math.min(html.length, matchIndex + fullMatch.length + 300);
+        // Expand context window to 2000 chars before/after to ensure we capture the entire parent container
+        // with sibling <a class="thumb"> elements that contain the actual thumbnail images
+        const contextStart = Math.max(0, matchIndex - 2000);
+        const contextEnd = Math.min(html.length, matchIndex + fullMatch.length + 2000);
         const fullContext = html.substring(contextStart, contextEnd);
         
         const titleMatch = fullMatch.match(/title="([^"]+)"/i) || 
@@ -4858,8 +4862,9 @@ function parseHistoryPage(html) {
                 if (videoId === 'users' || videoId === 'search' || videoId === 'playlists') continue;
                 seenIds.add(videoId);
                 
-                const contextStart = Math.max(0, match.index - 1000);
-                const contextEnd = Math.min(html.length, match.index + 1000);
+                // Expand context to capture sibling thumbnail elements
+                const contextStart = Math.max(0, match.index - 2000);
+                const contextEnd = Math.min(html.length, match.index + 2000);
                 const context = html.substring(contextStart, contextEnd);
                 
                 const titleMatch = context.match(/title="([^"]+)"/i) || context.match(/alt="([^"]+)"/i);
@@ -5051,11 +5056,14 @@ source.getUserHistory = function() {
         log("getUserHistory: HTML length = " + html.length);
         
         // Parse history using both parseSearchResults and parseHistoryPage
+        log("getUserHistory: Attempting parseSearchResults first...");
         let videos = parseSearchResults(html);
         
         if (videos.length === 0) {
             log("getUserHistory: parseSearchResults found 0 videos, trying parseHistoryPage");
             videos = parseHistoryPage(html);
+        } else {
+            log("getUserHistory: parseSearchResults found " + videos.length + " videos, skipping parseHistoryPage");
         }
         
         if (videos.length === 0) {
@@ -6875,4 +6883,4 @@ class SpankBangHistoryPager extends ContentPager {
     }
 }
 
-log("SpankBang plugin loaded - v65");
+log("SpankBang plugin loaded - v63");
