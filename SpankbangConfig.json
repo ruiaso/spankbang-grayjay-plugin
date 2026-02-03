@@ -36,6 +36,15 @@
     "cookiesToFind": ["sb_session"],
     "cookiesExclOthers": false
   },
+  "settings": [
+    {
+      "variable": "syncRemoteHistory",
+      "name": "Sync Remote History",
+      "description": "Synchronize account history from SpankBang on startup",
+      "type": "Boolean",
+      "default": "true"
+    }
+  ],
   "subscriptionRateLimit": 150,
   "supportedClaimTypes": [
     3
@@ -44,9 +53,8 @@
   "changelog": {
     "81": [
       "CRITICAL FIX: Remote history sync now properly extracts videos from history page",
-      "CRITICAL FIX: Removed settings array to fix 'Invalid config format' error",
-      "Sync uses ONLY hasSyncRemoteWatchHistory capability (no settings needed) like YouTube plugin",
-      "Toggle appears automatically in 'Sync' section when capability is present and enabled",
+      "Settings entry restored - toggle now appears in Sync section",
+      "Variable 'syncRemoteHistory' properly connected to hasSyncRemoteWatchHistory capability",
       "Enhanced parseHistoryPage with improved direct link extraction patterns",
       "Fixed sync to try parseHistoryPage FIRST (designed for history pages) before parseSearchResults",
       "Added better authentication checks - detects login page redirects",
