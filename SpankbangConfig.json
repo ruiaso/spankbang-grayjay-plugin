@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 81,
+  "version": 80,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -36,25 +36,13 @@
     "cookiesToFind": ["sb_session"],
     "cookiesExclOthers": false
   },
+  "settings":
   "subscriptionRateLimit": 150,
   "supportedClaimTypes": [
     3
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
-    "81": [
-      "CRITICAL FIX: Remote history sync now properly extracts videos from history page",
-      "Settings entry restored - toggle now appears in Sync section",
-      "Variable 'syncRemoteHistory' properly connected to hasSyncRemoteWatchHistory capability",
-      "Enhanced parseHistoryPage with improved direct link extraction patterns",
-      "Fixed sync to try parseHistoryPage FIRST (designed for history pages) before parseSearchResults",
-      "Added better authentication checks - detects login page redirects",
-      "Added comprehensive logging for better diagnostics when sync fails",
-      "Improved thumbnail, duration, and title extraction with expanded context window (3000 chars)",
-      "Enhanced error messages to guide users when sync fails (e.g., empty history, auth issues)",
-      "Updated README to reflect that Account History Sync is now working",
-      "Fixed 'imported no history items' issue - sync now successfully retrieves watch history"
-    ],
     "80": [
       "Removed warningDialog property - was causing invalid config error",
       "Dialog should still work based on hasSyncRemoteWatchHistory capability alone",

@@ -4529,16 +4529,7 @@ function parseHistoryPage(html) {
     
     log("parseHistoryPage: Starting parse, HTML length = " + html.length);
     
-    // SpankBang history page specific patterns - they use various structures
-    // PRIORITY 1: Direct video link patterns (most reliable)
-    const directLinkPatterns = [
-        // Standard video link with href
-        /<a[^>]*href="\/([a-zA-Z0-9]+)\/video\/([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi,
-        // Video link with single quotes
-        /<a[^>]*href='\/([a-zA-Z0-9]+)\/video\/([^']+)'[^>]*>([\s\S]*?)<\/a>/gi
-    ];
-    
-    // PRIORITY 2: Container-based patterns (for fallback)
+    // SpankBang history page specific patterns - they use "video-item" and "thumb" classes
     const videoItemPatterns = [
         // Pattern for SpankBang's history page structure: <a class="thumb">...<span class="l">duration</span>...</a>
         /<a[^>]*class="[^"]*thumb[^"]*"[^>]*href="\/([a-zA-Z0-9]+)\/video\/([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi,
@@ -4551,240 +4542,192 @@ function parseHistoryPage(html) {
         /<div[^>]*class="[^"]*thumb[^"]*"[^>]*>([\s\S]*?)<\/a>/gi
     ];
     
-    // First try direct link extraction - this is most reliable
-    log("parseHistoryPage: Trying direct link extraction patterns...");
-    for (const pattern of directLinkPatterns) {
-        let match;
-        while ((match = pattern.exec(html)) !== null && videos.length < 200) {
-            const videoId = match[1];
-            const videoSlug = match[2].replace(/["']/g, '');
-            const linkContent = match[3] || "";
-            
-            if (seenIds.has(videoId)) continue;
-            if (videoId === 'users' || videoId === 'search' || videoId === 'playlists' || videoId === 'playlist') continue;
-            seenIds.add(videoId);
-            
-            // Get context around this match (expand to 3000 chars to capture related elements)
-            const matchIndex = match.index;
-            const contextStart = Math.max(0, matchIndex - 3000);
-            const contextEnd = Math.min(html.length, matchIndex + match[0].length + 3000);
-            const fullContext = html.substring(contextStart, contextEnd);
-            
-            // Extract title with priority order
-            const titleMatch = linkContent.match(/title="([^"]+)"/i) || 
-                              linkContent.match(/alt="([^"]+)"/i) ||
-                              fullContext.match(/title="([^"]+)"/i) ||
-                              fullContext.match(/<span[^>]*class="[^"]*(?:title|name|n)[^"]*"[^>]*>([^<]+)<\/span>/i) ||
-                              fullContext.match(/<p[^>]*class="[^"]*n[^"]*"[^>]*>([^<]+)<\/p>/i) ||
-                              fullContext.match(/<h[1-6][^>]*>([^<]+)<\/h[1-6]>/i);
-            let title = titleMatch ? cleanVideoTitle(titleMatch[1]) : videoSlug.replace(/[_+-]/g, ' ');
-            
-            // Extract thumbnail - look in full context first, then link content
-            let thumbnail = "";
-            const thumbPatterns = [
-                // Priority patterns with image extensions
-                /data-src="(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i,
-                /src="(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i,
-                // CDN URLs
-                /data-src="(https?:\/\/[^"]*(?:tbi\.)?sb-cd\.com[^"]+)"/i,
-                /src="(https?:\/\/[^"]*(?:tbi\.)?sb-cd\.com[^"]+)"/i,
-                // SpankBang specific
-                /data-src="(https?:\/\/[^"]*spankbang[^"]*\/t\/[^"]+)"/i,
-                /src="(https?:\/\/[^"]*spankbang[^"]*\/t\/[^"]+)"/i,
-                // Lazy loading
-                /lazy-src="(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i,
-                // Generic patterns
-                /data-src="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i,
-                /src="(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i,
-                // Background images
-                /style="[^"]*background[^:]*:\s*url\(['"]?(https?:\/\/[^'")\s]+)['"]?\)/i,
-                // Last resort
-                /data-src="([^"]+)"/i,
-                /src="([^"]+)"/i
-            ];
-            
-            for (const thumbPattern of thumbPatterns) {
-                const tMatch = fullContext.match(thumbPattern) || linkContent.match(thumbPattern);
-                if (tMatch && tMatch[1]) {
-                    const potentialThumb = tMatch[1];
-                    // Skip user avatars and icons
-                    if (!potentialThumb.includes('avatar') && 
-                        !potentialThumb.includes('icon') && 
-                        !potentialThumb.includes('pornstarimg') &&
-                        !potentialThumb.includes('profile')) {
-                        thumbnail = potentialThumb;
-                        break;
-                    }
+    // First try the <a class="thumb"> pattern which directly captures video ID
+    const thumbAnchorPattern = /<a[^>]*class="[^"]*thumb[^"]*"[^>]*href="\/([a-zA-Z0-9]+)\/video\/([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+    let thumbMatch;
+    while ((thumbMatch = thumbAnchorPattern.exec(html)) !== null && videos.length < 200) {
+        const videoId = thumbMatch[1];
+        const videoSlug = thumbMatch[2].replace(/["']/g, '');
+        const innerContent = thumbMatch[3] || "";
+        
+        if (seenIds.has(videoId)) continue;
+        if (videoId === 'users' || videoId === 'search' || videoId === 'playlists') continue;
+        seenIds.add(videoId);
+        
+        // Get title from nearby context - EXPANDED to capture sibling thumbnail elements
+        const fullMatch = thumbMatch[0];
+        const matchIndex = thumbMatch.index;
+        // Expand context window to 2000 chars before/after to ensure we capture the entire parent container
+        // with sibling <a class="thumb"> elements that contain the actual thumbnail images
+        const contextStart = Math.max(0, matchIndex - 2000);
+        const contextEnd = Math.min(html.length, matchIndex + fullMatch.length + 2000);
+        const fullContext = html.substring(contextStart, contextEnd);
+        
+        const titleMatch = fullMatch.match(/title="([^"]+)"/i) || 
+                          fullMatch.match(/alt="([^"]+)"/i) ||
+                          fullContext.match(/title="([^"]+)"/i) ||
+                          fullContext.match(/<span[^>]*class="[^"]*(?:title|name|n)[^"]*"[^>]*>([^<]+)<\/span>/i) ||
+                          fullContext.match(/<p[^>]*class="[^"]*n[^"]*"[^>]*>([^<]+)<\/p>/i);
+        let title = titleMatch ? cleanVideoTitle(titleMatch[1]) : videoSlug.replace(/[_+-]/g, ' ');
+        
+        // Extract thumbnail - CRITICAL: Look in fullContext (parent container) not just video link
+        // SpankBang history has thumbnails in SIBLING <a class="thumb"> elements, not in the video link itself
+        let thumbnail = "";
+        const thumbPatterns = [
+            // Try data-src with image extensions first (most reliable)
+            /data-src="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i,
+            // Try CDN URLs specifically  
+            /data-src="(https?:\/\/[^"]*tbi\.sb-cd\.com[^"]+)"/i,
+            /data-src="(https?:\/\/[^"]*sb-cd\.com[^"]+)"/i,
+            // Try src with CDN
+            /src="(https?:\/\/[^"]*tbi\.sb-cd\.com[^"]+)"/i,
+            /src="(https?:\/\/[^"]*sb-cd\.com[^"]+)"/i,
+            // Try lazy-src attribute
+            /lazy-src="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i,
+            // Generic data-src
+            /data-src="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i,
+            // Generic src with image extensions
+            /src="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i,
+            // Background image style
+            /style="[^"]*background[^:]*:\s*url\(['"]?(https?:\/\/[^'")\s]+)['"]?\)/i,
+            // Catch any data-src as last resort
+            /data-src="([^"]+)"/i
+        ];
+        
+        // IMPORTANT: Search in fullContext (parent container) FIRST, then innerContent, then fullMatch
+        // This is because SpankBang's history page has thumbnails in sibling elements
+        for (const thumbPattern of thumbPatterns) {
+            const tMatch = fullContext.match(thumbPattern) || innerContent.match(thumbPattern) || fullMatch.match(thumbPattern);
+            if (tMatch && tMatch[1]) {
+                thumbnail = tMatch[1];
+                if (!thumbnail.includes('avatar') && !thumbnail.includes('icon') && !thumbnail.includes('pornstarimg')) {
+                    log("parseHistoryPage: Found thumbnail for video " + videoId + ": " + thumbnail.substring(0, 80));
+                    break;
+                }
+                thumbnail = "";
+            }
+        }
+        
+        // Log if no thumbnail found - DO NOT use fake CDN URLs as they use different IDs
+        if (!thumbnail || thumbnail.length < 10) {
+            log("parseHistoryPage: WARNING - No thumbnail found for video " + videoId + ", will use CDN fallback");
+            // Use CDN fallback as last resort, but it may not work due to ID mismatch
+            thumbnail = `https://tbi.sb-cd.com/t/${videoId}/1/6/w:500/default.jpg`;
+        }
+        if (thumbnail.startsWith('//')) {
+            thumbnail = 'https:' + thumbnail;
+        }
+        
+        // Extract duration - FIXED to prioritize data attributes and actual video duration
+        // History pages can have BOTH watch progress AND video duration - we need the video duration!
+        let duration = 0;
+        
+        // PRIORITY 1: Check data attributes (most reliable for actual video duration)
+        const dataAttrMatch = fullContext.match(/data-duration=["'](\d+)["']/i) || 
+                             fullContext.match(/data-length=["'](\d+)["']/i) ||
+                             fullContext.match(/data-time=["'](\d+)["']/i);
+        if (dataAttrMatch && dataAttrMatch[1]) {
+            duration = parseInt(dataAttrMatch[1]);
+            log("parseHistoryPage: Found duration from data attribute: " + duration + "s");
+        }
+        
+        // PRIORITY 2: Look for <span class="l"> which typically shows video duration
+        if (duration === 0) {
+            const spanLMatch = fullContext.match(/<span[^>]*class=["'][^"']*\bl\b[^"']*["'][^>]*>([^<]+)<\/span>/i);
+            if (spanLMatch && spanLMatch[1]) {
+                const durStr = spanLMatch[1].trim();
+                // Make sure it's a time format (not text)
+                if (/^\d{1,3}:\d{2}(?::\d{2})?$/.test(durStr)) {
+                    duration = parseDuration(durStr);
+                    log("parseHistoryPage: Found duration from <span class='l'>: " + duration + "s (" + durStr + ")");
                 }
             }
-            
-            // Fallback to CDN thumbnail if nothing found
-            if (!thumbnail || thumbnail.length < 10) {
-                thumbnail = `https://tbi.sb-cd.com/t/${videoId}/1/6/w:500/default.jpg`;
-                log("parseHistoryPage: Using CDN fallback thumbnail for video " + videoId);
-            }
-            if (thumbnail.startsWith('//')) {
-                thumbnail = 'https:' + thumbnail;
-            }
-            
-            // Extract duration - prioritize actual video duration over watch progress
-            let duration = 0;
-            
-            // PRIORITY 1: Data attributes
-            const dataAttrMatch = fullContext.match(/data-duration=["'](\d+)["']/i) || 
-                                 fullContext.match(/data-length=["'](\d+)["']/i) ||
-                                 fullContext.match(/data-time=["'](\d+)["']/i) ||
-                                 linkContent.match(/data-duration=["'](\d+)["']/i) ||
-                                 linkContent.match(/data-length=["'](\d+)["']/i);
-            if (dataAttrMatch && dataAttrMatch[1]) {
-                duration = parseInt(dataAttrMatch[1]);
-            }
-            
-            // PRIORITY 2: Look for <span class="l"> (duration indicator)
-            if (duration === 0) {
-                const spanLPattern = /<span[^>]*class=["'][^"']*\bl\b[^"']*["'][^>]*>([^<]+)<\/span>/gi;
-                let spanMatch;
-                while ((spanMatch = spanLPattern.exec(fullContext)) !== null) {
-                    const durStr = spanMatch[1].trim();
-                    // Validate it's a time format
-                    if (/^\d{1,3}:\d{2}(?::\d{2})?$/.test(durStr)) {
-                        // Check it's not near "watched" or "progress" text
-                        const nearbyText = fullContext.substring(
-                            Math.max(0, spanMatch.index - 100),
-                            Math.min(fullContext.length, spanMatch.index + 150)
-                        );
-                        if (!/watched|progress|viewed|ago/i.test(nearbyText)) {
-                            duration = parseDuration(durStr);
-                            if (duration > 0) break;
-                        }
-                    }
-                }
-            }
-            
-            // PRIORITY 3: Generic duration patterns
-            if (duration === 0) {
-                const durationPatterns = [
-                    /<span[^>]*class="[^"]*(?:duration|time|length)[^"]*"[^>]*>(\d{1,3}:\d{2}(?::\d{2})?)<\/span>/i,
-                    /<div[^>]*class="[^"]*(?:duration|time|length)[^"]*"[^>]*>(\d{1,3}:\d{2}(?::\d{2})?)<\/div>/i,
-                    />(\d{1,3}:\d{2}(?::\d{2})?)</
-                ];
-                for (const durPattern of durationPatterns) {
-                    const durMatch = fullContext.match(durPattern) || linkContent.match(durPattern);
+        }
+        
+        // PRIORITY 3: Look for duration/length class that's NOT near "watched" or "progress" text
+        if (duration === 0) {
+            const durationSpans = fullContext.match(/<span[^>]*class=["'][^"']*(?:duration|length|dur)[^"']*["'][^>]*>([^<]+)<\/span>/gi);
+            if (durationSpans) {
+                for (const span of durationSpans) {
+                    const durMatch = span.match(/>([^<]+)</);
                     if (durMatch && durMatch[1]) {
                         const durStr = durMatch[1].trim();
-                        const nearbyText = fullContext.substring(
-                            Math.max(0, fullContext.indexOf(durStr) - 100),
-                            Math.min(fullContext.length, fullContext.indexOf(durStr) + durStr.length + 100)
+                        // Get context around this span to check if it's watch progress
+                        const spanIndex = fullContext.indexOf(span);
+                        const contextAround = fullContext.substring(
+                            Math.max(0, spanIndex - 100),
+                            Math.min(fullContext.length, spanIndex + span.length + 100)
                         );
-                        if (!/watched|progress|viewed|ago/i.test(nearbyText)) {
+                        // Skip if near watch progress indicators
+                        if (/watched|progress|viewed|ago/i.test(contextAround)) {
+                            continue;
+                        }
+                        // Validate it's a time format
+                        if (/^\d{1,3}:\d{2}(?::\d{2})?$/.test(durStr)) {
                             duration = parseDuration(durStr);
-                            if (duration > 0) break;
+                            log("parseHistoryPage: Found duration from duration/length class: " + duration + "s (" + durStr + ")");
+                            break;
                         }
                     }
                 }
             }
-            
-            // Extract views
-            let views = 0;
-            const viewsPatterns = [
-                /<span[^>]*class="[^"]*\bv\b[^"]*"[^>]*>([^<]+)<\/span>/i,
-                /<span[^>]*class="[^"]*views[^"]*"[^>]*>([^<]+)<\/span>/i,
-                /<div[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/div>/i,
-                /data-views="([^"]+)"/i,
-                /(\d+(?:[,.]\d+)?[KMB]?)\s*views?/i
-            ];
-            for (const viewPattern of viewsPatterns) {
-                const viewsMatch = fullContext.match(viewPattern);
-                if (viewsMatch && viewsMatch[1]) {
-                    views = parseViewCount(viewsMatch[1].trim());
-                    if (views > 0) break;
-                }
-            }
-            
-            // Extract uploader
-            const uploader = extractUploaderFromSearchResult(fullContext);
-            
-            videos.push({
-                id: videoId,
-                title: title,
-                thumbnail: thumbnail,
-                duration: duration,
-                views: views,
-                url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
-                uploader: uploader
-            });
         }
-    }
-    
-    log("parseHistoryPage: After direct link patterns, found " + videos.length + " videos");
-    
-    // If direct link extraction didn't work, try thumb anchor pattern (historical compatibility)
-    if (videos.length === 0) {
-        log("parseHistoryPage: Trying thumb anchor pattern as fallback...");
-        const thumbAnchorPattern = /<a[^>]*class="[^"]*thumb[^"]*"[^>]*href="\/([a-zA-Z0-9]+)\/video\/([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
         
-        let thumbMatch;
-        while ((thumbMatch = thumbAnchorPattern.exec(html)) !== null && videos.length < 200) {
-            const videoId = thumbMatch[1];
-            const videoSlug = thumbMatch[2].replace(/["']/g, '');
-            const fullContext = thumbMatch[3] || thumbMatch[0];
-            
-            if (seenIds.has(videoId)) continue;
-            if (videoId === 'users' || videoId === 'search' || videoId === 'playlists') continue;
-            seenIds.add(videoId);
-            
-            // Extract title
-            const titleMatch = fullContext.match(/title="([^"]+)"/i) || 
-                              fullContext.match(/alt="([^"]+)"/i) ||
-                              fullContext.match(/<span[^>]*class="[^"]*(?:title|name|n)[^"]*"[^>]*>([^<]+)<\/span>/i);
-            let title = titleMatch ? cleanVideoTitle(titleMatch[1]) : videoSlug.replace(/[_+-]/g, ' ');
-            
-            // Extract thumbnail
-            const thumbPatterns = [
-                /data-src="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i,
-                /data-src="(https?:\/\/[^"]*tbi\.sb-cd\.com[^"]+)"/i,
-                /src="(https?:\/\/[^"]*tbi\.sb-cd\.com[^"]+)"/i,
-                /src="(https?:\/\/[^"]*spankbang[^"]*\/t\/[^"]+)"/i,
-                /data-src="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i,
-                /src="(https?:\/\/[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"/i
-            ];
-            let thumbnail = "";
-            for (const thumbPattern of thumbPatterns) {
-                const thumbMatch = fullContext.match(thumbPattern);
-                if (thumbMatch && thumbMatch[1]) {
-                    thumbnail = thumbMatch[1];
-                    if (!thumbnail.includes('avatar') && !thumbnail.includes('icon')) {
-                        break;
+        // PRIORITY 4: Last resort - look for any time format, but validate it's reasonable
+        if (duration === 0) {
+            const timeMatches = fullContext.match(/>\s*(\d{1,3}:\d{2}(?::\d{2})?)\s*</g);
+            if (timeMatches) {
+                for (const timeMatch of timeMatches) {
+                    const durMatch = timeMatch.match(/(\d{1,3}:\d{2}(?::\d{2})?)/);
+                    if (durMatch && durMatch[1]) {
+                        const durStr = durMatch[1];
+                        const testDuration = parseDuration(durStr);
+                        // Videos are usually at least 30 seconds - helps filter out false positives
+                        if (testDuration >= 30) {
+                            duration = testDuration;
+                            log("parseHistoryPage: Found duration from time pattern: " + duration + "s (" + durStr + ")");
+                            break;
+                        }
                     }
-                    thumbnail = "";
                 }
             }
-            if (!thumbnail || thumbnail.length < 10) {
-                thumbnail = `https://tbi.sb-cd.com/t/${videoId}/1/6/w:500/default.jpg`;
-            }
-            if (thumbnail.startsWith('//')) {
-                thumbnail = 'https:' + thumbnail;
-            }
-            
-            // Extract duration
-            let duration = extractBestDurationSecondsFromContext(fullContext, { excludeProgress: true });
-            
-            // Extract views
-            let views = extractViewCountFromContext(fullContext);
-            
-            // Extract uploader
-            const uploader = extractUploaderFromSearchResult(fullContext);
-            
-            videos.push({
-                id: videoId,
-                title: title,
-                thumbnail: thumbnail,
-                duration: duration,
-                views: views,
-                url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
-                uploader: uploader
-            });
         }
+        
+        // Extract views if available - enhanced patterns
+        let views = 0;
+        const viewsPatterns = [
+            // Primary pattern - class="v" or "views"
+            /<span[^>]*class="[^"]*\bv\b[^"]*"[^>]*>([^<]+)<\/span>/i,
+            /<span[^>]*class="[^"]*views[^"]*"[^>]*>([^<]+)<\/span>/i,
+            // Div with views
+            /<div[^>]*class="[^"]*(?:v|views)[^"]*"[^>]*>([^<]+)<\/div>/i,
+            // Data attribute
+            /data-views="([^"]+)"/i,
+            // Views text pattern
+            /(\d+(?:[,.]\d+)?[KMB]?)\s*views?/i,
+            // Generic number with K/M/B suffix
+            />([0-9,.]+[KMB]?)\s*<\/span>/i
+        ];
+        for (const viewPattern of viewsPatterns) {
+            const viewsMatch = fullContext.match(viewPattern);
+            if (viewsMatch && viewsMatch[1]) {
+                views = parseViewCount(viewsMatch[1].trim());
+                if (views > 0) break;
+            }
+        }
+        
+        // Extract uploader information from the context
+        const uploader = extractUploaderFromSearchResult(fullContext);
+        
+        videos.push({
+            id: videoId,
+            title: title,
+            thumbnail: thumbnail,
+            duration: duration,
+            views: views,
+            url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
+            uploader: uploader
+        });
     }
     
     log("parseHistoryPage: After thumb anchor pattern, found " + videos.length + " videos");
@@ -5113,8 +5056,74 @@ function fetchVideoBasicInfo(videoId) {
     }
 }
 
-// Removed getUserHistory function - use syncRemoteWatchHistory instead
-// This was a test function that might have been causing duplicate UI elements in Grayjay
+// Add getUserHistory function for GrayJay plugin testing
+source.getUserHistory = function() {
+    try {
+        log("getUserHistory: Starting to fetch user history");
+        
+        // Use the same authenticated request pattern as other user functions
+        const historyUrl = USER_URLS.HISTORY;
+        log("getUserHistory: Fetching from " + historyUrl);
+        
+        const response = makeRequestNoThrow(historyUrl, API_HEADERS, 'user history', true);
+        
+        if (!response.isOk) {
+            log("getUserHistory: Failed with status " + response.code + ", user may not be logged in");
+            // Return empty pager, not array
+            return new SpankBangHistoryPager([], false, { continuationToken: null });
+        }
+        
+        const html = response.body;
+        
+        if (!html || html.length < 100) {
+            log("getUserHistory: Empty or invalid HTML response (length: " + (html ? html.length : 0) + ")");
+            // Return empty pager, not array
+            return new SpankBangHistoryPager([], false, { continuationToken: null });
+        }
+        
+        log("getUserHistory: HTML length = " + html.length);
+        
+        // Parse history using both parseSearchResults and parseHistoryPage
+        log("getUserHistory: Attempting parseSearchResults first...");
+        let videos = parseSearchResults(html);
+        
+        if (videos.length === 0) {
+            log("getUserHistory: parseSearchResults found 0 videos, trying parseHistoryPage");
+            videos = parseHistoryPage(html);
+        } else {
+            log("getUserHistory: parseSearchResults found " + videos.length + " videos, skipping parseHistoryPage");
+        }
+        
+        if (videos.length === 0) {
+            log("getUserHistory: No videos found. HTML snippet (first 500 chars): " + html.substring(0, 500).replace(/[\n\r]/g, ' '));
+            // Return empty pager, not array
+            return new SpankBangHistoryPager([], false, { continuationToken: null });
+        }
+        
+        log("getUserHistory: Found " + videos.length + " videos");
+        
+        // Return full PlatformVideo objects with all metadata
+        const platformVideos = videos.map(v => createPlatformVideo(v));
+        
+        // Log first video for debugging thumbnails
+        if (platformVideos.length > 0) {
+            const firstVideo = platformVideos[0];
+            log("getUserHistory: First video - ID: " + firstVideo.id + ", Title: " + (firstVideo.name || '').substring(0, 50) + ", Thumbnail: " + (firstVideo.thumbnails && firstVideo.thumbnails.sources && firstVideo.thumbnails.sources.length > 0 ? firstVideo.thumbnails.sources[0].url : 'NO THUMBNAIL'));
+        }
+        
+        // Return a Pager object with pagination support
+        const hasMore = videos.length >= 20;
+        const nextToken = hasMore ? "2" : null;
+        
+        log("getUserHistory: Returning pager with " + platformVideos.length + " videos, hasMore=" + hasMore);
+        return new SpankBangHistoryPager(platformVideos, hasMore, { continuationToken: nextToken });
+        
+    } catch (error) {
+        log("getUserHistory error: " + error.message);
+        // Return empty pager, not array
+        return new SpankBangHistoryPager([], false, { continuationToken: null });
+    }
+};
 
 source.syncRemoteWatchHistory = function(continuationToken) {
     try {
@@ -5130,7 +5139,7 @@ source.syncRemoteWatchHistory = function(continuationToken) {
         log("syncRemoteWatchHistory: Page = " + page);
         log("syncRemoteWatchHistory: Has auth cookies = " + (state.authCookies && state.authCookies.length > 0));
         
-        const response = makeRequestNoThrow(historyUrl, getAuthHeaders(), 'remote watch history', true);
+        const response = makeRequestNoThrow(historyUrl, API_HEADERS, 'remote watch history', true);
         
         log("syncRemoteWatchHistory: Response status = " + response.code);
         log("syncRemoteWatchHistory: Response isOk = " + response.isOk);
@@ -5139,7 +5148,6 @@ source.syncRemoteWatchHistory = function(continuationToken) {
             log("syncRemoteWatchHistory: FAILED - Status " + response.code);
             log("syncRemoteWatchHistory: This usually means you're not logged into SpankBang in Grayjay");
             log("syncRemoteWatchHistory: Go to Sources → SpankBang → Login button");
-            log("syncRemoteWatchHistory: Please ensure you're logged in and try toggling the setting again");
             return new SpankBangHistoryPager([], false, { continuationToken: null });
         }
         
@@ -5150,53 +5158,34 @@ source.syncRemoteWatchHistory = function(continuationToken) {
         
         if (!html || htmlLength < 100) {
             log("syncRemoteWatchHistory: ERROR - HTML too short (length: " + htmlLength + ")");
-            log("syncRemoteWatchHistory: This means the page didn't load properly or requires authentication");
+            log("syncRemoteWatchHistory: This means the page didn't load properly");
             return new SpankBangHistoryPager([], false, { continuationToken: null });
         }
         
-        // Check if we're being redirected to login page
-        if (html.includes('users/login') || html.includes('login_form') || html.includes('sign in')) {
-            log("syncRemoteWatchHistory: ERROR - Detected login page redirect");
-            log("syncRemoteWatchHistory: Your session may have expired. Please log in again through Grayjay");
-            return new SpankBangHistoryPager([], false, { continuationToken: null });
-        }
-        
-        // Log HTML preview for debugging (capture more context)
+        // Log HTML preview for debugging
         if (htmlLength > 0) {
-            const preview = html.substring(0, 1000).replace(/[\n\r]+/g, ' ');
-            log("syncRemoteWatchHistory: HTML preview (first 1000 chars): " + preview);
-            
-            // Check for empty history indicators
-            if (html.includes('no history') || html.includes('No videos') || html.includes('empty')) {
-                log("syncRemoteWatchHistory: Detected 'empty history' message in HTML");
-            }
+            const preview = html.substring(0, 500).replace(/[\n\r]+/g, ' ');
+            log("syncRemoteWatchHistory: HTML preview (first 500 chars): " + preview);
         }
         
         log("syncRemoteWatchHistory: Starting video parsing...");
         
-        // Try parseHistoryPage FIRST as it's specifically designed for history pages
-        let videos = parseHistoryPage(html);
-        log("syncRemoteWatchHistory: parseHistoryPage returned " + videos.length + " videos");
+        let videos = parseSearchResults(html);
+        log("syncRemoteWatchHistory: parseSearchResults returned " + videos.length + " videos");
         
-        // Only try parseSearchResults if parseHistoryPage failed
         if (videos.length === 0) {
-            log("syncRemoteWatchHistory: Trying parseSearchResults as fallback...");
-            videos = parseSearchResults(html);
-            log("syncRemoteWatchHistory: parseSearchResults returned " + videos.length + " videos");
+            log("syncRemoteWatchHistory: Trying parseHistoryPage as fallback...");
+            videos = parseHistoryPage(html);
+            log("syncRemoteWatchHistory: parseHistoryPage returned " + videos.length + " videos");
         }
         
         if (videos.length === 0) {
             log("syncRemoteWatchHistory: ERROR - No videos found after parsing!");
-            log("syncRemoteWatchHistory: HTML snippet (first 800 chars): " + html.substring(0, 800).replace(/[\n\r]/g, ' '));
+            log("syncRemoteWatchHistory: HTML snippet (first 500 chars): " + html.substring(0, 500).replace(/[\n\r]/g, ' '));
             log("syncRemoteWatchHistory: Possible reasons:");
-            log("  1. Your SpankBang history is empty (no videos watched yet)");
-            log("  2. SpankBang updated their HTML structure (please report this issue)");
-            log("  3. Authentication failed - try logging out and back in through Grayjay");
-            log("  4. The history page content didn't load correctly");
-            
-            // Look for any video links to help diagnose
-            const videoLinkCount = (html.match(/\/video\//g) || []).length;
-            log("syncRemoteWatchHistory: Found " + videoLinkCount + " '/video/' strings in HTML");
+            log("  1. History page is empty (no watch history on your account)");
+            log("  2. SpankBang changed their HTML structure");
+            log("  3. You're seeing a login/redirect page instead of history");
         } else {
             log("syncRemoteWatchHistory: SUCCESS - Found " + videos.length + " videos!");
             if (videos.length > 0) {
