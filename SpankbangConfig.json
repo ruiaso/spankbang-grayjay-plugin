@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 82,
+  "version": 83,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -51,6 +51,12 @@
   ],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "83": [
+      "CRITICAL FIX: syncRemoteWatchHistory now returns array of video URLs instead of Pager",
+      "Both getUserHistory and syncRemoteWatchHistory now return string arrays",
+      "Fixed V8ValueArray error that prevented history sync from completing",
+      "History sync dialog should now successfully import videos into Grayjay"
+    ],
     "82": [
       "CRITICAL FIX: getUserHistory now returns array of video URLs like getUserSubscriptions/getUserPlaylists",
       "Changed return type from Pager to string array for proper Grayjay history import",

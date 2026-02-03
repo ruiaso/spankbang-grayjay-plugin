@@ -5142,7 +5142,7 @@ source.syncRemoteWatchHistory = function(continuationToken) {
             log("syncRemoteWatchHistory: FAILED - Status " + response.code);
             log("syncRemoteWatchHistory: This usually means you're not logged into SpankBang in Grayjay");
             log("syncRemoteWatchHistory: Go to Sources → SpankBang → Login button");
-            return new SpankBangHistoryPager([], false, { continuationToken: null });
+            return [];
         }
         
         const html = response.body;
@@ -5153,7 +5153,7 @@ source.syncRemoteWatchHistory = function(continuationToken) {
         if (!html || htmlLength < 100) {
             log("syncRemoteWatchHistory: ERROR - HTML too short (length: " + htmlLength + ")");
             log("syncRemoteWatchHistory: This means the page didn't load properly");
-            return new SpankBangHistoryPager([], false, { continuationToken: null });
+            return [];
         }
         
         // Log HTML preview for debugging
@@ -5180,6 +5180,7 @@ source.syncRemoteWatchHistory = function(continuationToken) {
             log("  1. History page is empty (no watch history on your account)");
             log("  2. SpankBang changed their HTML structure");
             log("  3. You're seeing a login/redirect page instead of history");
+            return [];
         } else {
             log("syncRemoteWatchHistory: SUCCESS - Found " + videos.length + " videos!");
             if (videos.length > 0) {
@@ -5187,21 +5188,25 @@ source.syncRemoteWatchHistory = function(continuationToken) {
             }
         }
         
-        const platformVideos = videos.map(v => createPlatformVideo(v));
+        // Return array of video URLs (like getUserHistory)
+        const videoUrls = videos.map(v => {
+            // Convert video object to full URL
+            const videoUrl = `${BASE_URL}/${v.id}/video/${v.title ? v.title.toLowerCase().replace(/[^a-z0-9]+/g, '+') : 'video'}`;
+            return videoUrl;
+        });
         
-        const hasMore = videos.length >= 20;
-        const nextToken = hasMore ? (page + 1).toString() : null;
-        
-        log("syncRemoteWatchHistory: Returning " + platformVideos.length + " platform videos");
-        log("syncRemoteWatchHistory: hasMore = " + hasMore + ", nextToken = " + (nextToken || "null"));
+        log("syncRemoteWatchHistory: Returning " + videoUrls.length + " video URLs");
+        if (videoUrls.length > 0) {
+            log("syncRemoteWatchHistory: First URL: " + videoUrls[0]);
+        }
         log("===== SYNC REMOTE WATCH HISTORY END =====");
         
-        return new SpankBangHistoryPager(platformVideos, hasMore, { continuationToken: nextToken });
+        return videoUrls;
 
     } catch (error) {
         log("syncRemoteWatchHistory: EXCEPTION - " + error.message);
         log("syncRemoteWatchHistory: Stack trace: " + (error.stack || "No stack trace"));
-        return new SpankBangHistoryPager([], false, { continuationToken: null });
+        return [];
     }
 };
 
@@ -6956,4 +6961,4 @@ class SpankBangHistoryPager extends ContentPager {
     }
 }
 
-log("SpankBang plugin loaded - v82");
+log("SpankBang plugin loaded - v83");
