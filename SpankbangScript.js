@@ -1,4 +1,4 @@
-constconst BASE_URL = "https://spankbang.com";
+const BASE_URL = "https://spankbang.com";
 const PLATFORM = "SpankBang";
 const PLATFORM_CLAIMTYPE = 3;
 
