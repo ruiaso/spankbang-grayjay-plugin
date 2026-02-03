@@ -6713,7 +6713,8 @@ source.getPlaylist = function(url) {
 
 class SpankBangHomeContentPager extends ContentPager {
     constructor(results, hasMore, context) {
-        super(results, hasMore, context);
+        super(results, hasMore);
+        this.context = context;
     }
 
     nextPage() {
@@ -6723,7 +6724,8 @@ class SpankBangHomeContentPager extends ContentPager {
 
 class SpankBangSearchPager extends ContentPager {
     constructor(results, hasMore, context) {
-        super(results, hasMore, context);
+        super(results, hasMore);
+        this.context = context;
     }
 
     nextPage() {
@@ -6739,7 +6741,8 @@ class SpankBangSearchPager extends ContentPager {
 
 class SpankBangChannelPager extends ChannelPager {
     constructor(results, hasMore, context) {
-        super(results, hasMore, context);
+        super(results, hasMore);
+        this.context = context;
     }
 
     nextPage() {
@@ -6749,7 +6752,8 @@ class SpankBangChannelPager extends ChannelPager {
 
 class SpankBangCreatorPager extends ChannelPager {
     constructor(results, hasMore, context) {
-        super(results, hasMore, context);
+        super(results, hasMore);
+        this.context = context;
     }
 
     nextPage() {
@@ -6759,7 +6763,8 @@ class SpankBangCreatorPager extends ChannelPager {
 
 class SpankBangChannelContentPager extends ContentPager {
     constructor(results, hasMore, context) {
-        super(results, hasMore, context);
+        super(results, hasMore);
+        this.context = context;
     }
 
     nextPage() {
@@ -6775,7 +6780,8 @@ class SpankBangChannelContentPager extends ContentPager {
 
 class SpankBangPlaylistPager extends PlaylistPager {
     constructor(results, hasMore, context) {
-        super(results, hasMore, context);
+        super(results, hasMore);
+        this.context = context;
     }
 
     nextPage() {
@@ -6796,7 +6802,8 @@ class SpankBangPlaylistPager extends PlaylistPager {
 // Pager for videos inside a playlist
 class SpankBangPlaylistVideosPager extends ContentPager {
     constructor(results, hasMore, context) {
-        super(results, hasMore, context);
+        super(results, hasMore);
+        this.context = context;
     }
 
     nextPage() {
@@ -6854,7 +6861,8 @@ class SpankBangPlaylistVideosPager extends ContentPager {
 
 class SpankBangCommentPager extends CommentPager {
     constructor(results, hasMore, context) {
-        super(results, hasMore, context);
+        super(results, hasMore);
+        this.context = context;
     }
 
     nextPage() {
@@ -6864,7 +6872,8 @@ class SpankBangCommentPager extends CommentPager {
 
 class SpankBangHistoryPager extends ContentPager {
     constructor(results, hasMore, context) {
-        super(results, hasMore, context);
+        super(results, hasMore);
+        this.context = context;
     }
 
     nextPage() {
@@ -6872,4 +6881,4 @@ class SpankBangHistoryPager extends ContentPager {
     }
 }
 
-log("SpankBang plugin loaded - v69");
+log("SpankBang plugin loaded - v70");
