@@ -5218,151 +5218,98 @@ source.getUserHistory = function() {
 
 source.syncRemoteWatchHistory = function(continuationToken) {
     try {
-        // Use authenticated request directly (same pattern as getUserSubscriptions)
-        // Don't check isLoggedIn() as it may fail even with valid cookies in the http client
-        const page = continuationToken ? parseInt(continuationToken) : 1;
-        
-        // CRITICAL FIX: SpankBang uses ?page=X format, NOT /X/ format
-        // URLs: https://spankbang.com/users/history?page=1, ?page=2, etc.
-        const historyUrl = page > 1 
-            ? `${USER_URLS.HISTORY}?page=${page}`
-            : USER_URLS.HISTORY;
-        
         log("===== SYNC REMOTE WATCH HISTORY START =====");
-        log("syncRemoteWatchHistory: URL = " + historyUrl);
-        log("syncRemoteWatchHistory: Page = " + page);
         log("syncRemoteWatchHistory: Has auth cookies = " + (state.authCookies && state.authCookies.length > 0));
         
-        const response = makeRequestNoThrow(historyUrl, API_HEADERS, 'remote watch history', true);
+        // CRITICAL FIX: Fetch ALL history pages at once
+        // GrayJay's pager mechanism only calls nextPage() a limited number of times
+        // So we fetch everything in one call to ensure complete history import
         
-        log("syncRemoteWatchHistory: Response status = " + response.code);
-        log("syncRemoteWatchHistory: Response isOk = " + response.isOk);
+        let allVideos = [];
+        let currentPage = 1;
+        const MAX_PAGES = 100; // Safety limit to prevent infinite loops
         
-        if (!response.isOk) {
-            log("syncRemoteWatchHistory: FAILED - Status " + response.code);
-            log("syncRemoteWatchHistory: This usually means you're not logged into SpankBang in Grayjay");
-            log("syncRemoteWatchHistory: Go to Sources → SpankBang → Login button");
-            return new SpankBangHistoryPager([], false, { continuationToken: null });
-        }
-        
-        const html = response.body;
-        const htmlLength = html ? html.length : 0;
-        
-        log("syncRemoteWatchHistory: HTML received, length = " + htmlLength);
-        
-        if (!html || htmlLength < 100) {
-            log("syncRemoteWatchHistory: ERROR - HTML too short (length: " + htmlLength + ")");
-            log("syncRemoteWatchHistory: This means the page didn't load properly");
-            return new SpankBangHistoryPager([], false, { continuationToken: null });
-        }
-        
-        // Log HTML preview for debugging
-        if (htmlLength > 0) {
-            const preview = html.substring(0, 500).replace(/[\n\r]+/g, ' ');
-            log("syncRemoteWatchHistory: HTML preview (first 500 chars): " + preview);
-        }
-        
-        log("syncRemoteWatchHistory: Starting video parsing...");
-        
-        let videos = parseSearchResults(html);
-        log("syncRemoteWatchHistory: parseSearchResults returned " + videos.length + " videos");
-        
-        if (videos.length === 0) {
-            log("syncRemoteWatchHistory: Trying parseHistoryPage as fallback...");
-            videos = parseHistoryPage(html);
-            log("syncRemoteWatchHistory: parseHistoryPage returned " + videos.length + " videos");
-        }
-        
-        if (videos.length === 0) {
-            log("syncRemoteWatchHistory: ERROR - No videos found after parsing!");
-            log("syncRemoteWatchHistory: HTML snippet (first 500 chars): " + html.substring(0, 500).replace(/[\n\r]/g, ' '));
-            log("syncRemoteWatchHistory: Possible reasons:");
-            log("  1. History page is empty (no watch history on your account)");
-            log("  2. SpankBang changed their HTML structure");
-            log("  3. You're seeing a login/redirect page instead of history");
-        } else {
-            log("syncRemoteWatchHistory: SUCCESS - Found " + videos.length + " videos!");
-            if (videos.length > 0) {
-                log("syncRemoteWatchHistory: First video - ID: " + videos[0].id + ", Title: " + (videos[0].title || '').substring(0, 50) + ", URL: " + (videos[0].url || 'NO URL'));
+        while (currentPage <= MAX_PAGES) {
+            const historyUrl = currentPage > 1 
+                ? `${USER_URLS.HISTORY}?page=${currentPage}`
+                : USER_URLS.HISTORY;
+            
+            log("syncRemoteWatchHistory: Fetching page " + currentPage + " from " + historyUrl);
+            
+            const response = makeRequestNoThrow(historyUrl, API_HEADERS, 'remote watch history', true);
+            
+            if (!response.isOk) {
+                if (currentPage === 1) {
+                    log("syncRemoteWatchHistory: FAILED on first page - Status " + response.code);
+                    log("syncRemoteWatchHistory: This usually means you're not logged into SpankBang in Grayjay");
+                    return new SpankBangHistoryPager([], false, { continuationToken: null });
+                } else {
+                    log("syncRemoteWatchHistory: Page " + currentPage + " failed, stopping pagination");
+                    break;
+                }
+            }
+            
+            const html = response.body;
+            if (!html || html.length < 100) {
+                log("syncRemoteWatchHistory: Page " + currentPage + " returned empty/short HTML, stopping");
+                break;
+            }
+            
+            // Parse videos from this page
+            let pageVideos = parseSearchResults(html);
+            if (pageVideos.length === 0) {
+                pageVideos = parseHistoryPage(html);
+            }
+            
+            log("syncRemoteWatchHistory: Page " + currentPage + " found " + pageVideos.length + " videos");
+            
+            if (pageVideos.length === 0) {
+                log("syncRemoteWatchHistory: No videos on page " + currentPage + ", reached end of history");
+                break;
+            }
+            
+            allVideos = allVideos.concat(pageVideos);
+            log("syncRemoteWatchHistory: Total videos so far: " + allVideos.length);
+            
+            // Check if there are more pages
+            const hasNextPage = new RegExp(`[?&]page=${currentPage + 1}`, 'i').test(html) ||
+                               /class="[^"]*next[^"]*"|rel="next"/i.test(html) ||
+                               pageVideos.length >= 20; // If we got a full page, try next
+            
+            if (!hasNextPage) {
+                log("syncRemoteWatchHistory: No more pages detected after page " + currentPage);
+                break;
+            }
+            
+            currentPage++;
+            
+            // Small delay between requests to avoid rate limiting
+            if (currentPage <= MAX_PAGES) {
+                sleep(300);
             }
         }
         
-        // CRITICAL FIX: Assign watched timestamps to history items
-        // SpankBang history page shows most recently watched first
-        // Since the page doesn't show exact watched times, we assign timestamps
-        // in descending order (most recent = now, older items = further back)
-        // For paginated results, offset by page number
+        log("syncRemoteWatchHistory: Finished fetching. Total pages: " + (currentPage) + ", Total videos: " + allVideos.length);
+        
+        if (allVideos.length === 0) {
+            log("syncRemoteWatchHistory: No history videos found");
+            return new SpankBangHistoryPager([], false, { continuationToken: null });
+        }
+        
+        // Assign watched timestamps to all history items
         const now = Math.floor(Date.now() / 1000);
         const ONE_HOUR = 3600;
-        const ITEMS_PER_PAGE = 64; // Approximate items per page
-        const pageOffset = (page - 1) * ITEMS_PER_PAGE * ONE_HOUR;
         
-        // Create platform videos with proper watched timestamps
-        const platformVideos = videos.map((v, index) => {
-            // Each item is assumed to be watched 1 hour apart (most recent first)
-            // Offset by page to ensure continuity across pages
-            const watchedTimestamp = now - pageOffset - (index * ONE_HOUR);
+        const platformVideos = allVideos.map((v, index) => {
+            const watchedTimestamp = now - (index * ONE_HOUR);
             return createHistoryPlatformVideo(v, watchedTimestamp);
         });
         
-        // Debug: Log first platform video details
-        if (platformVideos.length > 0) {
-            const pv = platformVideos[0];
-            const pvIdValue = pv.id && pv.id.value ? pv.id.value : String(pv.id);
-            log("syncRemoteWatchHistory: First PlatformVideo - ID.value: " + pvIdValue + ", URL: " + pv.url + ", Name: " + (pv.name || '').substring(0, 50) + ", Datetime: " + pv.datetime);
-        }
-        
-        // CRITICAL FIX: Detect if there are more pages
-        // Strategy: If we got videos on this page, try the next page
-        // Only stop when we get 0 videos (empty page = end of history)
-        let hasMore = false;
-        
-        // Pattern 1: Look for explicit next page link in HTML
-        const nextPagePattern = new RegExp(`[?&]page=${page + 1}`, 'i');
-        if (nextPagePattern.test(html)) {
-            hasMore = true;
-            log("syncRemoteWatchHistory: Found next page link (page " + (page + 1) + ")");
-        }
-        
-        // Pattern 2: Look for any pagination links with higher page numbers
-        if (!hasMore) {
-            const anyHigherPage = html.match(/[?&]page=(\d+)/gi);
-            if (anyHigherPage) {
-                for (const match of anyHigherPage) {
-                    const pageNum = parseInt(match.replace(/[?&]page=/i, ''));
-                    if (pageNum > page) {
-                        hasMore = true;
-                        log("syncRemoteWatchHistory: Found pagination link to page " + pageNum);
-                        break;
-                    }
-                }
-            }
-        }
-        
-        // Pattern 3: Look for "next" button or arrow in pagination
-        if (!hasMore) {
-            const hasNextButton = /class="[^"]*next[^"]*"|rel="next"|>next<|>\s*»\s*<|>\s*›\s*</i.test(html);
-            if (hasNextButton) {
-                hasMore = true;
-                log("syncRemoteWatchHistory: Found 'next' pagination button");
-            }
-        }
-        
-        // Pattern 4: If we got a reasonable number of videos, assume there might be more
-        // SpankBang typically shows 20-30 videos per page
-        // Only stop pagination when we get significantly fewer videos (indicating last page)
-        if (!hasMore && videos.length >= 15) {
-            hasMore = true;
-            log("syncRemoteWatchHistory: Got " + videos.length + " videos, assuming more pages exist");
-        }
-        
-        const nextToken = hasMore ? (page + 1).toString() : null;
-        
-        log("syncRemoteWatchHistory: Returning " + platformVideos.length + " platform videos via VideoPager");
-        log("syncRemoteWatchHistory: hasMore = " + hasMore + ", nextToken = " + (nextToken || "null"));
+        log("syncRemoteWatchHistory: Returning " + platformVideos.length + " total history videos");
         log("===== SYNC REMOTE WATCH HISTORY END =====");
         
-        return new SpankBangHistoryPager(platformVideos, hasMore, { continuationToken: nextToken });
+        // Return all videos at once, no more pages needed
+        return new SpankBangHistoryPager(platformVideos, false, { continuationToken: null });
 
     } catch (error) {
         log("syncRemoteWatchHistory: EXCEPTION - " + error.message);
@@ -7122,4 +7069,4 @@ class SpankBangHistoryPager extends VideoPager {
     }
 }
 
-log("SpankBang plugin loaded - v88");
+log("SpankBang plugin loaded - v89");
