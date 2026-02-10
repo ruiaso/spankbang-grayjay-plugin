@@ -5108,7 +5108,8 @@ source.getUserHistory = function() {
         // Log first video for debugging thumbnails
         if (platformVideos.length > 0) {
             const firstVideo = platformVideos[0];
-            log("getUserHistory: First video - ID: " + firstVideo.id + ", Title: " + (firstVideo.name || '').substring(0, 50) + ", Thumbnail: " + (firstVideo.thumbnails && firstVideo.thumbnails.sources && firstVideo.thumbnails.sources.length > 0 ? firstVideo.thumbnails.sources[0].url : 'NO THUMBNAIL'));
+            const videoIdValue = firstVideo.id && firstVideo.id.value ? firstVideo.id.value : String(firstVideo.id);
+            log("getUserHistory: First video - ID: " + videoIdValue + ", Title: " + (firstVideo.name || '').substring(0, 50) + ", Thumbnail: " + (firstVideo.thumbnails && firstVideo.thumbnails.sources && firstVideo.thumbnails.sources.length > 0 ? firstVideo.thumbnails.sources[0].url : 'NO THUMBNAIL'));
         }
         
         // Return a Pager object with pagination support
@@ -5189,16 +5190,23 @@ source.syncRemoteWatchHistory = function(continuationToken) {
         } else {
             log("syncRemoteWatchHistory: SUCCESS - Found " + videos.length + " videos!");
             if (videos.length > 0) {
-                log("syncRemoteWatchHistory: First video - ID: " + videos[0].id + ", Title: " + (videos[0].title || '').substring(0, 50));
+                log("syncRemoteWatchHistory: First video - ID: " + videos[0].id + ", Title: " + (videos[0].title || '').substring(0, 50) + ", URL: " + (videos[0].url || 'NO URL'));
             }
         }
         
         const platformVideos = videos.map(v => createPlatformVideo(v));
         
+        // Debug: Log first platform video details
+        if (platformVideos.length > 0) {
+            const pv = platformVideos[0];
+            const pvIdValue = pv.id && pv.id.value ? pv.id.value : String(pv.id);
+            log("syncRemoteWatchHistory: First PlatformVideo - ID.value: " + pvIdValue + ", URL: " + pv.url + ", Name: " + (pv.name || '').substring(0, 50));
+        }
+        
         const hasMore = videos.length >= 20;
         const nextToken = hasMore ? (page + 1).toString() : null;
         
-        log("syncRemoteWatchHistory: Returning " + platformVideos.length + " platform videos");
+        log("syncRemoteWatchHistory: Returning " + platformVideos.length + " platform videos via VideoPager");
         log("syncRemoteWatchHistory: hasMore = " + hasMore + ", nextToken = " + (nextToken || "null"));
         log("===== SYNC REMOTE WATCH HISTORY END =====");
         
@@ -6951,7 +6959,7 @@ class SpankBangCommentPager extends CommentPager {
     }
 }
 
-class SpankBangHistoryPager extends ContentPager {
+class SpankBangHistoryPager extends VideoPager {
     constructor(results, hasMore, context) {
         super(results, hasMore);
         this.context = context;
@@ -6962,4 +6970,4 @@ class SpankBangHistoryPager extends ContentPager {
     }
 }
 
-log("SpankBang plugin loaded - v80");
+log("SpankBang plugin loaded - v81");
