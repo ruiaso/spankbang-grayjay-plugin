@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 97,
+  "version": 90,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -40,24 +40,6 @@
   "supportedClaimTypes": [3],
   "primaryClaimFieldType": 3,
   "changelog": {
-    "93": [
-      "FIX: Duration/timecode now shows on channel page video thumbnails",
-      "Added data-testid='video-item-length' pattern for duration extraction",
-      "Improved parseDuration() to handle '16m', '1h 23m' formats",
-      "Added short duration format pattern like '>16m<' in HTML"
-    ],
-    "92": [
-      "FIX: Channel/pornstar avatars now fetched in createPlatformAuthor()",
-      "Avatar fetch happens when creating author if avatar is missing",
-      "Added fetchPornstarAvatar() function for pornstar profile pics",
-      "Avatars are cached to avoid repeated fetches"
-    ],
-    "91": [
-      "Added channel avatar fetching from channel pages",
-      "Channel profile pics now show in home/search results",
-      "Added avatar caching to avoid repeated fetches",
-      "fetchChannelAvatar() fetches avatar from channel page when not in video listing"
-    ],
     "90": [
       "FIX: Always use ?page=X URL format (even for page 1)",
       "Simplified pagination logic - keeps fetching until page returns 0 videos",

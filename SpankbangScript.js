@@ -13,7 +13,6 @@ const USER_URLS = {
 var config = {};
 let localConfig = {
     pornstarShortIds: {},
-    channelAvatars: {},  // Cache for channel avatars: { "shortId:slug": "avatarUrl" }
     lastRequestTime: 0,
     requestDelay: 500, // Increased to 500ms delay between requests to avoid rate limiting
     consecutiveErrors: 0
@@ -449,31 +448,14 @@ function parseDuration(durationStr) {
     if (typeof durationStr === 'number') {
         return durationStr;
     }
-    
-    const str = durationStr.toString().trim().toLowerCase();
 
     // Handle pure numeric strings (seconds only)
-    const numericOnly = str.match(/^(\d+)$/);
+    const numericOnly = durationStr.toString().trim().match(/^(\d+)$/);
     if (numericOnly) {
         return parseInt(numericOnly[1]);
     }
-    
-    // Handle simple formats like "16m", "1h", "45s", "1h 23m", "16m 30s"
-    const simpleMatch = str.match(/^(\d+)\s*(h|m|s)(?:\s*(\d+)\s*(h|m|s))?(?:\s*(\d+)\s*(h|m|s))?$/);
-    if (simpleMatch) {
-        for (let i = 1; i < simpleMatch.length; i += 2) {
-            if (simpleMatch[i] && simpleMatch[i + 1]) {
-                const num = parseInt(simpleMatch[i]);
-                const unit = simpleMatch[i + 1];
-                if (unit === 'h') totalSeconds += num * 3600;
-                else if (unit === 'm') totalSeconds += num * 60;
-                else if (unit === 's') totalSeconds += num;
-            }
-        }
-        if (totalSeconds > 0) return totalSeconds;
-    }
 
-    const colonMatch = str.match(/(\d+):(\d+)(?::(\d+))?/);
+    const colonMatch = durationStr.match(/(\d+):(\d+)(?::(\d+))?/);
     if (colonMatch) {
         if (colonMatch[3]) {
             totalSeconds = parseInt(colonMatch[1]) * 3600 + parseInt(colonMatch[2]) * 60 + parseInt(colonMatch[3]);
@@ -483,7 +465,7 @@ function parseDuration(durationStr) {
         return totalSeconds;
     }
 
-    const parts = str.match(REGEX_PATTERNS.parsing.duration);
+    const parts = durationStr.toLowerCase().match(REGEX_PATTERNS.parsing.duration);
     if (parts) {
         for (const part of parts) {
             const numericValue = parseInt(part);
@@ -513,30 +495,6 @@ function extractAllDurationCandidatesFromContext(html, opts = {}) {
     if (!html || typeof html !== 'string') return [];
 
     const candidates = [];
-
-    // 0) SpankBang NEW: data-testid="video-item-length" pattern (e.g., "16m", "1h 23m")
-    const videoItemLengthPattern = /data-testid=["']video-item-length["'][^>]*>[\s\S]*?(\d+(?:h|m|s)[\s\d hms]*)<\/div>/gi;
-    let vilMatch;
-    while ((vilMatch = videoItemLengthPattern.exec(html)) !== null) {
-        if (vilMatch[1]) {
-            const parsed = parseDuration(vilMatch[1].trim());
-            if (parsed > 0 && parsed <= options.maxSeconds) {
-                candidates.push(parsed);
-            }
-        }
-    }
-    
-    // Also try simpler pattern for video-item-length
-    const vilSimplePattern = /data-testid=["']video-item-length["'][^>]*>\s*(\d+[hms]?\s*\d*[hms]?)\s*<\/div>/gi;
-    let vilSimple;
-    while ((vilSimple = vilSimplePattern.exec(html)) !== null) {
-        if (vilSimple[1]) {
-            const parsed = parseDuration(vilSimple[1].trim());
-            if (parsed > 0 && parsed <= options.maxSeconds) {
-                candidates.push(parsed);
-            }
-        }
-    }
 
     // 1) Data attributes (often seconds)
     const dataAttrPatterns = [
@@ -601,22 +559,6 @@ function extractAllDurationCandidatesFromContext(html, opts = {}) {
 
         const parsed = parseDuration(token);
         if (parsed > 0 && parsed <= options.maxSeconds) candidates.push(parsed);
-    }
-    
-    // 5) Short format like "16m" or "1h" standalone
-    const shortDurationPattern = />\s*(\d+)\s*(h|m|s)\s*</gi;
-    let shortMatch;
-    while ((shortMatch = shortDurationPattern.exec(html)) !== null) {
-        const num = parseInt(shortMatch[1]);
-        const unit = shortMatch[2].toLowerCase();
-        let seconds = 0;
-        if (unit === 'h') seconds = num * 3600;
-        else if (unit === 'm') seconds = num * 60;
-        else if (unit === 's') seconds = num;
-        
-        if (seconds > 0 && seconds <= options.maxSeconds) {
-            candidates.push(seconds);
-        }
     }
 
     // De-dupe + basic sanity
@@ -1228,12 +1170,6 @@ function extractUploaderFromVideoToolbar(html) {
 }
 
 function extractChannelAvatarNearLink(html, shortId, channelName) {
-    // First check cache
-    const cacheKey = `${shortId}:${channelName}`;
-    if (localConfig.channelAvatars && localConfig.channelAvatars[cacheKey]) {
-        return localConfig.channelAvatars[cacheKey];
-    }
-    
     const patterns = [
         // Look for images before channel links
         new RegExp(`<img[^>]*(?:data-src|src)="([^"]+)"[^>]*>[\\s\\S]{0,300}href="/${shortId}/channel/${channelName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`, 'i'),
@@ -1268,156 +1204,17 @@ function extractChannelAvatarNearLink(html, shortId, channelName) {
             // Validate it looks like a reasonable avatar URL
             if (avatar.includes('.jpg') || avatar.includes('.png') || avatar.includes('.webp') || 
                 avatar.includes('avatar') || avatar.includes('profile')) {
-                // Cache it
-                if (localConfig.channelAvatars) {
-                    localConfig.channelAvatars[cacheKey] = avatar;
-                }
                 return avatar;
             }
         }
+    }
+    
+    // Generate a fallback channel avatar URL (speculative)
+    if (shortId && channelName) {
+        return `https://spankbang.com/avatar/channel/${shortId}/${channelName.toLowerCase().replace(/[^a-z0-9]/g, '')}.jpg`;
     }
     
     return "";
-}
-
-// Fetch channel avatar from the channel page itself
-function fetchChannelAvatar(shortId, channelSlug) {
-    const cacheKey = `${shortId}:${channelSlug}`;
-    
-    // Check cache first
-    if (localConfig.channelAvatars && localConfig.channelAvatars[cacheKey]) {
-        return localConfig.channelAvatars[cacheKey];
-    }
-    
-    try {
-        const channelUrl = `${BASE_URL}/${shortId}/channel/${channelSlug}/`;
-        log("fetchChannelAvatar: Fetching avatar from " + channelUrl);
-        
-        const response = makeRequestNoThrow(channelUrl, API_HEADERS, 'channel avatar');
-        
-        if (!response.isOk || !response.body) {
-            log("fetchChannelAvatar: Failed to fetch channel page");
-            return "";
-        }
-        
-        const html = response.body;
-        
-        // Look for avatar in channel page - multiple patterns
-        const avatarPatterns = [
-            // data-testid="profile-detail-image" pattern (from user's example)
-            /<img[^>]*data-testid=["']profile-detail-image["'][^>]*src=["']([^"']+)["']/i,
-            /<img[^>]*src=["']([^"']+)["'][^>]*data-testid=["']profile-detail-image["']/i,
-            // Avatar in profile section
-            /<img[^>]*class=["'][^"']*(?:profile|avatar)[^"']*["'][^>]*src=["']([^"']+)["']/i,
-            // Channel avatar URL pattern
-            /src=["']((?:https?:)?\/\/spankbang\.com\/avatar\/\d+\/channel_\d+\.jpg)["']/i,
-            /src=["']([^"']*\/avatar\/[^"']+)["']/i,
-            // Any image with avatar in URL
-            /(?:data-src|src)=["']([^"']*avatar[^"']*\.(?:jpg|png|webp))["']/i
-        ];
-        
-        for (const pattern of avatarPatterns) {
-            const match = html.match(pattern);
-            if (match && match[1]) {
-                let avatar = match[1];
-                
-                // Ensure proper protocol
-                if (avatar.startsWith('//')) {
-                    avatar = 'https:' + avatar;
-                } else if (!avatar.startsWith('http')) {
-                    avatar = 'https://spankbang.com' + avatar;
-                }
-                
-                log("fetchChannelAvatar: Found avatar for " + channelSlug + ": " + avatar);
-                
-                // Cache it
-                if (!localConfig.channelAvatars) {
-                    localConfig.channelAvatars = {};
-                }
-                localConfig.channelAvatars[cacheKey] = avatar;
-                
-                return avatar;
-            }
-        }
-        
-        log("fetchChannelAvatar: No avatar found for " + channelSlug);
-        return "";
-        
-    } catch (e) {
-        log("fetchChannelAvatar: Error - " + e.message);
-        return "";
-    }
-}
-
-// Fetch pornstar avatar from their page
-function fetchPornstarAvatar(pornstarSlug) {
-    // Check cache first
-    const cacheKey = `pornstar:${pornstarSlug}`;
-    if (localConfig.channelAvatars && localConfig.channelAvatars[cacheKey]) {
-        return localConfig.channelAvatars[cacheKey];
-    }
-    
-    try {
-        // First try to resolve the shortId
-        const shortId = resolvePornstarShortId(pornstarSlug);
-        
-        let pornstarUrl;
-        if (shortId) {
-            pornstarUrl = `${BASE_URL}/${shortId}/pornstar/${pornstarSlug}/`;
-        } else {
-            pornstarUrl = `${BASE_URL}/pornstar/${pornstarSlug}/`;
-        }
-        
-        log("fetchPornstarAvatar: Fetching avatar from " + pornstarUrl);
-        
-        const response = makeRequestNoThrow(pornstarUrl, API_HEADERS, 'pornstar avatar');
-        
-        if (!response.isOk || !response.body) {
-            log("fetchPornstarAvatar: Failed to fetch pornstar page");
-            return "";
-        }
-        
-        const html = response.body;
-        
-        // Look for avatar patterns
-        const avatarPatterns = [
-            /<img[^>]*data-testid=["']profile-detail-image["'][^>]*src=["']([^"']+)["']/i,
-            /<img[^>]*src=["']([^"']+)["'][^>]*data-testid=["']profile-detail-image["']/i,
-            /src=["']((?:https?:)?\/\/spankbang\.com\/pornstarimg\/[^"']+)["']/i,
-            /src=["']([^"']*pornstarimg[^"']*\.(?:jpg|png|webp))["']/i,
-            /<img[^>]*class=["'][^"']*(?:profile|avatar)[^"']*["'][^>]*src=["']([^"']+)["']/i
-        ];
-        
-        for (const pattern of avatarPatterns) {
-            const match = html.match(pattern);
-            if (match && match[1]) {
-                let avatar = match[1];
-                
-                if (avatar.startsWith('//')) {
-                    avatar = 'https:' + avatar;
-                } else if (!avatar.startsWith('http')) {
-                    avatar = 'https://spankbang.com' + avatar;
-                }
-                
-                log("fetchPornstarAvatar: Found avatar for " + pornstarSlug + ": " + avatar);
-                
-                // Cache it
-                if (!localConfig.channelAvatars) {
-                    localConfig.channelAvatars = {};
-                }
-                localConfig.channelAvatars[cacheKey] = avatar;
-                
-                return avatar;
-            }
-        }
-        
-        log("fetchPornstarAvatar: No avatar found for " + pornstarSlug);
-        return "";
-        
-    } catch (e) {
-        log("fetchPornstarAvatar: Error - " + e.message);
-        return "";
-    }
 }
 
 function fetchUploaderAvatarIfNeeded(uploader, html) {
@@ -1435,13 +1232,7 @@ function fetchUploaderAvatarIfNeeded(uploader, html) {
         const channelId = parts[parts.length - 1];
         if (channelId && channelId.includes(':')) {
             const [shortId, channelName] = channelId.split(':');
-            // First try to extract from current HTML
-            let avatar = extractChannelAvatarNearLink(html, shortId, channelName);
-            if (!avatar) {
-                // If not found, fetch from channel page
-                avatar = fetchChannelAvatar(shortId, channelName);
-            }
-            return avatar;
+            return extractChannelAvatarNearLink(html, shortId, channelName);
         }
     }
     
@@ -2225,18 +2016,13 @@ function createThumbnails(thumbnail) {
 }
 
 function createPlatformAuthor(uploader) {
-    let avatar = uploader.avatar || "";
+    const avatar = uploader.avatar || "";
     const authorUrl = uploader.url || "";
     const authorName = uploader.name || "";
 
-    // NOTE: We intentionally do NOT fetch avatars here anymore
-    // The old working versions (v85 and earlier) never fetched avatars automatically
-    // Fetching avatars for every video caused 16+ second delays on home page load
-    // Avatars are only fetched when explicitly viewing a channel page
-
     // Log what we're creating for debugging
     if (authorName && authorUrl) {
-        log(`createPlatformAuthor: Creating author "${authorName}" with URL: ${authorUrl}, avatar: ${avatar ? 'YES' : 'NO'}`);
+        log(`createPlatformAuthor: Creating author "${authorName}" with URL: ${authorUrl}`);
     } else if (authorName) {
         log(`createPlatformAuthor: Creating author "${authorName}" with NO URL (will not be clickable)`);
     } else {
@@ -7278,4 +7064,4 @@ class SpankBangHistoryPager extends VideoPager {
     }
 }
 
-log("SpankBang plugin loaded - v97");
+log("SpankBang plugin loaded - v90");
