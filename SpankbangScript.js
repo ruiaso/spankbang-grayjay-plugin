@@ -2311,40 +2311,45 @@ function createThumbnails(thumbnail) {
     ]);
 }
 
-function createPlatformAuthor(uploader) {
+function createPlatformAuthor(uploader, skipAvatarFetch = false) {
     let avatar = uploader.avatar || "";
     const authorUrl = uploader.url || "";
     const authorName = uploader.name || "";
 
-    // If no avatar and this is a channel, try to fetch it
-    if (!avatar && authorUrl && authorUrl.includes('channel/')) {
-        // Extract channel info from URL like "spankbang://channel/zz:mommy+s+boy"
-        const channelMatch = authorUrl.match(/channel\/([^:]+):(.+)$/);
-        if (channelMatch) {
-            const shortId = channelMatch[1];
-            const channelSlug = channelMatch[2];
-            log(`createPlatformAuthor: Fetching avatar for channel ${channelSlug}`);
-            avatar = fetchChannelAvatar(shortId, channelSlug);
+    // OPTIMIZATION: Skip avatar fetching during home feed loading to improve performance
+    // Avatars will be fetched lazily when viewing video details or channel pages
+    if (!skipAvatarFetch) {
+        // If no avatar and this is a channel, check cache first then optionally fetch
+        if (!avatar && authorUrl && authorUrl.includes('channel/')) {
+            // Extract channel info from URL like "spankbang://channel/zz:mommy+s+boy"
+            const channelMatch = authorUrl.match(/channel\/([^:]+):(.+)$/);
+            if (channelMatch) {
+                const shortId = channelMatch[1];
+                const channelSlug = channelMatch[2];
+                const cacheKey = `${shortId}:${channelSlug}`;
+                
+                // Check cache first - NO network request if cached
+                if (localConfig.channelAvatars && localConfig.channelAvatars[cacheKey]) {
+                    avatar = localConfig.channelAvatars[cacheKey];
+                }
+                // Don't fetch if not in cache - let it be fetched on demand later
+            }
         }
-    }
-    
-    // If no avatar and this is a pornstar, try to fetch it
-    if (!avatar && authorUrl && authorUrl.includes('pornstar:')) {
-        const pornstarMatch = authorUrl.match(/pornstar:(.+)$/);
-        if (pornstarMatch) {
-            const pornstarSlug = pornstarMatch[1];
-            log(`createPlatformAuthor: Fetching avatar for pornstar ${pornstarSlug}`);
-            avatar = fetchPornstarAvatar(pornstarSlug);
+        
+        // If no avatar and this is a pornstar, check cache first
+        if (!avatar && authorUrl && authorUrl.includes('pornstar:')) {
+            const pornstarMatch = authorUrl.match(/pornstar:(.+)$/);
+            if (pornstarMatch) {
+                const pornstarSlug = pornstarMatch[1];
+                const cacheKey = `pornstar:${pornstarSlug}`;
+                
+                // Check cache first - NO network request if cached
+                if (localConfig.channelAvatars && localConfig.channelAvatars[cacheKey]) {
+                    avatar = localConfig.channelAvatars[cacheKey];
+                }
+                // Don't fetch if not in cache - let it be fetched on demand later
+            }
         }
-    }
-
-    // Log what we're creating for debugging
-    if (authorName && authorUrl) {
-        log(`createPlatformAuthor: Creating author "${authorName}" with URL: ${authorUrl}, avatar: ${avatar ? 'YES' : 'NO'}`);
-    } else if (authorName) {
-        log(`createPlatformAuthor: Creating author "${authorName}" with NO URL (will not be clickable)`);
-    } else {
-        log(`createPlatformAuthor: Creating EMPTY author (no name, no URL)`);
     }
 
     return new PlatformAuthorLink(
@@ -2366,15 +2371,14 @@ function hasValidUploader(uploader) {
     return true;
 }
 
-function createPlatformVideo(videoData) {
+function createPlatformVideo(videoData, skipAvatarFetch = false) {
     const uploader = videoData.uploader || {};
     
     // CRITICAL: Only create author if we have a valid uploader with a URL
     // If no real uploader exists, create an author that Grayjay won't make clickable
     let author;
     if (hasValidUploader(uploader)) {
-        author = createPlatformAuthor(uploader);
-        log(`createPlatformVideo: Video ${videoData.id} has VALID uploader: "${uploader.name}"`);
+        author = createPlatformAuthor(uploader, skipAvatarFetch);
     } else {
         // No valid uploader - create author with NO URL at all
         // Grayjay should not make this clickable when URL is empty
@@ -4410,9 +4414,21 @@ source.enable = function(conf, settings, savedStateStr) {
     if (!localConfig.pornstarShortIds) {
         localConfig.pornstarShortIds = {};
     }
+    
+    if (!localConfig.channelAvatars) {
+        localConfig.channelAvatars = {};
+    }
+    
+    if (!localConfig.homeCache) {
+        localConfig.homeCache = {
+            videos: [],
+            timestamp: 0
+        };
+    }
 
     if (savedStateStr) {
         try {
+            log("enable: Parsing saved state string of length " + savedStateStr.length);
             const savedState = JSON.parse(savedStateStr);
             state.sessionCookie = savedState.sessionCookie || "";
             state.isAuthenticated = savedState.isAuthenticated || false;
@@ -4420,26 +4436,34 @@ source.enable = function(conf, settings, savedStateStr) {
             state.username = savedState.username || "";
             state.userId = savedState.userId || "";
             
-            if (savedState.pornstarShortIds) {
+            if (savedState.pornstarShortIds && Object.keys(savedState.pornstarShortIds).length > 0) {
                 localConfig.pornstarShortIds = savedState.pornstarShortIds;
                 log("Restored " + Object.keys(localConfig.pornstarShortIds).length + " cached pornstar IDs");
+            } else {
+                log("No cached pornstar IDs to restore");
             }
             
-            if (savedState.channelAvatars) {
+            if (savedState.channelAvatars && Object.keys(savedState.channelAvatars).length > 0) {
                 localConfig.channelAvatars = savedState.channelAvatars;
                 log("Restored " + Object.keys(localConfig.channelAvatars).length + " cached channel avatars");
+            } else {
+                log("No cached channel avatars to restore");
             }
             
             if (savedState.homeCache && savedState.homeCache.videos && savedState.homeCache.videos.length > 0) {
                 localConfig.homeCache = savedState.homeCache;
                 const cacheAge = Date.now() - (savedState.homeCache.timestamp || 0);
                 log("Restored home cache with " + savedState.homeCache.videos.length + " videos (age: " + Math.round(cacheAge/1000) + "s)");
+            } else {
+                log("No home cache to restore - will fetch fresh content");
             }
             
             log("State loaded: authenticated=" + state.isAuthenticated + ", username=" + state.username);
         } catch (e) {
             log("Failed to parse saved state: " + e);
         }
+    } else {
+        log("enable: No saved state provided - fresh start");
     }
     
     if (typeof bridge !== 'undefined' && bridge.isLoggedIn && bridge.isLoggedIn()) {
@@ -4463,16 +4487,21 @@ source.disable = function() {
 };
 
 source.saveState = function() {
-    return JSON.stringify({
+    const stateToSave = {
         sessionCookie: state.sessionCookie,
         isAuthenticated: state.isAuthenticated,
         authCookies: state.authCookies,
         username: state.username,
         userId: state.userId,
-        pornstarShortIds: localConfig.pornstarShortIds,
-        channelAvatars: localConfig.channelAvatars,
-        homeCache: localConfig.homeCache
-    });
+        pornstarShortIds: localConfig.pornstarShortIds || {},
+        channelAvatars: localConfig.channelAvatars || {},
+        homeCache: localConfig.homeCache || { videos: [], timestamp: 0 }
+    };
+    
+    log("saveState: Saving " + Object.keys(stateToSave.channelAvatars).length + " channel avatars, " +
+        (stateToSave.homeCache.videos ? stateToSave.homeCache.videos.length : 0) + " cached home videos");
+    
+    return JSON.stringify(stateToSave);
 };
 
 source.getLoggedInUser = function() {
@@ -4852,7 +4881,8 @@ source.getWatchHistory = function() {
         
         // Return full video objects (PlatformVideo) instead of just URLs
         // This ensures thumbnails, duration, and other metadata are preserved in history
-        return videos.map(v => createPlatformVideo(v));
+        // Skip avatar fetching for performance
+        return videos.map(v => createPlatformVideo(v, true));
 
     } catch (error) {
         log("getWatchHistory error: " + error.message);
@@ -5905,7 +5935,8 @@ source.getHome = function(continuationToken) {
         // Check if we have cached content for page 1 (persists until manual refresh)
         if (page === 1 && localConfig.homeCache && localConfig.homeCache.videos && localConfig.homeCache.videos.length > 0) {
             log("getHome: Using cached content (" + localConfig.homeCache.videos.length + " videos)");
-            const platformVideos = localConfig.homeCache.videos.map(v => createPlatformVideo(v));
+            // Use skipAvatarFetch=true when loading from cache to avoid network requests
+            const platformVideos = localConfig.homeCache.videos.map(v => createPlatformVideo(v, true));
             return new SpankBangHomeContentPager(platformVideos, true, { continuationToken: "2" });
         }
         
@@ -5915,7 +5946,8 @@ source.getHome = function(continuationToken) {
 
         const html = makeRequest(url, API_HEADERS, 'home content');
         const videos = parseSearchResults(html);
-        const platformVideos = videos.map(v => createPlatformVideo(v));
+        // Skip avatar fetching during initial home load to improve performance
+        const platformVideos = videos.map(v => createPlatformVideo(v, true));
 
         // Cache page 1 results (persists until manual refresh)
         if (page === 1 && videos.length > 0) {
@@ -6174,7 +6206,8 @@ source.search = function(query, type, order, filters, continuationToken) {
 
         const html = makeRequest(searchUrl, API_HEADERS, 'search');
         const videos = parseSearchResults(html);
-        const platformVideos = videos.map(v => createPlatformVideo(v));
+        // Skip avatar fetching during search results for performance
+        const platformVideos = videos.map(v => createPlatformVideo(v, true));
 
         const hasMore = videos.length >= 20;
         const nextToken = hasMore ? (page + 1).toString() : null;
@@ -6646,7 +6679,8 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
         const videos = parseSearchResults(html);
         log("Parsed " + videos.length + " videos from channel contents");
         
-        const platformVideos = videos.map(v => createPlatformVideo(v));
+        // Skip avatar fetching for channel content lists for performance
+        const platformVideos = videos.map(v => createPlatformVideo(v, true));
 
         const hasMore = videos.length >= 20;
         const nextToken = hasMore ? (page + 1).toString() : null;
@@ -6721,7 +6755,8 @@ source.getContentRecommendations = function(url) {
         const videoData = parseVideoPage(html, url);
 
         if (videoData.relatedVideos && videoData.relatedVideos.length > 0) {
-            const platformVideos = videoData.relatedVideos.map(v => createPlatformVideo(v));
+            // Skip avatar fetching for recommendations list for performance
+            const platformVideos = videoData.relatedVideos.map(v => createPlatformVideo(v, true));
             return new SpankBangSearchPager(platformVideos, false, { url: url });
         }
 
@@ -7211,7 +7246,7 @@ source.getPlaylist = function(url) {
             log("Raw video links found in HTML: " + (anyVideoLinks ? anyVideoLinks.length : 0));
         }
         
-        const platformVideos = videos.map(v => createPlatformVideo(v));
+        const platformVideos = videos.map(v => createPlatformVideo(v, true));
         
         // Get thumbnail URL from first video if available
         const thumbnailUrl = videos.length > 0 && videos[0].thumbnail ? videos[0].thumbnail : "";
@@ -7379,7 +7414,7 @@ class SpankBangPlaylistVideosPager extends ContentPager {
             
             log(`SpankBangPlaylistVideosPager: Found ${videos.length} videos on page ${nextPage}`);
             
-            const platformVideos = videos.map(v => createPlatformVideo(v));
+            const platformVideos = videos.map(v => createPlatformVideo(v, true));
             
             // Check if there are more pages
             const hasMore = videos.length >= 20 || 
@@ -7420,4 +7455,4 @@ class SpankBangHistoryPager extends VideoPager {
     }
 }
 
-log("SpankBang plugin loaded - v98");
+log("SpankBang plugin loaded - v102");
