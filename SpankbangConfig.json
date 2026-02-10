@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 81,
+  "version": 82,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -40,6 +40,14 @@
   "supportedClaimTypes": [3],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "82": [
+      "CRITICAL FIX: History import now sets proper datetime timestamps (required by GrayJay)",
+      "GrayJay requires valid datetime values for history import - was setting 0 causing 'imported no history items'",
+      "Created createHistoryPlatformVideo() helper function for history-specific video creation",
+      "History items now get watched timestamps in descending order (most recent = now)",
+      "syncRemoteWatchHistory now properly offsets timestamps for paginated results",
+      "Added logging for datetime values to help diagnose future issues"
+    ],
     "81": [
       "CRITICAL FIX: Changed SpankBangHistoryPager to extend VideoPager instead of ContentPager",
       "This matches Grayjay's expected format for syncRemoteWatchHistory",

@@ -5056,6 +5056,40 @@ function fetchVideoBasicInfo(videoId) {
     }
 }
 
+// Helper function to create history video with proper watched timestamp
+// GrayJay requires datetime to be set for history import to work
+function createHistoryPlatformVideo(videoData, watchedTimestamp) {
+    const uploader = videoData.uploader || {};
+    
+    let author;
+    if (hasValidUploader(uploader)) {
+        author = createPlatformAuthor(uploader);
+    } else {
+        author = new PlatformAuthorLink(
+            new PlatformID(PLATFORM, PLATFORM, plugin.config.id),
+            "",
+            "",
+            ""
+        );
+    }
+    
+    // CRITICAL: For history items, datetime must be the WATCHED timestamp, not upload date
+    // GrayJay uses this to determine when the video was watched for history import
+    const datetime = watchedTimestamp || Math.floor(Date.now() / 1000);
+    
+    return new PlatformVideo({
+        id: new PlatformID(PLATFORM, videoData.id || "", plugin.config.id),
+        name: videoData.title || "Untitled",
+        thumbnails: createThumbnails(videoData.thumbnail),
+        author: author,
+        datetime: datetime, // Use watched timestamp, NOT upload date
+        duration: videoData.duration || 0,
+        viewCount: videoData.views || 0,
+        url: videoData.url || `${CONFIG.EXTERNAL_URL_BASE}/${videoData.id}/video/`,
+        isLive: false
+    });
+}
+
 // Add getUserHistory function for GrayJay plugin testing
 source.getUserHistory = function() {
     try {
@@ -5102,14 +5136,29 @@ source.getUserHistory = function() {
         
         log("getUserHistory: Found " + videos.length + " videos");
         
-        // Return full PlatformVideo objects with all metadata
-        const platformVideos = videos.map(v => createPlatformVideo(v));
+        // CRITICAL FIX: Assign watched timestamps to history items
+        // SpankBang history page shows most recently watched first
+        // Since the page doesn't show exact watched times, we assign timestamps
+        // in descending order (most recent = now, older items = further back)
+        const now = Math.floor(Date.now() / 1000);
+        const ONE_HOUR = 3600;
         
-        // Log first video for debugging thumbnails
+        // Create platform videos with proper watched timestamps
+        const platformVideos = videos.map((v, index) => {
+            // Each item is assumed to be watched 1 hour apart (most recent first)
+            // This ensures GrayJay gets valid timestamps for history import
+            const watchedTimestamp = now - (index * ONE_HOUR);
+            return createHistoryPlatformVideo(v, watchedTimestamp);
+        });
+        
+        // Log first video for debugging
         if (platformVideos.length > 0) {
             const firstVideo = platformVideos[0];
             const videoIdValue = firstVideo.id && firstVideo.id.value ? firstVideo.id.value : String(firstVideo.id);
-            log("getUserHistory: First video - ID: " + videoIdValue + ", Title: " + (firstVideo.name || '').substring(0, 50) + ", Thumbnail: " + (firstVideo.thumbnails && firstVideo.thumbnails.sources && firstVideo.thumbnails.sources.length > 0 ? firstVideo.thumbnails.sources[0].url : 'NO THUMBNAIL'));
+            log("getUserHistory: First video - ID: " + videoIdValue + 
+                ", Title: " + (firstVideo.name || '').substring(0, 50) + 
+                ", Datetime: " + firstVideo.datetime +
+                ", Thumbnail: " + (firstVideo.thumbnails && firstVideo.thumbnails.sources && firstVideo.thumbnails.sources.length > 0 ? firstVideo.thumbnails.sources[0].url : 'NO THUMBNAIL'));
         }
         
         // Return a Pager object with pagination support
@@ -5194,13 +5243,29 @@ source.syncRemoteWatchHistory = function(continuationToken) {
             }
         }
         
-        const platformVideos = videos.map(v => createPlatformVideo(v));
+        // CRITICAL FIX: Assign watched timestamps to history items
+        // SpankBang history page shows most recently watched first
+        // Since the page doesn't show exact watched times, we assign timestamps
+        // in descending order (most recent = now, older items = further back)
+        // For paginated results, offset by page number
+        const now = Math.floor(Date.now() / 1000);
+        const ONE_HOUR = 3600;
+        const ITEMS_PER_PAGE = 64; // Approximate items per page
+        const pageOffset = (page - 1) * ITEMS_PER_PAGE * ONE_HOUR;
+        
+        // Create platform videos with proper watched timestamps
+        const platformVideos = videos.map((v, index) => {
+            // Each item is assumed to be watched 1 hour apart (most recent first)
+            // Offset by page to ensure continuity across pages
+            const watchedTimestamp = now - pageOffset - (index * ONE_HOUR);
+            return createHistoryPlatformVideo(v, watchedTimestamp);
+        });
         
         // Debug: Log first platform video details
         if (platformVideos.length > 0) {
             const pv = platformVideos[0];
             const pvIdValue = pv.id && pv.id.value ? pv.id.value : String(pv.id);
-            log("syncRemoteWatchHistory: First PlatformVideo - ID.value: " + pvIdValue + ", URL: " + pv.url + ", Name: " + (pv.name || '').substring(0, 50));
+            log("syncRemoteWatchHistory: First PlatformVideo - ID.value: " + pvIdValue + ", URL: " + pv.url + ", Name: " + (pv.name || '').substring(0, 50) + ", Datetime: " + pv.datetime);
         }
         
         const hasMore = videos.length >= 20;
@@ -6970,4 +7035,4 @@ class SpankBangHistoryPager extends VideoPager {
     }
 }
 
-log("SpankBang plugin loaded - v81");
+log("SpankBang plugin loaded - v82");
