@@ -7389,4 +7389,4 @@ class SpankBangHistoryPager extends VideoPager {
     }
 }
 
-log("SpankBang plugin loaded - v98");
+log("SpankBang plugin loaded - v99");
