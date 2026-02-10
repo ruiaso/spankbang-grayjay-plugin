@@ -13,6 +13,7 @@ const USER_URLS = {
 var config = {};
 let localConfig = {
     pornstarShortIds: {},
+    channelAvatars: {},  // Cache for channel avatars: { "shortId:slug": "avatarUrl" }
     lastRequestTime: 0,
     requestDelay: 500, // Increased to 500ms delay between requests to avoid rate limiting
     consecutiveErrors: 0
@@ -1170,6 +1171,12 @@ function extractUploaderFromVideoToolbar(html) {
 }
 
 function extractChannelAvatarNearLink(html, shortId, channelName) {
+    // First check cache
+    const cacheKey = `${shortId}:${channelName}`;
+    if (localConfig.channelAvatars && localConfig.channelAvatars[cacheKey]) {
+        return localConfig.channelAvatars[cacheKey];
+    }
+    
     const patterns = [
         // Look for images before channel links
         new RegExp(`<img[^>]*(?:data-src|src)="([^"]+)"[^>]*>[\\s\\S]{0,300}href="/${shortId}/channel/${channelName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`, 'i'),
@@ -1204,17 +1211,85 @@ function extractChannelAvatarNearLink(html, shortId, channelName) {
             // Validate it looks like a reasonable avatar URL
             if (avatar.includes('.jpg') || avatar.includes('.png') || avatar.includes('.webp') || 
                 avatar.includes('avatar') || avatar.includes('profile')) {
+                // Cache it
+                if (localConfig.channelAvatars) {
+                    localConfig.channelAvatars[cacheKey] = avatar;
+                }
                 return avatar;
             }
         }
     }
     
-    // Generate a fallback channel avatar URL (speculative)
-    if (shortId && channelName) {
-        return `https://spankbang.com/avatar/channel/${shortId}/${channelName.toLowerCase().replace(/[^a-z0-9]/g, '')}.jpg`;
+    return "";
+}
+
+// Fetch channel avatar from the channel page itself
+function fetchChannelAvatar(shortId, channelSlug) {
+    const cacheKey = `${shortId}:${channelSlug}`;
+    
+    // Check cache first
+    if (localConfig.channelAvatars && localConfig.channelAvatars[cacheKey]) {
+        return localConfig.channelAvatars[cacheKey];
     }
     
-    return "";
+    try {
+        const channelUrl = `${BASE_URL}/${shortId}/channel/${channelSlug}/`;
+        log("fetchChannelAvatar: Fetching avatar from " + channelUrl);
+        
+        const response = makeRequestNoThrow(channelUrl, API_HEADERS, 'channel avatar');
+        
+        if (!response.isOk || !response.body) {
+            log("fetchChannelAvatar: Failed to fetch channel page");
+            return "";
+        }
+        
+        const html = response.body;
+        
+        // Look for avatar in channel page - multiple patterns
+        const avatarPatterns = [
+            // data-testid="profile-detail-image" pattern (from user's example)
+            /<img[^>]*data-testid=["']profile-detail-image["'][^>]*src=["']([^"']+)["']/i,
+            /<img[^>]*src=["']([^"']+)["'][^>]*data-testid=["']profile-detail-image["']/i,
+            // Avatar in profile section
+            /<img[^>]*class=["'][^"']*(?:profile|avatar)[^"']*["'][^>]*src=["']([^"']+)["']/i,
+            // Channel avatar URL pattern
+            /src=["']((?:https?:)?\/\/spankbang\.com\/avatar\/\d+\/channel_\d+\.jpg)["']/i,
+            /src=["']([^"']*\/avatar\/[^"']+)["']/i,
+            // Any image with avatar in URL
+            /(?:data-src|src)=["']([^"']*avatar[^"']*\.(?:jpg|png|webp))["']/i
+        ];
+        
+        for (const pattern of avatarPatterns) {
+            const match = html.match(pattern);
+            if (match && match[1]) {
+                let avatar = match[1];
+                
+                // Ensure proper protocol
+                if (avatar.startsWith('//')) {
+                    avatar = 'https:' + avatar;
+                } else if (!avatar.startsWith('http')) {
+                    avatar = 'https://spankbang.com' + avatar;
+                }
+                
+                log("fetchChannelAvatar: Found avatar for " + channelSlug + ": " + avatar);
+                
+                // Cache it
+                if (!localConfig.channelAvatars) {
+                    localConfig.channelAvatars = {};
+                }
+                localConfig.channelAvatars[cacheKey] = avatar;
+                
+                return avatar;
+            }
+        }
+        
+        log("fetchChannelAvatar: No avatar found for " + channelSlug);
+        return "";
+        
+    } catch (e) {
+        log("fetchChannelAvatar: Error - " + e.message);
+        return "";
+    }
 }
 
 function fetchUploaderAvatarIfNeeded(uploader, html) {
@@ -1232,7 +1307,13 @@ function fetchUploaderAvatarIfNeeded(uploader, html) {
         const channelId = parts[parts.length - 1];
         if (channelId && channelId.includes(':')) {
             const [shortId, channelName] = channelId.split(':');
-            return extractChannelAvatarNearLink(html, shortId, channelName);
+            // First try to extract from current HTML
+            let avatar = extractChannelAvatarNearLink(html, shortId, channelName);
+            if (!avatar) {
+                // If not found, fetch from channel page
+                avatar = fetchChannelAvatar(shortId, channelName);
+            }
+            return avatar;
         }
     }
     
@@ -7064,4 +7145,4 @@ class SpankBangHistoryPager extends VideoPager {
     }
 }
 
-log("SpankBang plugin loaded - v90");
+log("SpankBang plugin loaded - v91");
