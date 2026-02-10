@@ -26,11 +26,6 @@ var state = {
     userId: ""
 };
 
-// Home page caching - store RAW video data (not PlatformVideo objects) so it can be serialized
-var _cachedHomeRawVideos = null;
-var _cachedHomeHasMore = false;
-var _homeDataUsed = false;
-
 const CONFIG = {
     DEFAULT_PAGE_SIZE: 20,
     COMMENTS_PAGE_SIZE: 50,
@@ -2234,27 +2229,10 @@ function createPlatformAuthor(uploader) {
     const authorUrl = uploader.url || "";
     const authorName = uploader.name || "";
 
-    // If no avatar and this is a channel, try to fetch it
-    if (!avatar && authorUrl && authorUrl.includes('channel/')) {
-        // Extract channel info from URL like "spankbang://channel/zz:mommy+s+boy"
-        const channelMatch = authorUrl.match(/channel\/([^:]+):(.+)$/);
-        if (channelMatch) {
-            const shortId = channelMatch[1];
-            const channelSlug = channelMatch[2];
-            log(`createPlatformAuthor: Fetching avatar for channel ${channelSlug}`);
-            avatar = fetchChannelAvatar(shortId, channelSlug);
-        }
-    }
-    
-    // If no avatar and this is a pornstar, try to fetch it
-    if (!avatar && authorUrl && authorUrl.includes('pornstar:')) {
-        const pornstarMatch = authorUrl.match(/pornstar:(.+)$/);
-        if (pornstarMatch) {
-            const pornstarSlug = pornstarMatch[1];
-            log(`createPlatformAuthor: Fetching avatar for pornstar ${pornstarSlug}`);
-            avatar = fetchPornstarAvatar(pornstarSlug);
-        }
-    }
+    // NOTE: We intentionally do NOT fetch avatars here anymore
+    // The old working versions (v85 and earlier) never fetched avatars automatically
+    // Fetching avatars for every video caused 16+ second delays on home page load
+    // Avatars are only fetched when explicitly viewing a channel page
 
     // Log what we're creating for debugging
     if (authorName && authorUrl) {
@@ -4337,20 +4315,6 @@ source.enable = function(conf, settings, savedStateStr) {
                 localConfig.pornstarShortIds = savedState.pornstarShortIds;
             }
             
-            // Restore channel avatar cache so we don't refetch avatars every time
-            if (savedState.channelAvatars) {
-                localConfig.channelAvatars = savedState.channelAvatars;
-                log("Restored " + Object.keys(localConfig.channelAvatars).length + " cached channel avatars");
-            }
-            
-            // Restore cached home videos (raw data) so home page persists when leaving/returning
-            if (savedState.cachedHomeRawVideos && savedState.cachedHomeRawVideos.length > 0) {
-                _cachedHomeRawVideos = savedState.cachedHomeRawVideos;
-                _cachedHomeHasMore = savedState.cachedHomeHasMore || false;
-                _homeDataUsed = false; // Will use cached data on next getHome call
-                log("Restored " + _cachedHomeRawVideos.length + " cached home videos");
-            }
-            
             log("State loaded: authenticated=" + state.isAuthenticated + ", username=" + state.username);
         } catch (e) {
             log("Failed to parse saved state: " + e);
@@ -4384,12 +4348,7 @@ source.saveState = function() {
         authCookies: state.authCookies,
         username: state.username,
         userId: state.userId,
-        pornstarShortIds: localConfig.pornstarShortIds,
-        // Persist channel avatar cache so we don't refetch every time
-        channelAvatars: localConfig.channelAvatars,
-        // Cache raw home video data (not PlatformVideo objects) for persistence
-        cachedHomeRawVideos: _cachedHomeRawVideos,
-        cachedHomeHasMore: _cachedHomeHasMore
+        pornstarShortIds: localConfig.pornstarShortIds
     });
 };
 
@@ -5820,18 +5779,8 @@ source.getHome = function(continuationToken) {
     try {
         const page = continuationToken ? parseInt(continuationToken) : 1;
         
-        // If first page and we have cached raw video data, use it (instant load when returning to app)
-        if (page === 1 && _cachedHomeRawVideos && _cachedHomeRawVideos.length > 0 && !_homeDataUsed) {
-            log("Using cached home videos (" + _cachedHomeRawVideos.length + " videos) - instant load");
-            _homeDataUsed = true;
-            // Convert cached raw data back to PlatformVideo objects
-            const platformVideos = _cachedHomeRawVideos.map(v => createPlatformVideo(v));
-            return new SpankBangHomeContentPager(platformVideos, _cachedHomeHasMore, { continuationToken: _cachedHomeHasMore ? "2" : null });
-        }
-        
         // Use the base recommended page (https://spankbang.com/) instead of trending_videos
-        // The base page shows recommended/dynamic content that changes each visit
-        // For pagination, use ?page=X format
+        // The base page shows recommended/dynamic content
         const url = page > 1 ? `${BASE_URL}/?page=${page}` : `${BASE_URL}/`;
         
         log("Fetching home page: " + url);
@@ -5842,24 +5791,10 @@ source.getHome = function(continuationToken) {
 
         const hasMore = videos.length >= 20;
         const nextToken = hasMore ? (page + 1).toString() : null;
-        
-        // Cache the RAW video data (not PlatformVideo) for first page - this can be serialized
-        if (page === 1 && videos.length > 0) {
-            _cachedHomeRawVideos = videos;  // Store raw data, not PlatformVideo objects
-            _cachedHomeHasMore = hasMore;
-            _homeDataUsed = true;
-            log("Cached " + videos.length + " home videos (raw data)");
-        }
 
         return new SpankBangHomeContentPager(platformVideos, hasMore, { continuationToken: nextToken });
 
     } catch (error) {
-        // If fetch fails but we have cached data, use it
-        if (_cachedHomeRawVideos && _cachedHomeRawVideos.length > 0) {
-            log("Home fetch failed, using cached videos: " + error.message);
-            const platformVideos = _cachedHomeRawVideos.map(v => createPlatformVideo(v));
-            return new SpankBangHomeContentPager(platformVideos, false, { continuationToken: null });
-        }
         throw new ScriptException("Failed to get home content: " + error.message);
     }
 };
@@ -7348,4 +7283,4 @@ class SpankBangHistoryPager extends VideoPager {
     }
 }
 
-log("SpankBang plugin loaded - v95");
+log("SpankBang plugin loaded - v96");
