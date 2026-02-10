@@ -4050,7 +4050,9 @@ function fetchUserInfo() {
 }
 
 var pluginSettings = {
-    syncRemoteHistory: true
+    syncRemoteHistory: true,
+    forceHistoryResync: false,  // When true, forces full history re-import
+    lastHistorySyncCount: 0     // Track last sync count to detect clears
 };
 
 source.getCapabilities = function() {
@@ -4079,6 +4081,24 @@ source.enable = function(conf, settings, savedStateStr) {
             log("enable: hasSyncRemoteWatchHistory capability = " + pluginSettings.syncRemoteHistory);
         } else {
             log("enable: syncRemoteHistory setting NOT found in settings object");
+        }
+        
+        // Handle forceHistoryResync setting - allows re-import after clearing GrayJay history
+        if (typeof settings.forceHistoryResync !== 'undefined') {
+            log("enable: forceHistoryResync setting found, value=" + settings.forceHistoryResync);
+            if (typeof settings.forceHistoryResync === 'boolean') {
+                pluginSettings.forceHistoryResync = settings.forceHistoryResync;
+            } else if (typeof settings.forceHistoryResync === 'string') {
+                pluginSettings.forceHistoryResync = settings.forceHistoryResync.toLowerCase() === 'true';
+            } else {
+                pluginSettings.forceHistoryResync = !!settings.forceHistoryResync;
+            }
+            
+            if (pluginSettings.forceHistoryResync) {
+                log("enable: FORCE HISTORY RESYNC ENABLED - Will re-import all history");
+                // Reset the sync count to force re-import
+                pluginSettings.lastHistorySyncCount = 0;
+            }
         }
     } else {
         log("enable: No settings object provided");
@@ -5188,8 +5208,22 @@ source.getUserHistory = function() {
                 ", Thumbnail: " + (firstVideo.thumbnails && firstVideo.thumbnails.sources && firstVideo.thumbnails.sources.length > 0 ? firstVideo.thumbnails.sources[0].url : 'NO THUMBNAIL'));
         }
         
-        // Return a Pager object with pagination support
-        const hasMore = videos.length >= 20;
+        // CRITICAL FIX: Detect if there are more pages by checking for pagination links
+        // SpankBang shows pagination like: ?page=2, ?page=3, etc.
+        let hasMore = false;
+        
+        // Pattern 1: Look for next page link (page 2 since we're on page 1)
+        if (/[?&]page=2/i.test(html)) {
+            hasMore = true;
+            log("getUserHistory: Found page 2 link in HTML");
+        }
+        
+        // Pattern 2: Fallback to video count check
+        if (!hasMore && videos.length >= 24) {
+            hasMore = true;
+            log("getUserHistory: Full page detected (" + videos.length + " videos), assuming more pages");
+        }
+        
         const nextToken = hasMore ? "2" : null;
         
         log("getUserHistory: Returning pager with " + platformVideos.length + " videos, hasMore=" + hasMore);
@@ -5207,8 +5241,16 @@ source.syncRemoteWatchHistory = function(continuationToken) {
         // Use authenticated request directly (same pattern as getUserSubscriptions)
         // Don't check isLoggedIn() as it may fail even with valid cookies in the http client
         const page = continuationToken ? parseInt(continuationToken) : 1;
+        
+        // Check if forceHistoryResync is enabled
+        if (page === 1 && pluginSettings.forceHistoryResync) {
+            log("syncRemoteWatchHistory: FORCE RESYNC enabled - will import all history pages");
+        }
+        
+        // CRITICAL FIX: SpankBang uses ?page=X format, NOT /X/ format
+        // URLs: https://spankbang.com/users/history?page=1, ?page=2, etc.
         const historyUrl = page > 1 
-            ? `${USER_URLS.HISTORY}/${page}/`
+            ? `${USER_URLS.HISTORY}?page=${page}`
             : USER_URLS.HISTORY;
         
         log("===== SYNC REMOTE WATCH HISTORY START =====");
@@ -5295,12 +5337,53 @@ source.syncRemoteWatchHistory = function(continuationToken) {
             log("syncRemoteWatchHistory: First PlatformVideo - ID.value: " + pvIdValue + ", URL: " + pv.url + ", Name: " + (pv.name || '').substring(0, 50) + ", Datetime: " + pv.datetime);
         }
         
-        const hasMore = videos.length >= 20;
+        // CRITICAL FIX: Detect if there are more pages by checking for pagination links
+        // SpankBang shows pagination like: ?page=2, ?page=3, etc.
+        // Look for "next" or higher page numbers in the HTML
+        let hasMore = false;
+        
+        // Pattern 1: Look for next page link
+        const nextPagePattern = new RegExp(`[?&]page=${page + 1}`, 'i');
+        if (nextPagePattern.test(html)) {
+            hasMore = true;
+            log("syncRemoteWatchHistory: Found next page link (page " + (page + 1) + ")");
+        }
+        
+        // Pattern 2: Look for pagination with higher page numbers
+        const anyHigherPage = html.match(/[?&]page=(\d+)/gi);
+        if (anyHigherPage) {
+            for (const match of anyHigherPage) {
+                const pageNum = parseInt(match.replace(/[?&]page=/i, ''));
+                if (pageNum > page) {
+                    hasMore = true;
+                    log("syncRemoteWatchHistory: Found pagination link to page " + pageNum);
+                    break;
+                }
+            }
+        }
+        
+        // Pattern 3: Fallback to video count check (if we got a full page, likely more)
+        if (!hasMore && videos.length >= 20) {
+            // Even if we didn't find explicit pagination, if we got a full page
+            // there might be more - let's check conservatively
+            hasMore = videos.length >= 24; // SpankBang typically shows ~24 per page
+            if (hasMore) {
+                log("syncRemoteWatchHistory: Full page detected (" + videos.length + " videos), assuming more pages");
+            }
+        }
+        
         const nextToken = hasMore ? (page + 1).toString() : null;
         
         log("syncRemoteWatchHistory: Returning " + platformVideos.length + " platform videos via VideoPager");
         log("syncRemoteWatchHistory: hasMore = " + hasMore + ", nextToken = " + (nextToken || "null"));
         log("===== SYNC REMOTE WATCH HISTORY END =====");
+        
+        // Update sync count for tracking
+        if (page === 1) {
+            pluginSettings.lastHistorySyncCount = platformVideos.length;
+        } else {
+            pluginSettings.lastHistorySyncCount += platformVideos.length;
+        }
         
         return new SpankBangHistoryPager(platformVideos, hasMore, { continuationToken: nextToken });
 
@@ -7062,4 +7145,4 @@ class SpankBangHistoryPager extends VideoPager {
     }
 }
 
-log("SpankBang plugin loaded - v85");
+log("SpankBang plugin loaded - v86");
