@@ -40,7 +40,7 @@
   "supportedClaimTypes": [3],
   "primaryClaimFieldType": 3,
   "changelog": {
-    "86": [
+    "87": [
       "CRITICAL FIX: History import now fetches ALL pages (was only getting page 1)",
       "Fixed pagination URL format: now uses ?page=X instead of /X/ format",
       "History will now properly import page 2, 3, 4... up to the last page",
