@@ -26,11 +26,10 @@ var state = {
     userId: ""
 };
 
-// Home page caching - similar to YouTube plugin approach
-var _cachedHomeVideos = null;
+// Home page caching - store RAW video data (not PlatformVideo objects) so it can be serialized
+var _cachedHomeRawVideos = null;
 var _cachedHomeHasMore = false;
-var _cachedHomePage = 1;
-var _homeVideosUsed = false;
+var _homeDataUsed = false;
 
 const CONFIG = {
     DEFAULT_PAGE_SIZE: 20,
@@ -4338,14 +4337,18 @@ source.enable = function(conf, settings, savedStateStr) {
                 localConfig.pornstarShortIds = savedState.pornstarShortIds;
             }
             
-            // Restore cached home videos so they persist when leaving/returning to app
-            // This prevents the home page from needing to reload when user returns
-            if (savedState.cachedHomeVideos && savedState.cachedHomeVideos.length > 0) {
-                _cachedHomeVideos = savedState.cachedHomeVideos;
+            // Restore channel avatar cache so we don't refetch avatars every time
+            if (savedState.channelAvatars) {
+                localConfig.channelAvatars = savedState.channelAvatars;
+                log("Restored " + Object.keys(localConfig.channelAvatars).length + " cached channel avatars");
+            }
+            
+            // Restore cached home videos (raw data) so home page persists when leaving/returning
+            if (savedState.cachedHomeRawVideos && savedState.cachedHomeRawVideos.length > 0) {
+                _cachedHomeRawVideos = savedState.cachedHomeRawVideos;
                 _cachedHomeHasMore = savedState.cachedHomeHasMore || false;
-                _cachedHomePage = savedState.cachedHomePage || 1;
-                _homeVideosUsed = false; // Reset so cached videos will be used on next getHome call
-                log("Restored " + _cachedHomeVideos.length + " cached home videos from saved state");
+                _homeDataUsed = false; // Will use cached data on next getHome call
+                log("Restored " + _cachedHomeRawVideos.length + " cached home videos");
             }
             
             log("State loaded: authenticated=" + state.isAuthenticated + ", username=" + state.username);
@@ -4372,17 +4375,6 @@ source.disable = function() {
     state.sessionCookie = "";
     state.isAuthenticated = false;
     state.authCookies = "";
-    // Note: We intentionally do NOT clear cached home videos on disable
-    // This allows videos to persist when the plugin is temporarily disabled
-};
-
-// Function to force refresh home videos (clears cache)
-source.clearHomeCache = function() {
-    _cachedHomeVideos = null;
-    _cachedHomeHasMore = false;
-    _cachedHomePage = 1;
-    _homeVideosUsed = false;
-    log("Home video cache cleared");
 };
 
 source.saveState = function() {
@@ -4393,10 +4385,11 @@ source.saveState = function() {
         username: state.username,
         userId: state.userId,
         pornstarShortIds: localConfig.pornstarShortIds,
-        // Cache home videos in state so they persist when leaving/returning to app
-        cachedHomeVideos: _cachedHomeVideos,
-        cachedHomeHasMore: _cachedHomeHasMore,
-        cachedHomePage: _cachedHomePage
+        // Persist channel avatar cache so we don't refetch every time
+        channelAvatars: localConfig.channelAvatars,
+        // Cache raw home video data (not PlatformVideo objects) for persistence
+        cachedHomeRawVideos: _cachedHomeRawVideos,
+        cachedHomeHasMore: _cachedHomeHasMore
     });
 };
 
@@ -5827,12 +5820,13 @@ source.getHome = function(continuationToken) {
     try {
         const page = continuationToken ? parseInt(continuationToken) : 1;
         
-        // If this is the first page and we have cached videos that haven't been used yet, return them
-        // This prevents videos from disappearing when leaving and returning to the app
-        if (page === 1 && _cachedHomeVideos && _cachedHomeVideos.length > 0 && !_homeVideosUsed) {
-            log("Using cached home videos (" + _cachedHomeVideos.length + " videos)");
-            _homeVideosUsed = true;
-            return new SpankBangHomeContentPager(_cachedHomeVideos, _cachedHomeHasMore, { continuationToken: _cachedHomeHasMore ? "2" : null });
+        // If first page and we have cached raw video data, use it (instant load when returning to app)
+        if (page === 1 && _cachedHomeRawVideos && _cachedHomeRawVideos.length > 0 && !_homeDataUsed) {
+            log("Using cached home videos (" + _cachedHomeRawVideos.length + " videos) - instant load");
+            _homeDataUsed = true;
+            // Convert cached raw data back to PlatformVideo objects
+            const platformVideos = _cachedHomeRawVideos.map(v => createPlatformVideo(v));
+            return new SpankBangHomeContentPager(platformVideos, _cachedHomeHasMore, { continuationToken: _cachedHomeHasMore ? "2" : null });
         }
         
         // Use the base recommended page (https://spankbang.com/) instead of trending_videos
@@ -5849,22 +5843,22 @@ source.getHome = function(continuationToken) {
         const hasMore = videos.length >= 20;
         const nextToken = hasMore ? (page + 1).toString() : null;
         
-        // Cache the first page results for when user leaves and returns to app
-        if (page === 1 && platformVideos.length > 0) {
-            _cachedHomeVideos = platformVideos;
+        // Cache the RAW video data (not PlatformVideo) for first page - this can be serialized
+        if (page === 1 && videos.length > 0) {
+            _cachedHomeRawVideos = videos;  // Store raw data, not PlatformVideo objects
             _cachedHomeHasMore = hasMore;
-            _cachedHomePage = 1;
-            _homeVideosUsed = true; // Mark as used since we're returning fresh data
-            log("Cached " + platformVideos.length + " home videos");
+            _homeDataUsed = true;
+            log("Cached " + videos.length + " home videos (raw data)");
         }
 
         return new SpankBangHomeContentPager(platformVideos, hasMore, { continuationToken: nextToken });
 
     } catch (error) {
-        // If fetch fails but we have cached videos, return those
-        if (_cachedHomeVideos && _cachedHomeVideos.length > 0) {
-            log("Home fetch failed, returning cached videos: " + error.message);
-            return new SpankBangHomeContentPager(_cachedHomeVideos, false, { continuationToken: null });
+        // If fetch fails but we have cached data, use it
+        if (_cachedHomeRawVideos && _cachedHomeRawVideos.length > 0) {
+            log("Home fetch failed, using cached videos: " + error.message);
+            const platformVideos = _cachedHomeRawVideos.map(v => createPlatformVideo(v));
+            return new SpankBangHomeContentPager(platformVideos, false, { continuationToken: null });
         }
         throw new ScriptException("Failed to get home content: " + error.message);
     }
@@ -7354,4 +7348,4 @@ class SpankBangHistoryPager extends VideoPager {
     }
 }
 
-log("SpankBang plugin loaded - v94");
+log("SpankBang plugin loaded - v95");
