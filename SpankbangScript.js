@@ -5312,39 +5312,48 @@ source.syncRemoteWatchHistory = function(continuationToken) {
             log("syncRemoteWatchHistory: First PlatformVideo - ID.value: " + pvIdValue + ", URL: " + pv.url + ", Name: " + (pv.name || '').substring(0, 50) + ", Datetime: " + pv.datetime);
         }
         
-        // CRITICAL FIX: Detect if there are more pages by checking for pagination links
-        // SpankBang shows pagination like: ?page=2, ?page=3, etc.
-        // Look for "next" or higher page numbers in the HTML
+        // CRITICAL FIX: Detect if there are more pages
+        // Strategy: If we got videos on this page, try the next page
+        // Only stop when we get 0 videos (empty page = end of history)
         let hasMore = false;
         
-        // Pattern 1: Look for next page link
+        // Pattern 1: Look for explicit next page link in HTML
         const nextPagePattern = new RegExp(`[?&]page=${page + 1}`, 'i');
         if (nextPagePattern.test(html)) {
             hasMore = true;
             log("syncRemoteWatchHistory: Found next page link (page " + (page + 1) + ")");
         }
         
-        // Pattern 2: Look for pagination with higher page numbers
-        const anyHigherPage = html.match(/[?&]page=(\d+)/gi);
-        if (anyHigherPage) {
-            for (const match of anyHigherPage) {
-                const pageNum = parseInt(match.replace(/[?&]page=/i, ''));
-                if (pageNum > page) {
-                    hasMore = true;
-                    log("syncRemoteWatchHistory: Found pagination link to page " + pageNum);
-                    break;
+        // Pattern 2: Look for any pagination links with higher page numbers
+        if (!hasMore) {
+            const anyHigherPage = html.match(/[?&]page=(\d+)/gi);
+            if (anyHigherPage) {
+                for (const match of anyHigherPage) {
+                    const pageNum = parseInt(match.replace(/[?&]page=/i, ''));
+                    if (pageNum > page) {
+                        hasMore = true;
+                        log("syncRemoteWatchHistory: Found pagination link to page " + pageNum);
+                        break;
+                    }
                 }
             }
         }
         
-        // Pattern 3: Fallback to video count check (if we got a full page, likely more)
-        if (!hasMore && videos.length >= 20) {
-            // Even if we didn't find explicit pagination, if we got a full page
-            // there might be more - let's check conservatively
-            hasMore = videos.length >= 24; // SpankBang typically shows ~24 per page
-            if (hasMore) {
-                log("syncRemoteWatchHistory: Full page detected (" + videos.length + " videos), assuming more pages");
+        // Pattern 3: Look for "next" button or arrow in pagination
+        if (!hasMore) {
+            const hasNextButton = /class="[^"]*next[^"]*"|rel="next"|>next<|>\s*»\s*<|>\s*›\s*</i.test(html);
+            if (hasNextButton) {
+                hasMore = true;
+                log("syncRemoteWatchHistory: Found 'next' pagination button");
             }
+        }
+        
+        // Pattern 4: If we got a reasonable number of videos, assume there might be more
+        // SpankBang typically shows 20-30 videos per page
+        // Only stop pagination when we get significantly fewer videos (indicating last page)
+        if (!hasMore && videos.length >= 15) {
+            hasMore = true;
+            log("syncRemoteWatchHistory: Got " + videos.length + " videos, assuming more pages exist");
         }
         
         const nextToken = hasMore ? (page + 1).toString() : null;
@@ -7113,4 +7122,4 @@ class SpankBangHistoryPager extends VideoPager {
     }
 }
 
-log("SpankBang plugin loaded - v87");
+log("SpankBang plugin loaded - v88");
