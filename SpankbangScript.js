@@ -26,6 +26,12 @@ var state = {
     userId: ""
 };
 
+// Home page caching - similar to YouTube plugin approach
+var _cachedHomeVideos = null;
+var _cachedHomeHasMore = false;
+var _cachedHomePage = 1;
+var _homeVideosUsed = false;
+
 const CONFIG = {
     DEFAULT_PAGE_SIZE: 20,
     COMMENTS_PAGE_SIZE: 50,
@@ -4332,6 +4338,16 @@ source.enable = function(conf, settings, savedStateStr) {
                 localConfig.pornstarShortIds = savedState.pornstarShortIds;
             }
             
+            // Restore cached home videos so they persist when leaving/returning to app
+            // This prevents the home page from needing to reload when user returns
+            if (savedState.cachedHomeVideos && savedState.cachedHomeVideos.length > 0) {
+                _cachedHomeVideos = savedState.cachedHomeVideos;
+                _cachedHomeHasMore = savedState.cachedHomeHasMore || false;
+                _cachedHomePage = savedState.cachedHomePage || 1;
+                _homeVideosUsed = false; // Reset so cached videos will be used on next getHome call
+                log("Restored " + _cachedHomeVideos.length + " cached home videos from saved state");
+            }
+            
             log("State loaded: authenticated=" + state.isAuthenticated + ", username=" + state.username);
         } catch (e) {
             log("Failed to parse saved state: " + e);
@@ -4356,6 +4372,17 @@ source.disable = function() {
     state.sessionCookie = "";
     state.isAuthenticated = false;
     state.authCookies = "";
+    // Note: We intentionally do NOT clear cached home videos on disable
+    // This allows videos to persist when the plugin is temporarily disabled
+};
+
+// Function to force refresh home videos (clears cache)
+source.clearHomeCache = function() {
+    _cachedHomeVideos = null;
+    _cachedHomeHasMore = false;
+    _cachedHomePage = 1;
+    _homeVideosUsed = false;
+    log("Home video cache cleared");
 };
 
 source.saveState = function() {
@@ -4365,7 +4392,11 @@ source.saveState = function() {
         authCookies: state.authCookies,
         username: state.username,
         userId: state.userId,
-        pornstarShortIds: localConfig.pornstarShortIds
+        pornstarShortIds: localConfig.pornstarShortIds,
+        // Cache home videos in state so they persist when leaving/returning to app
+        cachedHomeVideos: _cachedHomeVideos,
+        cachedHomeHasMore: _cachedHomeHasMore,
+        cachedHomePage: _cachedHomePage
     });
 };
 
@@ -5795,7 +5826,21 @@ source.getLikedVideos = function() {
 source.getHome = function(continuationToken) {
     try {
         const page = continuationToken ? parseInt(continuationToken) : 1;
-        const url = `${BASE_URL}/trending_videos/${page}/`;
+        
+        // If this is the first page and we have cached videos that haven't been used yet, return them
+        // This prevents videos from disappearing when leaving and returning to the app
+        if (page === 1 && _cachedHomeVideos && _cachedHomeVideos.length > 0 && !_homeVideosUsed) {
+            log("Using cached home videos (" + _cachedHomeVideos.length + " videos)");
+            _homeVideosUsed = true;
+            return new SpankBangHomeContentPager(_cachedHomeVideos, _cachedHomeHasMore, { continuationToken: _cachedHomeHasMore ? "2" : null });
+        }
+        
+        // Use the base recommended page (https://spankbang.com/) instead of trending_videos
+        // The base page shows recommended/dynamic content that changes each visit
+        // For pagination, use ?page=X format
+        const url = page > 1 ? `${BASE_URL}/?page=${page}` : `${BASE_URL}/`;
+        
+        log("Fetching home page: " + url);
 
         const html = makeRequest(url, API_HEADERS, 'home content');
         const videos = parseSearchResults(html);
@@ -5803,10 +5848,24 @@ source.getHome = function(continuationToken) {
 
         const hasMore = videos.length >= 20;
         const nextToken = hasMore ? (page + 1).toString() : null;
+        
+        // Cache the first page results for when user leaves and returns to app
+        if (page === 1 && platformVideos.length > 0) {
+            _cachedHomeVideos = platformVideos;
+            _cachedHomeHasMore = hasMore;
+            _cachedHomePage = 1;
+            _homeVideosUsed = true; // Mark as used since we're returning fresh data
+            log("Cached " + platformVideos.length + " home videos");
+        }
 
         return new SpankBangHomeContentPager(platformVideos, hasMore, { continuationToken: nextToken });
 
     } catch (error) {
+        // If fetch fails but we have cached videos, return those
+        if (_cachedHomeVideos && _cachedHomeVideos.length > 0) {
+            log("Home fetch failed, returning cached videos: " + error.message);
+            return new SpankBangHomeContentPager(_cachedHomeVideos, false, { continuationToken: null });
+        }
         throw new ScriptException("Failed to get home content: " + error.message);
     }
 };
