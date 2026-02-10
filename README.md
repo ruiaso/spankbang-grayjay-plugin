@@ -15,7 +15,7 @@ What's working:
     Video search
     Video playback
     Video info
-    View profiles for models, pornstars, and channels
+    Viewing channels
     Channel info fetch (description, about, its videos)
     Channel subscribe/unsubscribe
     Profile Search
@@ -30,12 +30,13 @@ What's working:
     Channels search
     Subscriptions Import
     Playlists Import
+    Account History Sync
     
 
 What's not working: 
    
-    Channel name's profile picture on videos
-    Channel names on video thumbnails
-    Account History Sync
+    Channel name's profile picture on videos and search
+    Uploader name link on video section above views (channel name link works)
+    View profiles for models, pornstars
     ...all the rest
 
