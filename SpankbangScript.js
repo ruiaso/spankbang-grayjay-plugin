@@ -16,12 +16,7 @@ let localConfig = {
     channelAvatars: {},  // Cache for channel avatars: { "shortId:slug": "avatarUrl" }
     lastRequestTime: 0,
     requestDelay: 500, // Increased to 500ms delay between requests to avoid rate limiting
-    consecutiveErrors: 0,
-    // Home content cache - persists until manual refresh
-    homeCache: {
-        videos: [],          // Cached video data
-        timestamp: 0         // When cache was last updated
-    }
+    consecutiveErrors: 0
 };
 var state = {
     sessionCookie: "",
@@ -643,29 +638,6 @@ function extractBestDurationSecondsFromContext(html, opts = {}) {
 function extractViewCountFromContext(html) {
     if (!html) return 0;
 
-    // PRIORITY 0: SpankBang NEW - look for md:text-body-md spans with view counts (playlist/channel pages)
-    // Pattern: <span class="md:text-body-md">28K</span> or <span class="md:text-body-md">7.9K</span>
-    // We need to find the one that's NOT inside data-testid="rates" (that's the rating %)
-    const mdSpanPattern = /<span[^>]*class=["'][^"']*md:text-body-md[^"']*["'][^>]*>(\d+(?:[.,]\d+)?[KMB]?)<\/span>/gi;
-    let mdMatch;
-    while ((mdMatch = mdSpanPattern.exec(html)) !== null) {
-        if (mdMatch[1]) {
-            const text = mdMatch[1].trim();
-            // Skip if it looks like a percentage (rating)
-            if (text.includes('%')) continue;
-            // Skip if surrounded by rating context
-            const contextStart = Math.max(0, mdMatch.index - 100);
-            const contextEnd = Math.min(html.length, mdMatch.index + mdMatch[0].length + 50);
-            const context = html.substring(contextStart, contextEnd);
-            if (/data-testid=["']rates["']|thumbs-up|rating|like/i.test(context)) continue;
-            
-            const parsed = parseViewCount(text);
-            if (parsed > 0) {
-                return parsed;
-            }
-        }
-    }
-
     // PRIORITY 1: Look for data-testid="views" (SpankBang's new structure)
     // The view count number appears AFTER the icon span, so we need to look past it
     const dataTestIdPattern = /<span[^>]*data-testid=["']views["'][^>]*>[\s\S]*?<\/svg><\/span>[\s\S]*?(\d+(?:[,.]\d+)?[KMB]?)/i;
@@ -753,61 +725,6 @@ function extractViewCountFromContext(html) {
         }
     }
 
-    return 0;
-}
-
-// Extract rating percentage from HTML (e.g., "93%" from data-testid="rates")
-function extractRatingFromContext(html) {
-    if (!html) return 0;
-    
-    // PRIORITY 1: Look for data-testid="rates" pattern with thumbs-up icon
-    // <span data-testid="rates"...><span>thumbs-up icon</span><span class="md:text-body-md">93%</span></span>
-    const ratesPattern = /data-testid=["']rates["'][^>]*>[\s\S]*?(\d+(?:\.\d+)?)\s*%/i;
-    const ratesMatch = html.match(ratesPattern);
-    if (ratesMatch && ratesMatch[1]) {
-        const rating = parseFloat(ratesMatch[1]) / 100;
-        if (rating > 0 && rating <= 1) {
-            return rating;
-        }
-    }
-    
-    // PRIORITY 2: Look for thumbs-up icon followed by percentage
-    const thumbsPattern = /thumbs-up[\s\S]{0,100}?(\d+(?:\.\d+)?)\s*%/i;
-    const thumbsMatch = html.match(thumbsPattern);
-    if (thumbsMatch && thumbsMatch[1]) {
-        const rating = parseFloat(thumbsMatch[1]) / 100;
-        if (rating > 0 && rating <= 1) {
-            return rating;
-        }
-    }
-    
-    // PRIORITY 3: Generic percentage near rating/like context
-    const genericPattern = /(?:rating|like|approval)[^>]*>[\s\S]{0,50}?(\d+(?:\.\d+)?)\s*%/i;
-    const genericMatch = html.match(genericPattern);
-    if (genericMatch && genericMatch[1]) {
-        const rating = parseFloat(genericMatch[1]) / 100;
-        if (rating > 0 && rating <= 1) {
-            return rating;
-        }
-    }
-    
-    // PRIORITY 4: Just look for percentage in md:text-body-md spans (inside rates context)
-    const mdSpanPattern = /<span[^>]*class=["'][^"']*md:text-body-md[^"']*["'][^>]*>(\d+(?:\.\d+)?)\s*%<\/span>/gi;
-    let mdMatch;
-    while ((mdMatch = mdSpanPattern.exec(html)) !== null) {
-        if (mdMatch[1]) {
-            // Check if it's in a rates context
-            const contextStart = Math.max(0, mdMatch.index - 150);
-            const context = html.substring(contextStart, mdMatch.index);
-            if (/data-testid=["']rates["']|thumbs-up|rating|like/i.test(context)) {
-                const rating = parseFloat(mdMatch[1]) / 100;
-                if (rating > 0 && rating <= 1) {
-                    return rating;
-                }
-            }
-        }
-    }
-    
     return 0;
 }
 
@@ -1986,13 +1903,9 @@ function parseVideoPage(html, url) {
         }
     }
 
-    // Extract rating (percentage) - try new pattern first, then fallback
-    videoData.rating = extractRatingFromContext(html);
-    if (!videoData.rating || videoData.rating === 0) {
-        const ratingMatch = html.match(/(\d+(?:\.\d+)?)\s*%\s*(?:rating|like)/i);
-        if (ratingMatch) {
-            videoData.rating = parseFloat(ratingMatch[1]) / 100;
-        }
+    const ratingMatch = html.match(/(\d+(?:\.\d+)?)\s*%\s*(?:rating|like)/i);
+    if (ratingMatch) {
+        videoData.rating = parseFloat(ratingMatch[1]) / 100;
     }
 
     videoData.uploader = extractUploaderFromVideoToolbar(html);
@@ -2311,45 +2224,40 @@ function createThumbnails(thumbnail) {
     ]);
 }
 
-function createPlatformAuthor(uploader, skipAvatarFetch = false) {
+function createPlatformAuthor(uploader) {
     let avatar = uploader.avatar || "";
     const authorUrl = uploader.url || "";
     const authorName = uploader.name || "";
 
-    // OPTIMIZATION: Skip avatar fetching during home feed loading to improve performance
-    // Avatars will be fetched lazily when viewing video details or channel pages
-    if (!skipAvatarFetch) {
-        // If no avatar and this is a channel, check cache first then optionally fetch
-        if (!avatar && authorUrl && authorUrl.includes('channel/')) {
-            // Extract channel info from URL like "spankbang://channel/zz:mommy+s+boy"
-            const channelMatch = authorUrl.match(/channel\/([^:]+):(.+)$/);
-            if (channelMatch) {
-                const shortId = channelMatch[1];
-                const channelSlug = channelMatch[2];
-                const cacheKey = `${shortId}:${channelSlug}`;
-                
-                // Check cache first - NO network request if cached
-                if (localConfig.channelAvatars && localConfig.channelAvatars[cacheKey]) {
-                    avatar = localConfig.channelAvatars[cacheKey];
-                }
-                // Don't fetch if not in cache - let it be fetched on demand later
-            }
+    // If no avatar and this is a channel, try to fetch it
+    if (!avatar && authorUrl && authorUrl.includes('channel/')) {
+        // Extract channel info from URL like "spankbang://channel/zz:mommy+s+boy"
+        const channelMatch = authorUrl.match(/channel\/([^:]+):(.+)$/);
+        if (channelMatch) {
+            const shortId = channelMatch[1];
+            const channelSlug = channelMatch[2];
+            log(`createPlatformAuthor: Fetching avatar for channel ${channelSlug}`);
+            avatar = fetchChannelAvatar(shortId, channelSlug);
         }
-        
-        // If no avatar and this is a pornstar, check cache first
-        if (!avatar && authorUrl && authorUrl.includes('pornstar:')) {
-            const pornstarMatch = authorUrl.match(/pornstar:(.+)$/);
-            if (pornstarMatch) {
-                const pornstarSlug = pornstarMatch[1];
-                const cacheKey = `pornstar:${pornstarSlug}`;
-                
-                // Check cache first - NO network request if cached
-                if (localConfig.channelAvatars && localConfig.channelAvatars[cacheKey]) {
-                    avatar = localConfig.channelAvatars[cacheKey];
-                }
-                // Don't fetch if not in cache - let it be fetched on demand later
-            }
+    }
+    
+    // If no avatar and this is a pornstar, try to fetch it
+    if (!avatar && authorUrl && authorUrl.includes('pornstar:')) {
+        const pornstarMatch = authorUrl.match(/pornstar:(.+)$/);
+        if (pornstarMatch) {
+            const pornstarSlug = pornstarMatch[1];
+            log(`createPlatformAuthor: Fetching avatar for pornstar ${pornstarSlug}`);
+            avatar = fetchPornstarAvatar(pornstarSlug);
         }
+    }
+
+    // Log what we're creating for debugging
+    if (authorName && authorUrl) {
+        log(`createPlatformAuthor: Creating author "${authorName}" with URL: ${authorUrl}, avatar: ${avatar ? 'YES' : 'NO'}`);
+    } else if (authorName) {
+        log(`createPlatformAuthor: Creating author "${authorName}" with NO URL (will not be clickable)`);
+    } else {
+        log(`createPlatformAuthor: Creating EMPTY author (no name, no URL)`);
     }
 
     return new PlatformAuthorLink(
@@ -2371,14 +2279,15 @@ function hasValidUploader(uploader) {
     return true;
 }
 
-function createPlatformVideo(videoData, skipAvatarFetch = false) {
+function createPlatformVideo(videoData) {
     const uploader = videoData.uploader || {};
     
     // CRITICAL: Only create author if we have a valid uploader with a URL
     // If no real uploader exists, create an author that Grayjay won't make clickable
     let author;
     if (hasValidUploader(uploader)) {
-        author = createPlatformAuthor(uploader, skipAvatarFetch);
+        author = createPlatformAuthor(uploader);
+        log(`createPlatformVideo: Video ${videoData.id} has VALID uploader: "${uploader.name}"`);
     } else {
         // No valid uploader - create author with NO URL at all
         // Grayjay should not make this clickable when URL is empty
@@ -2634,9 +2543,6 @@ function parseSearchResults(html) {
             });
 
             const views = extractViewCountFromContext(block);
-            
-            // Extract rating percentage (e.g., 93% from thumbs-up)
-            const rating = extractRatingFromContext(block);
 
             let uploadDate = 0;
             const datePatterns = [
@@ -2693,7 +2599,7 @@ function parseSearchResults(html) {
             
             // LOG extracted data for debugging
             if (videos.length < 5) {
-                log(`parseSearchResults: Video ${videoId}: title="${title}", duration=${durationSeconds}s, views=${views}, rating=${rating}, uploader="${uploader.name || 'NONE'}", uploaderUrl="${uploader.url || 'NONE'}"`);
+                log(`parseSearchResults: Video ${videoId}: title="${title}", duration=${durationSeconds}s, views=${views}, uploader="${uploader.name || 'NONE'}", uploaderUrl="${uploader.url || 'NONE'}"`);
             }
 
             videos.push({
@@ -2702,7 +2608,6 @@ function parseSearchResults(html) {
                 thumbnail: thumbnail,
                 duration: durationSeconds,
                 views: views,
-                rating: rating,
                 uploadDate: uploadDate,
                 url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
                 uploader: uploader
@@ -2747,7 +2652,6 @@ function parseSearchResults(html) {
                 thumbnail: thumbnail,
                 duration: duration,
                 views: extractViewCountFromContext(context),
-                rating: extractRatingFromContext(context),
                 uploadDate: 0,
                 url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
                 uploader: extractUploaderFromSearchResult(context)
@@ -4414,21 +4318,9 @@ source.enable = function(conf, settings, savedStateStr) {
     if (!localConfig.pornstarShortIds) {
         localConfig.pornstarShortIds = {};
     }
-    
-    if (!localConfig.channelAvatars) {
-        localConfig.channelAvatars = {};
-    }
-    
-    if (!localConfig.homeCache) {
-        localConfig.homeCache = {
-            videos: [],
-            timestamp: 0
-        };
-    }
 
     if (savedStateStr) {
         try {
-            log("enable: Parsing saved state string of length " + savedStateStr.length);
             const savedState = JSON.parse(savedStateStr);
             state.sessionCookie = savedState.sessionCookie || "";
             state.isAuthenticated = savedState.isAuthenticated || false;
@@ -4436,34 +4328,14 @@ source.enable = function(conf, settings, savedStateStr) {
             state.username = savedState.username || "";
             state.userId = savedState.userId || "";
             
-            if (savedState.pornstarShortIds && Object.keys(savedState.pornstarShortIds).length > 0) {
+            if (savedState.pornstarShortIds) {
                 localConfig.pornstarShortIds = savedState.pornstarShortIds;
-                log("Restored " + Object.keys(localConfig.pornstarShortIds).length + " cached pornstar IDs");
-            } else {
-                log("No cached pornstar IDs to restore");
-            }
-            
-            if (savedState.channelAvatars && Object.keys(savedState.channelAvatars).length > 0) {
-                localConfig.channelAvatars = savedState.channelAvatars;
-                log("Restored " + Object.keys(localConfig.channelAvatars).length + " cached channel avatars");
-            } else {
-                log("No cached channel avatars to restore");
-            }
-            
-            if (savedState.homeCache && savedState.homeCache.videos && savedState.homeCache.videos.length > 0) {
-                localConfig.homeCache = savedState.homeCache;
-                const cacheAge = Date.now() - (savedState.homeCache.timestamp || 0);
-                log("Restored home cache with " + savedState.homeCache.videos.length + " videos (age: " + Math.round(cacheAge/1000) + "s)");
-            } else {
-                log("No home cache to restore - will fetch fresh content");
             }
             
             log("State loaded: authenticated=" + state.isAuthenticated + ", username=" + state.username);
         } catch (e) {
             log("Failed to parse saved state: " + e);
         }
-    } else {
-        log("enable: No saved state provided - fresh start");
     }
     
     if (typeof bridge !== 'undefined' && bridge.isLoggedIn && bridge.isLoggedIn()) {
@@ -4487,21 +4359,14 @@ source.disable = function() {
 };
 
 source.saveState = function() {
-    const stateToSave = {
+    return JSON.stringify({
         sessionCookie: state.sessionCookie,
         isAuthenticated: state.isAuthenticated,
         authCookies: state.authCookies,
         username: state.username,
         userId: state.userId,
-        pornstarShortIds: localConfig.pornstarShortIds || {},
-        channelAvatars: localConfig.channelAvatars || {},
-        homeCache: localConfig.homeCache || { videos: [], timestamp: 0 }
-    };
-    
-    log("saveState: Saving " + Object.keys(stateToSave.channelAvatars).length + " channel avatars, " +
-        (stateToSave.homeCache.videos ? stateToSave.homeCache.videos.length : 0) + " cached home videos");
-    
-    return JSON.stringify(stateToSave);
+        pornstarShortIds: localConfig.pornstarShortIds
+    });
 };
 
 source.getLoggedInUser = function() {
@@ -4881,8 +4746,7 @@ source.getWatchHistory = function() {
         
         // Return full video objects (PlatformVideo) instead of just URLs
         // This ensures thumbnails, duration, and other metadata are preserved in history
-        // Skip avatar fetching for performance
-        return videos.map(v => createPlatformVideo(v, true));
+        return videos.map(v => createPlatformVideo(v));
 
     } catch (error) {
         log("getWatchHistory error: " + error.message);
@@ -5931,32 +5795,11 @@ source.getLikedVideos = function() {
 source.getHome = function(continuationToken) {
     try {
         const page = continuationToken ? parseInt(continuationToken) : 1;
-        
-        // Check if we have cached content for page 1 (persists until manual refresh)
-        if (page === 1 && localConfig.homeCache && localConfig.homeCache.videos && localConfig.homeCache.videos.length > 0) {
-            log("getHome: Using cached content (" + localConfig.homeCache.videos.length + " videos)");
-            // Use skipAvatarFetch=true when loading from cache to avoid network requests
-            const platformVideos = localConfig.homeCache.videos.map(v => createPlatformVideo(v, true));
-            return new SpankBangHomeContentPager(platformVideos, true, { continuationToken: "2" });
-        }
-        
-        // Use main page for recommended content (not trending_videos)
-        // Page 1 = /, Page 2+ = /2/, /3/, etc.
-        const url = page === 1 ? `${BASE_URL}/` : `${BASE_URL}/${page}/`;
+        const url = `${BASE_URL}/trending_videos/${page}/`;
 
         const html = makeRequest(url, API_HEADERS, 'home content');
         const videos = parseSearchResults(html);
-        // Skip avatar fetching during initial home load to improve performance
-        const platformVideos = videos.map(v => createPlatformVideo(v, true));
-
-        // Cache page 1 results (persists until manual refresh)
-        if (page === 1 && videos.length > 0) {
-            localConfig.homeCache = {
-                videos: videos,
-                timestamp: Date.now()
-            };
-            log("getHome: Cached " + videos.length + " videos");
-        }
+        const platformVideos = videos.map(v => createPlatformVideo(v));
 
         const hasMore = videos.length >= 20;
         const nextToken = hasMore ? (page + 1).toString() : null;
@@ -6206,8 +6049,7 @@ source.search = function(query, type, order, filters, continuationToken) {
 
         const html = makeRequest(searchUrl, API_HEADERS, 'search');
         const videos = parseSearchResults(html);
-        // Skip avatar fetching during search results for performance
-        const platformVideos = videos.map(v => createPlatformVideo(v, true));
+        const platformVideos = videos.map(v => createPlatformVideo(v));
 
         const hasMore = videos.length >= 20;
         const nextToken = hasMore ? (page + 1).toString() : null;
@@ -6679,8 +6521,7 @@ source.getChannelContents = function(url, type, order, filters, continuationToke
         const videos = parseSearchResults(html);
         log("Parsed " + videos.length + " videos from channel contents");
         
-        // Skip avatar fetching for channel content lists for performance
-        const platformVideos = videos.map(v => createPlatformVideo(v, true));
+        const platformVideos = videos.map(v => createPlatformVideo(v));
 
         const hasMore = videos.length >= 20;
         const nextToken = hasMore ? (page + 1).toString() : null;
@@ -6755,8 +6596,7 @@ source.getContentRecommendations = function(url) {
         const videoData = parseVideoPage(html, url);
 
         if (videoData.relatedVideos && videoData.relatedVideos.length > 0) {
-            // Skip avatar fetching for recommendations list for performance
-            const platformVideos = videoData.relatedVideos.map(v => createPlatformVideo(v, true));
+            const platformVideos = videoData.relatedVideos.map(v => createPlatformVideo(v));
             return new SpankBangSearchPager(platformVideos, false, { url: url });
         }
 
@@ -7246,7 +7086,7 @@ source.getPlaylist = function(url) {
             log("Raw video links found in HTML: " + (anyVideoLinks ? anyVideoLinks.length : 0));
         }
         
-        const platformVideos = videos.map(v => createPlatformVideo(v, true));
+        const platformVideos = videos.map(v => createPlatformVideo(v));
         
         // Get thumbnail URL from first video if available
         const thumbnailUrl = videos.length > 0 && videos[0].thumbnail ? videos[0].thumbnail : "";
@@ -7414,7 +7254,7 @@ class SpankBangPlaylistVideosPager extends ContentPager {
             
             log(`SpankBangPlaylistVideosPager: Found ${videos.length} videos on page ${nextPage}`);
             
-            const platformVideos = videos.map(v => createPlatformVideo(v, true));
+            const platformVideos = videos.map(v => createPlatformVideo(v));
             
             // Check if there are more pages
             const hasMore = videos.length >= 20 || 
@@ -7455,4 +7295,4 @@ class SpankBangHistoryPager extends VideoPager {
     }
 }
 
-log("SpankBang plugin loaded - v102");
+log("SpankBang plugin loaded - v93");
