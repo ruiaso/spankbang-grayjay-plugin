@@ -5778,12 +5778,7 @@ source.getLikedVideos = function() {
 source.getHome = function(continuationToken) {
     try {
         const page = continuationToken ? parseInt(continuationToken) : 1;
-        
-        // Use the base recommended page (https://spankbang.com/) instead of trending_videos
-        // The base page shows recommended/dynamic content
-        const url = page > 1 ? `${BASE_URL}/?page=${page}` : `${BASE_URL}/`;
-        
-        log("Fetching home page: " + url);
+        const url = `${BASE_URL}/trending_videos/${page}/`;
 
         const html = makeRequest(url, API_HEADERS, 'home content');
         const videos = parseSearchResults(html);
@@ -7283,4 +7278,4 @@ class SpankBangHistoryPager extends VideoPager {
     }
 }
 
-log("SpankBang plugin loaded - v96");
+log("SpankBang plugin loaded - v97");
