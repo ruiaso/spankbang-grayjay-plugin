@@ -638,6 +638,29 @@ function extractBestDurationSecondsFromContext(html, opts = {}) {
 function extractViewCountFromContext(html) {
     if (!html) return 0;
 
+    // PRIORITY 0: SpankBang NEW - look for md:text-body-md spans with view counts (playlist/channel pages)
+    // Pattern: <span class="md:text-body-md">28K</span> or <span class="md:text-body-md">7.9K</span>
+    // We need to find the one that's NOT inside data-testid="rates" (that's the rating %)
+    const mdSpanPattern = /<span[^>]*class=["'][^"']*md:text-body-md[^"']*["'][^>]*>(\d+(?:[.,]\d+)?[KMB]?)<\/span>/gi;
+    let mdMatch;
+    while ((mdMatch = mdSpanPattern.exec(html)) !== null) {
+        if (mdMatch[1]) {
+            const text = mdMatch[1].trim();
+            // Skip if it looks like a percentage (rating)
+            if (text.includes('%')) continue;
+            // Skip if surrounded by rating context
+            const contextStart = Math.max(0, mdMatch.index - 100);
+            const contextEnd = Math.min(html.length, mdMatch.index + mdMatch[0].length + 50);
+            const context = html.substring(contextStart, contextEnd);
+            if (/data-testid=["']rates["']|thumbs-up|rating|like/i.test(context)) continue;
+            
+            const parsed = parseViewCount(text);
+            if (parsed > 0) {
+                return parsed;
+            }
+        }
+    }
+
     // PRIORITY 1: Look for data-testid="views" (SpankBang's new structure)
     // The view count number appears AFTER the icon span, so we need to look past it
     const dataTestIdPattern = /<span[^>]*data-testid=["']views["'][^>]*>[\s\S]*?<\/svg><\/span>[\s\S]*?(\d+(?:[,.]\d+)?[KMB]?)/i;
@@ -725,6 +748,61 @@ function extractViewCountFromContext(html) {
         }
     }
 
+    return 0;
+}
+
+// Extract rating percentage from HTML (e.g., "93%" from data-testid="rates")
+function extractRatingFromContext(html) {
+    if (!html) return 0;
+    
+    // PRIORITY 1: Look for data-testid="rates" pattern with thumbs-up icon
+    // <span data-testid="rates"...><span>thumbs-up icon</span><span class="md:text-body-md">93%</span></span>
+    const ratesPattern = /data-testid=["']rates["'][^>]*>[\s\S]*?(\d+(?:\.\d+)?)\s*%/i;
+    const ratesMatch = html.match(ratesPattern);
+    if (ratesMatch && ratesMatch[1]) {
+        const rating = parseFloat(ratesMatch[1]) / 100;
+        if (rating > 0 && rating <= 1) {
+            return rating;
+        }
+    }
+    
+    // PRIORITY 2: Look for thumbs-up icon followed by percentage
+    const thumbsPattern = /thumbs-up[\s\S]{0,100}?(\d+(?:\.\d+)?)\s*%/i;
+    const thumbsMatch = html.match(thumbsPattern);
+    if (thumbsMatch && thumbsMatch[1]) {
+        const rating = parseFloat(thumbsMatch[1]) / 100;
+        if (rating > 0 && rating <= 1) {
+            return rating;
+        }
+    }
+    
+    // PRIORITY 3: Generic percentage near rating/like context
+    const genericPattern = /(?:rating|like|approval)[^>]*>[\s\S]{0,50}?(\d+(?:\.\d+)?)\s*%/i;
+    const genericMatch = html.match(genericPattern);
+    if (genericMatch && genericMatch[1]) {
+        const rating = parseFloat(genericMatch[1]) / 100;
+        if (rating > 0 && rating <= 1) {
+            return rating;
+        }
+    }
+    
+    // PRIORITY 4: Just look for percentage in md:text-body-md spans (inside rates context)
+    const mdSpanPattern = /<span[^>]*class=["'][^"']*md:text-body-md[^"']*["'][^>]*>(\d+(?:\.\d+)?)\s*%<\/span>/gi;
+    let mdMatch;
+    while ((mdMatch = mdSpanPattern.exec(html)) !== null) {
+        if (mdMatch[1]) {
+            // Check if it's in a rates context
+            const contextStart = Math.max(0, mdMatch.index - 150);
+            const context = html.substring(contextStart, mdMatch.index);
+            if (/data-testid=["']rates["']|thumbs-up|rating|like/i.test(context)) {
+                const rating = parseFloat(mdMatch[1]) / 100;
+                if (rating > 0 && rating <= 1) {
+                    return rating;
+                }
+            }
+        }
+    }
+    
     return 0;
 }
 
@@ -1903,9 +1981,13 @@ function parseVideoPage(html, url) {
         }
     }
 
-    const ratingMatch = html.match(/(\d+(?:\.\d+)?)\s*%\s*(?:rating|like)/i);
-    if (ratingMatch) {
-        videoData.rating = parseFloat(ratingMatch[1]) / 100;
+    // Extract rating (percentage) - try new pattern first, then fallback
+    videoData.rating = extractRatingFromContext(html);
+    if (!videoData.rating || videoData.rating === 0) {
+        const ratingMatch = html.match(/(\d+(?:\.\d+)?)\s*%\s*(?:rating|like)/i);
+        if (ratingMatch) {
+            videoData.rating = parseFloat(ratingMatch[1]) / 100;
+        }
     }
 
     videoData.uploader = extractUploaderFromVideoToolbar(html);
@@ -2543,6 +2625,9 @@ function parseSearchResults(html) {
             });
 
             const views = extractViewCountFromContext(block);
+            
+            // Extract rating percentage (e.g., 93% from thumbs-up)
+            const rating = extractRatingFromContext(block);
 
             let uploadDate = 0;
             const datePatterns = [
@@ -2599,7 +2684,7 @@ function parseSearchResults(html) {
             
             // LOG extracted data for debugging
             if (videos.length < 5) {
-                log(`parseSearchResults: Video ${videoId}: title="${title}", duration=${durationSeconds}s, views=${views}, uploader="${uploader.name || 'NONE'}", uploaderUrl="${uploader.url || 'NONE'}"`);
+                log(`parseSearchResults: Video ${videoId}: title="${title}", duration=${durationSeconds}s, views=${views}, rating=${rating}, uploader="${uploader.name || 'NONE'}", uploaderUrl="${uploader.url || 'NONE'}"`);
             }
 
             videos.push({
@@ -2608,6 +2693,7 @@ function parseSearchResults(html) {
                 thumbnail: thumbnail,
                 duration: durationSeconds,
                 views: views,
+                rating: rating,
                 uploadDate: uploadDate,
                 url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
                 uploader: uploader
@@ -2652,6 +2738,7 @@ function parseSearchResults(html) {
                 thumbnail: thumbnail,
                 duration: duration,
                 views: extractViewCountFromContext(context),
+                rating: extractRatingFromContext(context),
                 uploadDate: 0,
                 url: `${CONFIG.EXTERNAL_URL_BASE}/${videoId}/video/${videoSlug}`,
                 uploader: extractUploaderFromSearchResult(context)
@@ -7295,4 +7382,4 @@ class SpankBangHistoryPager extends VideoPager {
     }
 }
 
-log("SpankBang plugin loaded - v93");
+log("SpankBang plugin loaded - v94");
