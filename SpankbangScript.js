@@ -5230,13 +5230,14 @@ source.syncRemoteWatchHistory = function(continuationToken) {
         const MAX_PAGES = 100; // Safety limit to prevent infinite loops
         
         while (currentPage <= MAX_PAGES) {
-            const historyUrl = currentPage > 1 
-                ? `${USER_URLS.HISTORY}?page=${currentPage}`
-                : USER_URLS.HISTORY;
+            // IMPORTANT: Always use ?page=X format, even for page 1
+            const historyUrl = `${USER_URLS.HISTORY}?page=${currentPage}`;
             
             log("syncRemoteWatchHistory: Fetching page " + currentPage + " from " + historyUrl);
             
             const response = makeRequestNoThrow(historyUrl, API_HEADERS, 'remote watch history', true);
+            
+            log("syncRemoteWatchHistory: Page " + currentPage + " response code: " + response.code);
             
             if (!response.isOk) {
                 if (currentPage === 1) {
@@ -5244,24 +5245,28 @@ source.syncRemoteWatchHistory = function(continuationToken) {
                     log("syncRemoteWatchHistory: This usually means you're not logged into SpankBang in Grayjay");
                     return new SpankBangHistoryPager([], false, { continuationToken: null });
                 } else {
-                    log("syncRemoteWatchHistory: Page " + currentPage + " failed, stopping pagination");
+                    log("syncRemoteWatchHistory: Page " + currentPage + " failed with status " + response.code + ", stopping pagination");
                     break;
                 }
             }
             
             const html = response.body;
-            if (!html || html.length < 100) {
+            const htmlLen = html ? html.length : 0;
+            log("syncRemoteWatchHistory: Page " + currentPage + " HTML length: " + htmlLen);
+            
+            if (!html || htmlLen < 100) {
                 log("syncRemoteWatchHistory: Page " + currentPage + " returned empty/short HTML, stopping");
                 break;
             }
             
             // Parse videos from this page
             let pageVideos = parseSearchResults(html);
+            log("syncRemoteWatchHistory: Page " + currentPage + " parseSearchResults found " + pageVideos.length + " videos");
+            
             if (pageVideos.length === 0) {
                 pageVideos = parseHistoryPage(html);
+                log("syncRemoteWatchHistory: Page " + currentPage + " parseHistoryPage found " + pageVideos.length + " videos");
             }
-            
-            log("syncRemoteWatchHistory: Page " + currentPage + " found " + pageVideos.length + " videos");
             
             if (pageVideos.length === 0) {
                 log("syncRemoteWatchHistory: No videos on page " + currentPage + ", reached end of history");
@@ -5271,25 +5276,15 @@ source.syncRemoteWatchHistory = function(continuationToken) {
             allVideos = allVideos.concat(pageVideos);
             log("syncRemoteWatchHistory: Total videos so far: " + allVideos.length);
             
-            // Check if there are more pages
-            const hasNextPage = new RegExp(`[?&]page=${currentPage + 1}`, 'i').test(html) ||
-                               /class="[^"]*next[^"]*"|rel="next"/i.test(html) ||
-                               pageVideos.length >= 20; // If we got a full page, try next
-            
-            if (!hasNextPage) {
-                log("syncRemoteWatchHistory: No more pages detected after page " + currentPage);
-                break;
-            }
-            
+            // SIMPLE CHECK: If we got videos, try the next page
+            // Only stop when a page returns 0 videos
             currentPage++;
             
             // Small delay between requests to avoid rate limiting
-            if (currentPage <= MAX_PAGES) {
-                sleep(300);
-            }
+            sleep(500);
         }
         
-        log("syncRemoteWatchHistory: Finished fetching. Total pages: " + (currentPage) + ", Total videos: " + allVideos.length);
+        log("syncRemoteWatchHistory: Finished fetching. Total pages checked: " + currentPage + ", Total videos: " + allVideos.length);
         
         if (allVideos.length === 0) {
             log("syncRemoteWatchHistory: No history videos found");
@@ -7069,4 +7064,4 @@ class SpankBangHistoryPager extends VideoPager {
     }
 }
 
-log("SpankBang plugin loaded - v89");
+log("SpankBang plugin loaded - v90");
