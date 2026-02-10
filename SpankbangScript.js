@@ -762,7 +762,6 @@ function extractRatingFromContext(html) {
     if (ratesMatch && ratesMatch[1]) {
         const rating = parseFloat(ratesMatch[1]) / 100;
         if (rating > 0 && rating <= 1) {
-            log("extractRatingFromContext: Found rating via data-testid=rates: " + ratesMatch[1] + "%");
             return rating;
         }
     }
@@ -773,27 +772,17 @@ function extractRatingFromContext(html) {
     if (thumbsMatch && thumbsMatch[1]) {
         const rating = parseFloat(thumbsMatch[1]) / 100;
         if (rating > 0 && rating <= 1) {
-            log("extractRatingFromContext: Found rating via thumbs-up icon: " + thumbsMatch[1] + "%");
             return rating;
         }
     }
     
-    // PRIORITY 3: Look for percentage in span after like/rating text
-    const percentPatterns = [
-        /like[^>]*>[\s\S]{0,30}?<span[^>]*>(\d+(?:\.\d+)?)\s*%<\/span>/i,
-        /<span[^>]*>(\d+(?:\.\d+)?)\s*%<\/span>[\s\S]{0,30}?like/i,
-        /(\d+(?:\.\d+)?)\s*%[\s\S]{0,20}?(?:like|rating|approval)/i,
-        /(?:like|rating|approval)[\s\S]{0,20}?(\d+(?:\.\d+)?)\s*%/i
-    ];
-    
-    for (const pattern of percentPatterns) {
-        const match = html.match(pattern);
-        if (match && match[1]) {
-            const rating = parseFloat(match[1]) / 100;
-            if (rating > 0 && rating <= 1) {
-                log("extractRatingFromContext: Found rating via percent pattern: " + match[1] + "%");
-                return rating;
-            }
+    // PRIORITY 3: Generic percentage near rating/like context
+    const genericPattern = /(?:rating|like|approval)[^>]*>[\s\S]{0,50}?(\d+(?:\.\d+)?)\s*%/i;
+    const genericMatch = html.match(genericPattern);
+    if (genericMatch && genericMatch[1]) {
+        const rating = parseFloat(genericMatch[1]) / 100;
+        if (rating > 0 && rating <= 1) {
+            return rating;
         }
     }
     
@@ -808,26 +797,8 @@ function extractRatingFromContext(html) {
             if (/data-testid=["']rates["']|thumbs-up|rating|like/i.test(context)) {
                 const rating = parseFloat(mdMatch[1]) / 100;
                 if (rating > 0 && rating <= 1) {
-                    log("extractRatingFromContext: Found rating via md:text-body-md: " + mdMatch[1] + "%");
                     return rating;
                 }
-            }
-        }
-    }
-    
-    // PRIORITY 5: Look for any standalone percentage that looks like a rating (50-100%)
-    const anyPercentPattern = />(\d{2,3})\s*%</g;
-    let anyMatch;
-    while ((anyMatch = anyPercentPattern.exec(html)) !== null) {
-        const percent = parseInt(anyMatch[1]);
-        if (percent >= 50 && percent <= 100) {
-            // Check context to make sure it's rating-related
-            const start = Math.max(0, anyMatch.index - 100);
-            const end = Math.min(html.length, anyMatch.index + 100);
-            const context = html.substring(start, end).toLowerCase();
-            if (context.includes('like') || context.includes('rate') || context.includes('thumb') || context.includes('vote')) {
-                log("extractRatingFromContext: Found rating via standalone percent: " + percent + "%");
-                return percent / 100;
             }
         }
     }
@@ -1553,145 +1524,6 @@ function fetchUploaderAvatarIfNeeded(uploader, html) {
     }
     
     return extractAvatarFromHtml(html);
-}
-
-// Fetch profile user avatar from their profile page
-function fetchProfileAvatar(username) {
-    const cacheKey = `profile:${username}`;
-    
-    // Check cache first
-    if (localConfig.channelAvatars && localConfig.channelAvatars[cacheKey]) {
-        return localConfig.channelAvatars[cacheKey];
-    }
-    
-    try {
-        const profileUrl = `${BASE_URL}/profile/${username}/`;
-        log("fetchProfileAvatar: Fetching avatar from " + profileUrl);
-        
-        const response = makeRequestNoThrow(profileUrl, API_HEADERS, 'profile avatar');
-        
-        if (!response.isOk || !response.body) {
-            log("fetchProfileAvatar: Failed to fetch profile page");
-            return "";
-        }
-        
-        const html = response.body;
-        
-        // Look for avatar patterns
-        // Pattern from user: <img class="avatar" src="//spankbang.com/avatar/150/680954.jpg" alt="username">
-        const avatarPatterns = [
-            /<img[^>]*class=["'][^"']*avatar[^"']*["'][^>]*src=["']([^"']+)["']/i,
-            /<img[^>]*src=["']([^"']+)["'][^>]*class=["'][^"']*avatar[^"']*["']/i,
-            /src=["']((?:https?:)?\/\/spankbang\.com\/avatar\/\d+\/\d+\.jpg)["']/i,
-            /src=["']([^"']*\/avatar\/\d+\/[^"']+)["']/i,
-            /<img[^>]*data-testid=["']profile-detail-image["'][^>]*src=["']([^"']+)["']/i
-        ];
-        
-        for (const pattern of avatarPatterns) {
-            const match = html.match(pattern);
-            if (match && match[1]) {
-                let avatar = match[1];
-                
-                if (avatar.startsWith('//')) {
-                    avatar = 'https:' + avatar;
-                } else if (!avatar.startsWith('http')) {
-                    avatar = 'https://spankbang.com' + avatar;
-                }
-                
-                log("fetchProfileAvatar: Found avatar for " + username + ": " + avatar);
-                
-                // Cache it
-                if (!localConfig.channelAvatars) {
-                    localConfig.channelAvatars = {};
-                }
-                localConfig.channelAvatars[cacheKey] = avatar;
-                
-                return avatar;
-            }
-        }
-        
-        log("fetchProfileAvatar: No avatar found for " + username);
-        return "";
-        
-    } catch (e) {
-        log("fetchProfileAvatar: Error - " + e.message);
-        return "";
-    }
-}
-
-// Fetch the REAL uploader from a video page (not pornstar/tag shown in search)
-// This is called when we detect the uploader in search is a pornstar or missing
-function fetchRealUploaderFromVideoPage(videoId, videoSlug) {
-    const cacheKey = `uploader:${videoId}`;
-    
-    // Check cache first
-    if (localConfig.channelAvatars && localConfig.channelAvatars[cacheKey]) {
-        try {
-            return JSON.parse(localConfig.channelAvatars[cacheKey]);
-        } catch (e) {}
-    }
-    
-    try {
-        const videoUrl = `${BASE_URL}/${videoId}/video/${videoSlug}/`;
-        log("fetchRealUploaderFromVideoPage: Fetching from " + videoUrl);
-        
-        const response = makeRequestNoThrow(videoUrl, API_HEADERS, 'video uploader');
-        
-        if (!response.isOk || !response.body) {
-            log("fetchRealUploaderFromVideoPage: Failed to fetch video page");
-            return null;
-        }
-        
-        const html = response.body;
-        
-        // Look for profile link: <a href="/profile/username" class="ul">...<span class="name">Username</span>...</a>
-        const profilePatterns = [
-            /<a[^>]*href="\/profile\/([^"\/]+)"[^>]*class="[^"]*ul[^"]*"[^>]*>[\s\S]*?<span[^>]*class="[^"]*name[^"]*"[^>]*>([^<]+)<\/span>/i,
-            /<a[^>]*class="[^"]*ul[^"]*"[^>]*href="\/profile\/([^"\/]+)"[^>]*>[\s\S]*?<span[^>]*class="[^"]*name[^"]*"[^>]*>([^<]+)<\/span>/i,
-            /<a[^>]*href="\/profile\/([^"\/]+)"[^>]*>[\s\S]*?<span[^>]*class="[^"]*name[^"]*"[^>]*>([^<]+)<\/span>/i
-        ];
-        
-        for (const pattern of profilePatterns) {
-            const match = html.match(pattern);
-            if (match && match[1] && match[2]) {
-                const username = match[1];
-                const name = match[2].replace(/<[^>]*>/g, '').trim();
-                
-                if (name && name.length > 0) {
-                    // Look for avatar
-                    const avatarMatch = html.match(/<img[^>]*class=["'][^"']*avatar[^"']*["'][^>]*src=["']([^"']+)["'][^>]*alt=["'][^"']*["']/i);
-                    let avatar = "";
-                    if (avatarMatch && avatarMatch[1]) {
-                        avatar = avatarMatch[1];
-                        if (avatar.startsWith('//')) avatar = 'https:' + avatar;
-                    }
-                    
-                    const uploader = {
-                        name: name,
-                        url: `spankbang://profile/${username}`,
-                        avatar: avatar
-                    };
-                    
-                    log("fetchRealUploaderFromVideoPage: Found uploader " + name + " for video " + videoId);
-                    
-                    // Cache it
-                    if (!localConfig.channelAvatars) {
-                        localConfig.channelAvatars = {};
-                    }
-                    localConfig.channelAvatars[cacheKey] = JSON.stringify(uploader);
-                    
-                    return uploader;
-                }
-            }
-        }
-        
-        log("fetchRealUploaderFromVideoPage: No profile uploader found for video " + videoId);
-        return null;
-        
-    } catch (e) {
-        log("fetchRealUploaderFromVideoPage: Error - " + e.message);
-        return null;
-    }
 }
 
 function extractUploaderFromSearchResult(block) {
@@ -2498,16 +2330,6 @@ function createPlatformAuthor(uploader) {
             const pornstarSlug = pornstarMatch[1];
             log(`createPlatformAuthor: Fetching avatar for pornstar ${pornstarSlug}`);
             avatar = fetchPornstarAvatar(pornstarSlug);
-        }
-    }
-    
-    // If no avatar and this is a profile user, try to fetch it
-    if (!avatar && authorUrl && authorUrl.includes('profile/')) {
-        const profileMatch = authorUrl.match(/profile\/(.+)$/);
-        if (profileMatch) {
-            const username = profileMatch[1];
-            log(`createPlatformAuthor: Fetching avatar for profile user ${username}`);
-            avatar = fetchProfileAvatar(username);
         }
     }
 
@@ -6060,18 +5882,12 @@ source.getLikedVideos = function() {
 source.getHome = function(continuationToken) {
     try {
         const page = continuationToken ? parseInt(continuationToken) : 1;
-        // Use main page (recommended) instead of trending
-        // Page 1: https://spankbang.com/
-        // Page 2+: https://spankbang.com/2/
-        const url = page > 1 ? `${BASE_URL}/${page}/` : BASE_URL;
+        const url = `${BASE_URL}/trending_videos/${page}/`;
 
-        log("getHome: Fetching recommended videos from " + url);
         const html = makeRequest(url, API_HEADERS, 'home content');
         const videos = parseSearchResults(html);
         const platformVideos = videos.map(v => createPlatformVideo(v));
 
-        log("getHome: Found " + platformVideos.length + " videos on page " + page);
-        
         const hasMore = videos.length >= 20;
         const nextToken = hasMore ? (page + 1).toString() : null;
 
@@ -7566,4 +7382,4 @@ class SpankBangHistoryPager extends VideoPager {
     }
 }
 
-log("SpankBang plugin loaded - v98");
+log("SpankBang plugin loaded - v94");
