@@ -5087,7 +5087,14 @@ function createHistoryPlatformVideo(videoData, watchedTimestamp) {
         url = `${CONFIG.EXTERNAL_URL_BASE}/${videoData.id}/video/${slug}`;
     }
     
-    log(`createHistoryPlatformVideo: ID=${videoData.id}, URL=${url}, Title=${(videoData.title || '').substring(0, 30)}, Datetime=${datetime}, playbackDate=${datetime}`);
+    // CRITICAL FIX: GrayJay requires playbackTime > 0 for history import!
+    // From StateHistory.cs: if(video.PlaybackTime > 0) { toSync.Add(video); }
+    // If playbackTime is 0, GrayJay silently skips the video!
+    // Use duration * 0.5 (50% watched) or at least 60 seconds as fallback
+    const duration = videoData.duration || 300; // Default 5 min if unknown
+    const playbackTime = Math.max(60, Math.floor(duration * 0.5)); // At least 60s or 50% of video
+    
+    log(`createHistoryPlatformVideo: ID=${videoData.id}, URL=${url}, Title=${(videoData.title || '').substring(0, 30)}, playbackDate=${datetime}, playbackTime=${playbackTime}`);
     
     // Create PlatformVideo with history-specific fields
     // CRITICAL: playbackDate and playbackTime MUST be passed in constructor for GrayJay to recognize them
@@ -5097,13 +5104,14 @@ function createHistoryPlatformVideo(videoData, watchedTimestamp) {
         thumbnails: createThumbnails(videoData.thumbnail),
         author: author,
         datetime: datetime, // Use watched timestamp, NOT upload date
-        duration: videoData.duration || 0,
+        duration: duration,
         viewCount: videoData.views || 0,
         url: url,
         isLive: false,
         // CRITICAL: These fields MUST be in constructor for history import
+        // playbackTime MUST be > 0 for GrayJay to import (see StateHistory.cs line ~240)
         playbackDate: datetime,  // When the video was watched (Unix timestamp)
-        playbackTime: 0          // Playback position in seconds (0 = just added to history)
+        playbackTime: playbackTime  // Playback position in seconds (MUST BE > 0!)
     });
     
     return video;
@@ -7054,4 +7062,4 @@ class SpankBangHistoryPager extends VideoPager {
     }
 }
 
-log("SpankBang plugin loaded - v84");
+log("SpankBang plugin loaded - v85");
