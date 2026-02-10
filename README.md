@@ -31,11 +31,11 @@ What's working:
     Subscriptions Import
     Playlists Import
     Account History Sync
+    Channel name's profile picture on videos and search
     
 
 What's not working: 
-   
-    Channel name's profile picture on videos and search
+    
     Uploader name link on video section above views (channel name link works)
     View profiles for models, pornstars
     ...all the rest
