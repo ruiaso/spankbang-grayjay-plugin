@@ -16,7 +16,13 @@ let localConfig = {
     channelAvatars: {},  // Cache for channel avatars: { "shortId:slug": "avatarUrl" }
     lastRequestTime: 0,
     requestDelay: 500, // Increased to 500ms delay between requests to avoid rate limiting
-    consecutiveErrors: 0
+    consecutiveErrors: 0,
+    // Home content cache
+    homeCache: {
+        videos: [],          // Cached video data
+        timestamp: 0,        // When cache was last updated
+        maxAge: 5 * 60 * 1000  // Cache valid for 5 minutes (in ms)
+    }
 };
 var state = {
     sessionCookie: "",
@@ -4425,6 +4431,12 @@ source.enable = function(conf, settings, savedStateStr) {
                 log("Restored " + Object.keys(localConfig.channelAvatars).length + " cached channel avatars");
             }
             
+            if (savedState.homeCache && savedState.homeCache.videos && savedState.homeCache.videos.length > 0) {
+                localConfig.homeCache = savedState.homeCache;
+                const cacheAge = Date.now() - (savedState.homeCache.timestamp || 0);
+                log("Restored home cache with " + savedState.homeCache.videos.length + " videos (age: " + Math.round(cacheAge/1000) + "s)");
+            }
+            
             log("State loaded: authenticated=" + state.isAuthenticated + ", username=" + state.username);
         } catch (e) {
             log("Failed to parse saved state: " + e);
@@ -4459,7 +4471,8 @@ source.saveState = function() {
         username: state.username,
         userId: state.userId,
         pornstarShortIds: localConfig.pornstarShortIds,
-        channelAvatars: localConfig.channelAvatars
+        channelAvatars: localConfig.channelAvatars,
+        homeCache: localConfig.homeCache
     });
 };
 
@@ -5889,11 +5902,37 @@ source.getLikedVideos = function() {
 source.getHome = function(continuationToken) {
     try {
         const page = continuationToken ? parseInt(continuationToken) : 1;
+        
+        // Check if we have valid cached content for page 1
+        if (page === 1 && localConfig.homeCache && localConfig.homeCache.videos && localConfig.homeCache.videos.length > 0) {
+            const now = Date.now();
+            const cacheAge = now - (localConfig.homeCache.timestamp || 0);
+            const maxAge = localConfig.homeCache.maxAge || (5 * 60 * 1000);
+            
+            if (cacheAge < maxAge) {
+                log("getHome: Using cached content (" + localConfig.homeCache.videos.length + " videos, age: " + Math.round(cacheAge/1000) + "s)");
+                const platformVideos = localConfig.homeCache.videos.map(v => createPlatformVideo(v));
+                return new SpankBangHomeContentPager(platformVideos, true, { continuationToken: "2" });
+            } else {
+                log("getHome: Cache expired (age: " + Math.round(cacheAge/1000) + "s), fetching fresh content");
+            }
+        }
+        
         const url = `${BASE_URL}/trending_videos/${page}/`;
 
         const html = makeRequest(url, API_HEADERS, 'home content');
         const videos = parseSearchResults(html);
         const platformVideos = videos.map(v => createPlatformVideo(v));
+
+        // Cache page 1 results
+        if (page === 1 && videos.length > 0) {
+            localConfig.homeCache = {
+                videos: videos,
+                timestamp: Date.now(),
+                maxAge: 5 * 60 * 1000  // 5 minutes
+            };
+            log("getHome: Cached " + videos.length + " videos for faster reload");
+        }
 
         const hasMore = videos.length >= 20;
         const nextToken = hasMore ? (page + 1).toString() : null;
@@ -7389,4 +7428,4 @@ class SpankBangHistoryPager extends VideoPager {
     }
 }
 
-log("SpankBang plugin loaded - v99");
+log("SpankBang plugin loaded - v98");
