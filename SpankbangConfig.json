@@ -36,22 +36,6 @@
     "cookiesToFind": ["sb_session"],
     "cookiesExclOthers": false
   },
-  "settings": [
-    {
-      "variable": "syncRemoteHistory",
-      "name": "Sync Remote History",
-      "description": "Automatically sync watch history from SpankBang on startup",
-      "type": "Boolean",
-      "default": "true"
-    },
-    {
-      "variable": "forceHistoryResync",
-      "name": "Force History Resync",
-      "description": "Enable this to re-import ALL history from SpankBang (use after clearing GrayJay history). Will be automatically disabled after sync completes.",
-      "type": "Boolean",
-      "default": "false"
-    }
-  ],
   "subscriptionRateLimit": 150,
   "supportedClaimTypes": [3],
   "primaryClaimFieldType": 3,
@@ -59,10 +43,9 @@
     "86": [
       "CRITICAL FIX: History import now fetches ALL pages (was only getting page 1)",
       "Fixed pagination URL format: now uses ?page=X instead of /X/ format",
-      "Added 'Force History Resync' setting to re-import history after clearing in GrayJay",
-      "Improved pagination detection by checking for next page links in HTML",
       "History will now properly import page 2, 3, 4... up to the last page",
-      "After clearing GrayJay history, enable 'Force History Resync' to reimport"
+      "Improved pagination detection by checking for next page links in HTML",
+      "Re-importing history after clearing in GrayJay now works correctly"
     ],
     "84": [
       "FIX: playbackDate and playbackTime now passed IN constructor (like YouTube plugin)",

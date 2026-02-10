@@ -4050,9 +4050,7 @@ function fetchUserInfo() {
 }
 
 var pluginSettings = {
-    syncRemoteHistory: true,
-    forceHistoryResync: false,  // When true, forces full history re-import
-    lastHistorySyncCount: 0     // Track last sync count to detect clears
+    syncRemoteHistory: true
 };
 
 source.getCapabilities = function() {
@@ -4081,24 +4079,6 @@ source.enable = function(conf, settings, savedStateStr) {
             log("enable: hasSyncRemoteWatchHistory capability = " + pluginSettings.syncRemoteHistory);
         } else {
             log("enable: syncRemoteHistory setting NOT found in settings object");
-        }
-        
-        // Handle forceHistoryResync setting - allows re-import after clearing GrayJay history
-        if (typeof settings.forceHistoryResync !== 'undefined') {
-            log("enable: forceHistoryResync setting found, value=" + settings.forceHistoryResync);
-            if (typeof settings.forceHistoryResync === 'boolean') {
-                pluginSettings.forceHistoryResync = settings.forceHistoryResync;
-            } else if (typeof settings.forceHistoryResync === 'string') {
-                pluginSettings.forceHistoryResync = settings.forceHistoryResync.toLowerCase() === 'true';
-            } else {
-                pluginSettings.forceHistoryResync = !!settings.forceHistoryResync;
-            }
-            
-            if (pluginSettings.forceHistoryResync) {
-                log("enable: FORCE HISTORY RESYNC ENABLED - Will re-import all history");
-                // Reset the sync count to force re-import
-                pluginSettings.lastHistorySyncCount = 0;
-            }
         }
     } else {
         log("enable: No settings object provided");
@@ -5242,11 +5222,6 @@ source.syncRemoteWatchHistory = function(continuationToken) {
         // Don't check isLoggedIn() as it may fail even with valid cookies in the http client
         const page = continuationToken ? parseInt(continuationToken) : 1;
         
-        // Check if forceHistoryResync is enabled
-        if (page === 1 && pluginSettings.forceHistoryResync) {
-            log("syncRemoteWatchHistory: FORCE RESYNC enabled - will import all history pages");
-        }
-        
         // CRITICAL FIX: SpankBang uses ?page=X format, NOT /X/ format
         // URLs: https://spankbang.com/users/history?page=1, ?page=2, etc.
         const historyUrl = page > 1 
@@ -5377,13 +5352,6 @@ source.syncRemoteWatchHistory = function(continuationToken) {
         log("syncRemoteWatchHistory: Returning " + platformVideos.length + " platform videos via VideoPager");
         log("syncRemoteWatchHistory: hasMore = " + hasMore + ", nextToken = " + (nextToken || "null"));
         log("===== SYNC REMOTE WATCH HISTORY END =====");
-        
-        // Update sync count for tracking
-        if (page === 1) {
-            pluginSettings.lastHistorySyncCount = platformVideos.length;
-        } else {
-            pluginSettings.lastHistorySyncCount += platformVideos.length;
-        }
         
         return new SpankBangHistoryPager(platformVideos, hasMore, { continuationToken: nextToken });
 
