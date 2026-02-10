@@ -1292,6 +1292,77 @@ function fetchChannelAvatar(shortId, channelSlug) {
     }
 }
 
+// Fetch pornstar avatar from their page
+function fetchPornstarAvatar(pornstarSlug) {
+    // Check cache first
+    const cacheKey = `pornstar:${pornstarSlug}`;
+    if (localConfig.channelAvatars && localConfig.channelAvatars[cacheKey]) {
+        return localConfig.channelAvatars[cacheKey];
+    }
+    
+    try {
+        // First try to resolve the shortId
+        const shortId = resolvePornstarShortId(pornstarSlug);
+        
+        let pornstarUrl;
+        if (shortId) {
+            pornstarUrl = `${BASE_URL}/${shortId}/pornstar/${pornstarSlug}/`;
+        } else {
+            pornstarUrl = `${BASE_URL}/pornstar/${pornstarSlug}/`;
+        }
+        
+        log("fetchPornstarAvatar: Fetching avatar from " + pornstarUrl);
+        
+        const response = makeRequestNoThrow(pornstarUrl, API_HEADERS, 'pornstar avatar');
+        
+        if (!response.isOk || !response.body) {
+            log("fetchPornstarAvatar: Failed to fetch pornstar page");
+            return "";
+        }
+        
+        const html = response.body;
+        
+        // Look for avatar patterns
+        const avatarPatterns = [
+            /<img[^>]*data-testid=["']profile-detail-image["'][^>]*src=["']([^"']+)["']/i,
+            /<img[^>]*src=["']([^"']+)["'][^>]*data-testid=["']profile-detail-image["']/i,
+            /src=["']((?:https?:)?\/\/spankbang\.com\/pornstarimg\/[^"']+)["']/i,
+            /src=["']([^"']*pornstarimg[^"']*\.(?:jpg|png|webp))["']/i,
+            /<img[^>]*class=["'][^"']*(?:profile|avatar)[^"']*["'][^>]*src=["']([^"']+)["']/i
+        ];
+        
+        for (const pattern of avatarPatterns) {
+            const match = html.match(pattern);
+            if (match && match[1]) {
+                let avatar = match[1];
+                
+                if (avatar.startsWith('//')) {
+                    avatar = 'https:' + avatar;
+                } else if (!avatar.startsWith('http')) {
+                    avatar = 'https://spankbang.com' + avatar;
+                }
+                
+                log("fetchPornstarAvatar: Found avatar for " + pornstarSlug + ": " + avatar);
+                
+                // Cache it
+                if (!localConfig.channelAvatars) {
+                    localConfig.channelAvatars = {};
+                }
+                localConfig.channelAvatars[cacheKey] = avatar;
+                
+                return avatar;
+            }
+        }
+        
+        log("fetchPornstarAvatar: No avatar found for " + pornstarSlug);
+        return "";
+        
+    } catch (e) {
+        log("fetchPornstarAvatar: Error - " + e.message);
+        return "";
+    }
+}
+
 function fetchUploaderAvatarIfNeeded(uploader, html) {
     if (uploader.avatar) return uploader.avatar;
     
@@ -2097,13 +2168,35 @@ function createThumbnails(thumbnail) {
 }
 
 function createPlatformAuthor(uploader) {
-    const avatar = uploader.avatar || "";
+    let avatar = uploader.avatar || "";
     const authorUrl = uploader.url || "";
     const authorName = uploader.name || "";
 
+    // If no avatar and this is a channel, try to fetch it
+    if (!avatar && authorUrl && authorUrl.includes('channel/')) {
+        // Extract channel info from URL like "spankbang://channel/zz:mommy+s+boy"
+        const channelMatch = authorUrl.match(/channel\/([^:]+):(.+)$/);
+        if (channelMatch) {
+            const shortId = channelMatch[1];
+            const channelSlug = channelMatch[2];
+            log(`createPlatformAuthor: Fetching avatar for channel ${channelSlug}`);
+            avatar = fetchChannelAvatar(shortId, channelSlug);
+        }
+    }
+    
+    // If no avatar and this is a pornstar, try to fetch it
+    if (!avatar && authorUrl && authorUrl.includes('pornstar:')) {
+        const pornstarMatch = authorUrl.match(/pornstar:(.+)$/);
+        if (pornstarMatch) {
+            const pornstarSlug = pornstarMatch[1];
+            log(`createPlatformAuthor: Fetching avatar for pornstar ${pornstarSlug}`);
+            avatar = fetchPornstarAvatar(pornstarSlug);
+        }
+    }
+
     // Log what we're creating for debugging
     if (authorName && authorUrl) {
-        log(`createPlatformAuthor: Creating author "${authorName}" with URL: ${authorUrl}`);
+        log(`createPlatformAuthor: Creating author "${authorName}" with URL: ${authorUrl}, avatar: ${avatar ? 'YES' : 'NO'}`);
     } else if (authorName) {
         log(`createPlatformAuthor: Creating author "${authorName}" with NO URL (will not be clickable)`);
     } else {
@@ -7145,4 +7238,4 @@ class SpankBangHistoryPager extends VideoPager {
     }
 }
 
-log("SpankBang plugin loaded - v91");
+log("SpankBang plugin loaded - v92");
