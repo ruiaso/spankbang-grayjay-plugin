@@ -5087,9 +5087,10 @@ function createHistoryPlatformVideo(videoData, watchedTimestamp) {
         url = `${CONFIG.EXTERNAL_URL_BASE}/${videoData.id}/video/${slug}`;
     }
     
-    log(`createHistoryPlatformVideo: ID=${videoData.id}, URL=${url}, Title=${(videoData.title || '').substring(0, 30)}, Datetime=${datetime}`);
+    log(`createHistoryPlatformVideo: ID=${videoData.id}, URL=${url}, Title=${(videoData.title || '').substring(0, 30)}, Datetime=${datetime}, playbackDate=${datetime}`);
     
     // Create PlatformVideo with history-specific fields
+    // CRITICAL: playbackDate and playbackTime MUST be passed in constructor for GrayJay to recognize them
     const video = new PlatformVideo({
         id: new PlatformID(PLATFORM, videoData.id || "", plugin.config.id),
         name: videoData.title || "Untitled",
@@ -5099,13 +5100,11 @@ function createHistoryPlatformVideo(videoData, watchedTimestamp) {
         duration: videoData.duration || 0,
         viewCount: videoData.views || 0,
         url: url,
-        isLive: false
+        isLive: false,
+        // CRITICAL: These fields MUST be in constructor for history import
+        playbackDate: datetime,  // When the video was watched (Unix timestamp)
+        playbackTime: 0          // Playback position in seconds (0 = just added to history)
     });
-    
-    // CRITICAL: Set playbackDate and playbackTime for GrayJay history import
-    // These fields tell GrayJay when the video was watched
-    video.playbackDate = datetime;
-    video.playbackTime = 0; // Playback position in seconds (0 = just added to history)
     
     return video;
 }
@@ -7055,4 +7054,4 @@ class SpankBangHistoryPager extends VideoPager {
     }
 }
 
-log("SpankBang plugin loaded - v83");
+log("SpankBang plugin loaded - v84");
