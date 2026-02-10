@@ -2540,26 +2540,7 @@ function hasValidUploader(uploader) {
 }
 
 function createPlatformVideo(videoData) {
-    let uploader = videoData.uploader || {};
-    
-    // Check if uploader is a pornstar or tag - if so, try to fetch the real uploader from video page
-    const uploaderUrl = uploader.url || "";
-    const isPornstarOrTag = uploaderUrl.includes('pornstar:') || uploaderUrl.includes('/s/') || !hasValidUploader(uploader);
-    
-    if (isPornstarOrTag && videoData.id && videoData.url) {
-        // Extract video slug from URL
-        const slugMatch = videoData.url.match(/video\/([^\/]+)/);
-        const videoSlug = slugMatch ? slugMatch[1] : "";
-        
-        if (videoSlug) {
-            log(`createPlatformVideo: Video ${videoData.id} has pornstar/tag/empty uploader, fetching real uploader...`);
-            const realUploader = fetchRealUploaderFromVideoPage(videoData.id, videoSlug);
-            if (realUploader && realUploader.name) {
-                uploader = realUploader;
-                log(`createPlatformVideo: Found real uploader "${realUploader.name}" for video ${videoData.id}`);
-            }
-        }
-    }
+    const uploader = videoData.uploader || {};
     
     // CRITICAL: Only create author if we have a valid uploader with a URL
     // If no real uploader exists, create an author that Grayjay won't make clickable
@@ -7585,4 +7566,4 @@ class SpankBangHistoryPager extends VideoPager {
     }
 }
 
-log("SpankBang plugin loaded - v96");
+log("SpankBang plugin loaded - v97");
