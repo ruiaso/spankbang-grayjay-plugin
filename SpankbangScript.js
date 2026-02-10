@@ -17,11 +17,10 @@ let localConfig = {
     lastRequestTime: 0,
     requestDelay: 500, // Increased to 500ms delay between requests to avoid rate limiting
     consecutiveErrors: 0,
-    // Home content cache
+    // Home content cache - persists until manual refresh
     homeCache: {
         videos: [],          // Cached video data
-        timestamp: 0,        // When cache was last updated
-        maxAge: 5 * 60 * 1000  // Cache valid for 5 minutes (in ms)
+        timestamp: 0         // When cache was last updated
     }
 };
 var state = {
@@ -5903,35 +5902,28 @@ source.getHome = function(continuationToken) {
     try {
         const page = continuationToken ? parseInt(continuationToken) : 1;
         
-        // Check if we have valid cached content for page 1
+        // Check if we have cached content for page 1 (persists until manual refresh)
         if (page === 1 && localConfig.homeCache && localConfig.homeCache.videos && localConfig.homeCache.videos.length > 0) {
-            const now = Date.now();
-            const cacheAge = now - (localConfig.homeCache.timestamp || 0);
-            const maxAge = localConfig.homeCache.maxAge || (5 * 60 * 1000);
-            
-            if (cacheAge < maxAge) {
-                log("getHome: Using cached content (" + localConfig.homeCache.videos.length + " videos, age: " + Math.round(cacheAge/1000) + "s)");
-                const platformVideos = localConfig.homeCache.videos.map(v => createPlatformVideo(v));
-                return new SpankBangHomeContentPager(platformVideos, true, { continuationToken: "2" });
-            } else {
-                log("getHome: Cache expired (age: " + Math.round(cacheAge/1000) + "s), fetching fresh content");
-            }
+            log("getHome: Using cached content (" + localConfig.homeCache.videos.length + " videos)");
+            const platformVideos = localConfig.homeCache.videos.map(v => createPlatformVideo(v));
+            return new SpankBangHomeContentPager(platformVideos, true, { continuationToken: "2" });
         }
         
-        const url = `${BASE_URL}/trending_videos/${page}/`;
+        // Use main page for recommended content (not trending_videos)
+        // Page 1 = /, Page 2+ = /2/, /3/, etc.
+        const url = page === 1 ? `${BASE_URL}/` : `${BASE_URL}/${page}/`;
 
         const html = makeRequest(url, API_HEADERS, 'home content');
         const videos = parseSearchResults(html);
         const platformVideos = videos.map(v => createPlatformVideo(v));
 
-        // Cache page 1 results
+        // Cache page 1 results (persists until manual refresh)
         if (page === 1 && videos.length > 0) {
             localConfig.homeCache = {
                 videos: videos,
-                timestamp: Date.now(),
-                maxAge: 5 * 60 * 1000  // 5 minutes
+                timestamp: Date.now()
             };
-            log("getHome: Cached " + videos.length + " videos for faster reload");
+            log("getHome: Cached " + videos.length + " videos");
         }
 
         const hasMore = videos.length >= 20;

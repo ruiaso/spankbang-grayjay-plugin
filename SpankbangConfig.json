@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 100,
+  "version": 101,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -40,6 +40,12 @@
   "supportedClaimTypes": [3],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "101": [
+      "FIX: Home page now uses main page (spankbang.com/) instead of trending_videos",
+      "FIX: Home videos persist indefinitely until manual refresh (no timeout)",
+      "Restored v95 behavior - recommended content from main page",
+      "Pagination: page 1 = /, page 2+ = /2/, /3/, etc."
+    ],
     "100": [
       "PERFORMANCE: Home page content now cached and persists between app sessions",
       "Home section loads instantly when returning to app (within 5 min cache window)",
