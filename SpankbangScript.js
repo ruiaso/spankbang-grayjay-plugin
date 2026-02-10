@@ -5058,6 +5058,7 @@ function fetchVideoBasicInfo(videoId) {
 
 // Helper function to create history video with proper watched timestamp
 // GrayJay requires datetime to be set for history import to work
+// Also sets playbackDate and playbackTime for proper history tracking
 function createHistoryPlatformVideo(videoData, watchedTimestamp) {
     const uploader = videoData.uploader || {};
     
@@ -5077,7 +5078,19 @@ function createHistoryPlatformVideo(videoData, watchedTimestamp) {
     // GrayJay uses this to determine when the video was watched for history import
     const datetime = watchedTimestamp || Math.floor(Date.now() / 1000);
     
-    return new PlatformVideo({
+    // Ensure URL is valid and has proper format (with slug for isContentDetailsUrl to match)
+    // If videoData.url exists and is valid, use it; otherwise construct a fallback
+    let url = videoData.url;
+    if (!url || !url.includes('/video/')) {
+        // Create a fallback URL with a slug derived from title or use 'video' as default
+        const slug = videoData.title ? encodeURIComponent(videoData.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').substring(0, 50)) : 'video';
+        url = `${CONFIG.EXTERNAL_URL_BASE}/${videoData.id}/video/${slug}`;
+    }
+    
+    log(`createHistoryPlatformVideo: ID=${videoData.id}, URL=${url}, Title=${(videoData.title || '').substring(0, 30)}, Datetime=${datetime}`);
+    
+    // Create PlatformVideo with history-specific fields
+    const video = new PlatformVideo({
         id: new PlatformID(PLATFORM, videoData.id || "", plugin.config.id),
         name: videoData.title || "Untitled",
         thumbnails: createThumbnails(videoData.thumbnail),
@@ -5085,9 +5098,16 @@ function createHistoryPlatformVideo(videoData, watchedTimestamp) {
         datetime: datetime, // Use watched timestamp, NOT upload date
         duration: videoData.duration || 0,
         viewCount: videoData.views || 0,
-        url: videoData.url || `${CONFIG.EXTERNAL_URL_BASE}/${videoData.id}/video/`,
+        url: url,
         isLive: false
     });
+    
+    // CRITICAL: Set playbackDate and playbackTime for GrayJay history import
+    // These fields tell GrayJay when the video was watched
+    video.playbackDate = datetime;
+    video.playbackTime = 0; // Playback position in seconds (0 = just added to history)
+    
+    return video;
 }
 
 // Add getUserHistory function for GrayJay plugin testing
@@ -7035,4 +7055,4 @@ class SpankBangHistoryPager extends VideoPager {
     }
 }
 
-log("SpankBang plugin loaded - v82");
+log("SpankBang plugin loaded - v83");

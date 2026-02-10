@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangConfig.json",
   "repositoryUrl": "https://github.com/ruiaso/spankbang-grayjay-plugin",
   "scriptUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/SpankbangScript.js",
-  "version": 82,
+  "version": 83,
   "iconUrl": "https://raw.githubusercontent.com/ruiaso/spankbang-grayjay-plugin/refs/heads/main/icon.png",
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "packages": [
@@ -40,6 +40,13 @@
   "supportedClaimTypes": [3],
   "primaryClaimFieldType": 3,
   "changelog": {
+    "83": [
+      "CRITICAL FIX: Added playbackDate and playbackTime fields required by GrayJay for history import",
+      "These fields were missing in PlatformVideo objects returned by history sync",
+      "Without playbackDate, GrayJay would report 'imported no history items' even with valid videos",
+      "Also fixed URL generation to ensure proper slug is included (required by isContentDetailsUrl)",
+      "Added detailed logging for history video creation to aid debugging"
+    ],
     "82": [
       "CRITICAL FIX: History import now sets proper datetime timestamps (required by GrayJay)",
       "GrayJay requires valid datetime values for history import - was setting 0 causing 'imported no history items'",
