@@ -449,14 +449,31 @@ function parseDuration(durationStr) {
     if (typeof durationStr === 'number') {
         return durationStr;
     }
+    
+    const str = durationStr.toString().trim().toLowerCase();
 
     // Handle pure numeric strings (seconds only)
-    const numericOnly = durationStr.toString().trim().match(/^(\d+)$/);
+    const numericOnly = str.match(/^(\d+)$/);
     if (numericOnly) {
         return parseInt(numericOnly[1]);
     }
+    
+    // Handle simple formats like "16m", "1h", "45s", "1h 23m", "16m 30s"
+    const simpleMatch = str.match(/^(\d+)\s*(h|m|s)(?:\s*(\d+)\s*(h|m|s))?(?:\s*(\d+)\s*(h|m|s))?$/);
+    if (simpleMatch) {
+        for (let i = 1; i < simpleMatch.length; i += 2) {
+            if (simpleMatch[i] && simpleMatch[i + 1]) {
+                const num = parseInt(simpleMatch[i]);
+                const unit = simpleMatch[i + 1];
+                if (unit === 'h') totalSeconds += num * 3600;
+                else if (unit === 'm') totalSeconds += num * 60;
+                else if (unit === 's') totalSeconds += num;
+            }
+        }
+        if (totalSeconds > 0) return totalSeconds;
+    }
 
-    const colonMatch = durationStr.match(/(\d+):(\d+)(?::(\d+))?/);
+    const colonMatch = str.match(/(\d+):(\d+)(?::(\d+))?/);
     if (colonMatch) {
         if (colonMatch[3]) {
             totalSeconds = parseInt(colonMatch[1]) * 3600 + parseInt(colonMatch[2]) * 60 + parseInt(colonMatch[3]);
@@ -466,7 +483,7 @@ function parseDuration(durationStr) {
         return totalSeconds;
     }
 
-    const parts = durationStr.toLowerCase().match(REGEX_PATTERNS.parsing.duration);
+    const parts = str.match(REGEX_PATTERNS.parsing.duration);
     if (parts) {
         for (const part of parts) {
             const numericValue = parseInt(part);
@@ -496,6 +513,30 @@ function extractAllDurationCandidatesFromContext(html, opts = {}) {
     if (!html || typeof html !== 'string') return [];
 
     const candidates = [];
+
+    // 0) SpankBang NEW: data-testid="video-item-length" pattern (e.g., "16m", "1h 23m")
+    const videoItemLengthPattern = /data-testid=["']video-item-length["'][^>]*>[\s\S]*?(\d+(?:h|m|s)[\s\d hms]*)<\/div>/gi;
+    let vilMatch;
+    while ((vilMatch = videoItemLengthPattern.exec(html)) !== null) {
+        if (vilMatch[1]) {
+            const parsed = parseDuration(vilMatch[1].trim());
+            if (parsed > 0 && parsed <= options.maxSeconds) {
+                candidates.push(parsed);
+            }
+        }
+    }
+    
+    // Also try simpler pattern for video-item-length
+    const vilSimplePattern = /data-testid=["']video-item-length["'][^>]*>\s*(\d+[hms]?\s*\d*[hms]?)\s*<\/div>/gi;
+    let vilSimple;
+    while ((vilSimple = vilSimplePattern.exec(html)) !== null) {
+        if (vilSimple[1]) {
+            const parsed = parseDuration(vilSimple[1].trim());
+            if (parsed > 0 && parsed <= options.maxSeconds) {
+                candidates.push(parsed);
+            }
+        }
+    }
 
     // 1) Data attributes (often seconds)
     const dataAttrPatterns = [
@@ -560,6 +601,22 @@ function extractAllDurationCandidatesFromContext(html, opts = {}) {
 
         const parsed = parseDuration(token);
         if (parsed > 0 && parsed <= options.maxSeconds) candidates.push(parsed);
+    }
+    
+    // 5) Short format like "16m" or "1h" standalone
+    const shortDurationPattern = />\s*(\d+)\s*(h|m|s)\s*</gi;
+    let shortMatch;
+    while ((shortMatch = shortDurationPattern.exec(html)) !== null) {
+        const num = parseInt(shortMatch[1]);
+        const unit = shortMatch[2].toLowerCase();
+        let seconds = 0;
+        if (unit === 'h') seconds = num * 3600;
+        else if (unit === 'm') seconds = num * 60;
+        else if (unit === 's') seconds = num;
+        
+        if (seconds > 0 && seconds <= options.maxSeconds) {
+            candidates.push(seconds);
+        }
     }
 
     // De-dupe + basic sanity
@@ -7238,4 +7295,4 @@ class SpankBangHistoryPager extends VideoPager {
     }
 }
 
-log("SpankBang plugin loaded - v92");
+log("SpankBang plugin loaded - v93");
